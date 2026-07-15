@@ -1,0 +1,22 @@
+id: no-free-text-planned-action-reason-parsing
+language: TypeScript
+severity: error
+message: Do not make machine decisions by parsing PlannedAction.reason display text; use structured fields such as driftKind instead.
+files:
+  - apps/**/*.ts
+  - packages/cli/**/*.ts
+rule:
+  any:
+    - pattern: $ACTION.reason.includes($$$ARGS)
+    - pattern: $ACTION.reason.match($$$ARGS)
+    - pattern: $ACTION.reason.search($$$ARGS)
+    - pattern: $ACTION.reason.startsWith($$$ARGS)
+    - pattern: $ACTION.reason.endsWith($$$ARGS)
+    - pattern: $ACTION.reason === $TEXT
+    - pattern: $TEXT === $ACTION.reason
+    - pattern: $ACTION.reason !== $TEXT
+    - pattern: $TEXT !== $ACTION.reason
+constraints:
+  ACTION:
+    regex: ^(action|plannedAction|planned|planAction|applyAction)$
+note: PlannedAction.reason is display text; consumers should branch on structured fields such as driftKind instead.

@@ -1,0 +1,54 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  researcher:
+    description: "Gathers information from the codebase"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are a research agent. Your job is to gather relevant information
+      from the codebase when asked. Use glob and grep to find files, then
+      read them to extract the needed context.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search, web_fetch]
+
+  writer:
+    description: "Writes documentation and summaries"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are a technical writer. Given research findings, produce clear
+      and concise documentation, summaries, or reports.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+
+  lead:
+    description: "Coordinates researcher and writer to complete tasks"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are the lead agent coordinating a team:
+      - researcher: can search code and the web for information
+      - writer: can produce documentation from findings
+
+      Break tasks into research and writing phases. Delegate to the
+      appropriate agent and synthesize their outputs.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+    multiagent:
+      type: coordinator
+      agents: [researcher, writer]

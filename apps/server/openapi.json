@@ -1,0 +1,864 @@
+{
+	"openapi": "3.0.0",
+	"info": {
+		"title": "OpenAgentPack API",
+		"version": "1.0.0"
+	},
+	"components": {
+		"schemas": {
+			"ErrorResponse": {
+				"type": "object",
+				"properties": {
+					"error": {
+						"type": "object",
+						"properties": {
+							"message": {
+								"type": "string"
+							}
+						},
+						"required": ["message"]
+					}
+				},
+				"required": ["error"]
+			},
+			"SessionListResponse": {
+				"type": "object",
+				"properties": {
+					"data": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Session"
+						}
+					},
+					"next_page_token": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["data"]
+			},
+			"Session": {
+				"type": "object",
+				"properties": {
+					"session_id": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string"
+					},
+					"title": {
+						"type": "string"
+					},
+					"agent": {
+						"type": "object",
+						"properties": {
+							"agent_id": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"version": {
+								"type": "number"
+							}
+						},
+						"additionalProperties": {
+							"nullable": true
+						}
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"metadata": {
+						"type": "object",
+						"additionalProperties": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["session_id"]
+			},
+			"SessionDetailResponse": {
+				"type": "object",
+				"properties": {
+					"session": {
+						"$ref": "#/components/schemas/Session"
+					},
+					"events": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/SessionEvent"
+						}
+					}
+				},
+				"required": ["session", "events"]
+			},
+			"SessionEvent": {
+				"type": "object",
+				"properties": {
+					"event_id": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string"
+					},
+					"role": {
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"content": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"type": {
+									"type": "string"
+								},
+								"text": {
+									"type": "string"
+								},
+								"data": {
+									"nullable": true
+								}
+							},
+							"required": ["type"],
+							"additionalProperties": {
+								"nullable": true
+							}
+						}
+					},
+					"metadata": {
+						"type": "object",
+						"additionalProperties": {
+							"nullable": true
+						}
+					},
+					"is_error": {
+						"type": "boolean",
+						"nullable": true
+					},
+					"code": {
+						"type": "string",
+						"nullable": true
+					},
+					"message": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["type"]
+			}
+		},
+		"parameters": {}
+	},
+	"paths": {
+		"/api/agents": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "agentId",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List agents with readiness",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"agents": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"agent": {
+														"type": "object",
+														"properties": {
+															"id": {
+																"type": "string"
+															},
+															"agentName": {
+																"type": "string"
+															},
+															"provider": {
+																"type": "string"
+															},
+															"description": {
+																"type": "string"
+															},
+															"model": {
+																"anyOf": [
+																	{
+																		"type": "string"
+																	},
+																	{
+																		"type": "object",
+																		"additionalProperties": {
+																			"nullable": true
+																		}
+																	}
+																]
+															},
+															"environment": {
+																"type": "string"
+															},
+															"tools": {
+																"nullable": true
+															},
+															"skills": {
+																"type": "array",
+																"items": {
+																	"type": "object",
+																	"properties": {
+																		"type": {
+																			"type": "string",
+																			"enum": ["custom", "official"]
+																		},
+																		"id": {
+																			"type": "string"
+																		},
+																		"version": {
+																			"type": "string"
+																		}
+																	},
+																	"required": ["type", "id"]
+																}
+															},
+															"mcpServers": {
+																"type": "array",
+																"items": {
+																	"type": "string"
+																}
+															},
+															"metadata": {
+																"type": "object",
+																"additionalProperties": {
+																	"nullable": true
+																}
+															}
+														},
+														"required": ["id", "agentName", "provider", "skills", "mcpServers"]
+													},
+													"readiness": {
+														"type": "object",
+														"properties": {
+															"status": {
+																"type": "string",
+																"enum": [
+																	"ready",
+																	"missing",
+																	"creating",
+																	"updating",
+																	"invalid",
+																	"drifted",
+																	"unavailable",
+																	"error"
+																]
+															},
+															"agentId": {
+																"type": "string"
+															},
+															"driftSeverity": {
+																"type": "string",
+																"enum": ["blocking", "non_blocking"]
+															},
+															"diagnostics": {
+																"type": "array",
+																"items": {
+																	"type": "object",
+																	"properties": {
+																		"severity": {
+																			"type": "string",
+																			"enum": ["error", "warning", "info"]
+																		},
+																		"code": {
+																			"type": "string"
+																		},
+																		"message": {
+																			"type": "string"
+																		},
+																		"resource": {
+																			"type": "object",
+																			"properties": {
+																				"type": {
+																					"type": "string",
+																					"enum": [
+																						"environment",
+																						"vault",
+																						"memory_store",
+																						"skill",
+																						"agent",
+																						"deployment"
+																					]
+																				},
+																				"name": {
+																					"type": "string"
+																				},
+																				"provider": {
+																					"type": "string"
+																				}
+																			},
+																			"required": ["type", "name", "provider"]
+																		}
+																	},
+																	"required": ["severity", "code", "message"]
+																}
+															},
+															"missing": {
+																"type": "array",
+																"items": {
+																	"type": "object",
+																	"properties": {
+																		"type": {
+																			"type": "string",
+																			"enum": ["environment", "vault", "memory_store", "skill", "agent", "deployment"]
+																		},
+																		"name": {
+																			"type": "string"
+																		},
+																		"provider": {
+																			"type": "string"
+																		}
+																	},
+																	"required": ["type", "name", "provider"]
+																}
+															},
+															"plannedActions": {
+																"type": "array",
+																"items": {
+																	"type": "object",
+																	"properties": {
+																		"action": {
+																			"type": "string",
+																			"enum": ["create", "update", "delete", "no-op"]
+																		},
+																		"address": {
+																			"type": "object",
+																			"properties": {
+																				"type": {
+																					"type": "string",
+																					"enum": [
+																						"environment",
+																						"vault",
+																						"memory_store",
+																						"skill",
+																						"agent",
+																						"deployment"
+																					]
+																				},
+																				"name": {
+																					"type": "string"
+																				},
+																				"provider": {
+																					"type": "string"
+																				}
+																			},
+																			"required": ["type", "name", "provider"]
+																		},
+																		"reason": {
+																			"type": "string"
+																		},
+																		"driftKind": {
+																			"type": "string",
+																			"enum": ["none", "local", "remote", "both"]
+																		},
+																		"before": {
+																			"type": "object",
+																			"additionalProperties": {
+																				"nullable": true
+																			}
+																		},
+																		"after": {
+																			"type": "object",
+																			"additionalProperties": {
+																				"nullable": true
+																			}
+																		},
+																		"dependencies": {
+																			"type": "array",
+																			"items": {
+																				"type": "object",
+																				"properties": {
+																					"type": {
+																						"type": "string",
+																						"enum": [
+																							"environment",
+																							"vault",
+																							"memory_store",
+																							"skill",
+																							"agent",
+																							"deployment"
+																						]
+																					},
+																					"name": {
+																						"type": "string"
+																					},
+																					"provider": {
+																						"type": "string"
+																					}
+																				},
+																				"required": ["type", "name", "provider"]
+																			}
+																		}
+																	},
+																	"required": ["action", "address", "reason", "dependencies"]
+																}
+															}
+														},
+														"required": ["status", "agentId", "diagnostics", "missing", "plannedActions"]
+													}
+												},
+												"required": ["agent", "readiness"]
+											}
+										}
+									},
+									"required": ["agents"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "integer",
+							"nullable": true
+						},
+						"required": false,
+						"name": "limit",
+						"in": "query"
+					},
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "agentId",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List sessions for an agent",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionListResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"agentId": {
+										"type": "string"
+									},
+									"prompt": {
+										"type": "string",
+										"minLength": 1
+									},
+									"title": {
+										"type": "string"
+									}
+								},
+								"required": ["agentId", "prompt"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Session created",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionDetailResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "agentId",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Session detail with events",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionDetailResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}/messages": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"agentId": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["message"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Message sent; updated session with events",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionDetailResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}/stream": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "integer",
+							"nullable": true
+						},
+						"required": false,
+						"name": "after",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Stream session events as Server-Sent Events",
+						"content": {
+							"text/event-stream": {
+								"schema": {
+									"type": "string",
+									"description": "SSE frames with event types \"event\", \"done\", and \"ping\"."
+								}
+							}
+						}
+					},
+					"204": {
+						"description": "No active event buffer; caller should fetch the session detail once"
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

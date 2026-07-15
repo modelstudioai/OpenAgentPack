@@ -1,0 +1,28 @@
+{
+	"name": "@openagentpack/server",
+	"version": "0.0.2-beta.0",
+	"private": true,
+	"license": "Apache-2.0",
+	"exports": {
+		"./app": "./src/app.ts",
+		"./agents-config": "./src/lib/agents-config.ts"
+	},
+	"scripts": {
+		"dev": "bun run --hot src/index.ts",
+		"start": "bun run src/index.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"gen:openapi": "bun run scripts/emit-openapi.ts"
+	},
+	"dependencies": {
+		"@hono/zod-openapi": "^1.4.0",
+		"@openagentpack/playbooks": "workspace:*",
+		"@openagentpack/sdk": "workspace:*",
+		"hono": "^4.12.28"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@types/node": "^25.9.3",
+		"typescript": "^6.0.3"
+	}
+}

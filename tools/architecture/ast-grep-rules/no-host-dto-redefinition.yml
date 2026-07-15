@@ -1,0 +1,25 @@
+id: no-host-dto-redefinition
+language: TypeScript
+severity: error
+message: Core domain DTOs and schemas are owned by @openagentpack/sdk; import or derive them from the SDK instead of redefining their shape.
+files:
+  - apps/**/*.ts
+  - packages/cli/**/*.ts
+rule:
+  any:
+    - pattern: interface $NAME { $$$BODY }
+    - pattern: type $NAME = $$$VALUE
+    - pattern: const $NAME = z.object($$$ARGS)
+    - pattern: const $NAME = z.discriminatedUnion($$$ARGS)
+    - pattern: const $NAME = z.union($$$ARGS)
+constraints:
+  NAME:
+    regex: ^(ResourceAddress|Diagnostic|ActionType|DriftKind|PlannedAction|AgentReadinessStatus|AgentDriftSeverity|AgentSkillRef|AgentModel|AgentDefinition|AgentReadiness|AgentWithReadiness|AgentRecoveryAction|SessionEventType|SafeSessionEvent|SafeSessionEventList|AgentSyncStatus|AgentSyncResult|AgentSyncRun|SessionContentBlock|SessionEvent|Session|CreateSessionRequest|CreateSessionResponse|GetSessionRequest|ListSessionsRequest|ListSessionsResponse|ListSessionEventsRequest|ListSessionEventsResponse|SendEventRequest|SendEventResponse)(Schema)?$
+note: >-
+  This rule is deliberately name-based and scoped outside packages/sdk. New shared
+  DTOs should be added to @openagentpack/sdk and, when necessary, to this rule's owned-name
+  list. Session-runtime DTOs (Session, SessionEvent, SessionContentBlock, and the
+  list/create/get/send-event/list-events request+response shapes) are covered so the
+  webui data layer cannot re-mirror console session DTOs. The nested SessionAgent name
+  is deliberately omitted because an unrelated apps/server interface already owns
+  that name (agents-catalog domain), and this guard matches names, not shapes.

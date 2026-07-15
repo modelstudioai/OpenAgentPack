@@ -1,0 +1,20 @@
+#!/bin/sh
+# pre-commit: 在 commit 前对暂存区改动跑 lint:changed，尽早拦截 format/lint 问题。
+# 可用 `git commit --no-verify` 绕过。
+export PATH="$HOME/.bun/bin:$PATH"
+
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: 找不到 bun(检查 ~/.bun/bin 是否在 PATH),跳过验证。" >&2
+  exit 0
+fi
+
+echo "pre-commit: 校验暂存区改动…"
+if ! STAGED=1 bun run lint:changed; then
+  echo "" >&2
+  echo "pre-commit: lint:changed 未通过,commit 已中止。用 biome 修复后再提交,或 git commit --no-verify 绕过。" >&2
+  exit 1
+fi
+exit 0

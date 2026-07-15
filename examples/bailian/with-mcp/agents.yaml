@@ -1,0 +1,53 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+# On Bailian, MCP servers are platform-managed "official" servers referenced by
+# name (e.g. WebSearch). No vault is required — Bailian has no vault primitive,
+# and credentials are managed by the platform.
+agents:
+  researcher:
+    description: "Research assistant with web search via official MCP"
+    model: qwen3.7-max
+    instructions: |
+      You are a research assistant. Use the bailian_web_search MCP tool to find
+      up-to-date information, then summarize concisely with sources.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+      mcp:
+        - type: mcp_toolkit
+          mcpServerName: WebSearch
+          defaultConfig:
+            enabled: false
+          configs:
+            - name: bailian_web_search
+              enabled: true
+    mcp_servers:
+      - type: official
+        name: WebSearch
+
+deployments:
+  web-search-demo:
+    agent: researcher
+    description: "WebSearch demo (emulated -> Session on run)"
+    initial_events:
+      - type: user.message
+        content: |
+          Use the bailian_web_search MCP tool to search for the latest Alibaba
+          Cloud Bailian Model Studio WebSearch MCP documentation. Summarize the
+          current endpoint, protocol, and setup requirements in three bullets,
+          and include source links.

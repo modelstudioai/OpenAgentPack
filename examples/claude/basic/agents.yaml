@@ -1,0 +1,26 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  assistant:
+    description: "General-purpose coding assistant"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are a helpful coding assistant. You can read files,
+      search codebases, and help with code review.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search, web_fetch]

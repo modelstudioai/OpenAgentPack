@@ -1,0 +1,45 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+memory_stores:
+  project-kb:
+    description: "Project knowledge base for the research agent"
+    entries:
+      - key: architecture
+        content: |
+          The system uses a microservices architecture with:
+          - API Gateway (Go) on port 8080
+          - Auth Service (Rust) on port 8081
+          - Worker Service (Python) consuming from SQS
+      - key: conventions
+        content: |
+          Code conventions:
+          - Use snake_case for Python, camelCase for Go
+          - All APIs return JSON with { data, error, meta } envelope
+          - Tests are required for all public functions
+
+agents:
+  researcher:
+    description: "Research agent with persistent knowledge"
+    model: ultimate
+    instructions: |
+      You are a research assistant with access to the project knowledge base.
+      Use the memory store to recall project context before answering questions.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch]
+    memory_stores: [project-kb]

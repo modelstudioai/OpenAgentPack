@@ -1,0 +1,21 @@
+version: "1"
+
+# Bailian — file upload example.
+#
+# Demonstrates uploading a local file to the provider's Files API via `agents apply`.
+# The uploaded file_id is stored in state and can be referenced by other resources.
+#
+# Usage:
+#   agents apply -f examples/bailian/with-files/agents.yaml
+#
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+files:
+  sample-data:
+    source: ./data/sample.txt

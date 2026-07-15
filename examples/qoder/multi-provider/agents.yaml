@@ -1,0 +1,30 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: all
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  assistant:
+    description: "Assistant deployed to both Claude and Qoder"
+    model:
+      claude: claude-sonnet-4-6
+      qoder: ultimate
+    instructions: |
+      You are a helpful assistant that can read and analyze code.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search, web_fetch]

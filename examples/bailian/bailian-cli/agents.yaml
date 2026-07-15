@@ -1,0 +1,64 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+# A vault is a named bundle of credentials. Each credential authenticates the
+# agent to a downstream MCP server. Bailian's credentials API currently accepts
+# the `environment_variable` type (an injected secret), not `static_bearer`.
+vaults:
+  secrets:
+    display_name: Cli Secrets
+    credentials:
+      - name: DASHSCOPE_API_KEY
+        type: environment_variable
+        secret_name: DASHSCOPE_API_KEY
+        secret_value: ${DASHSCOPE_API_KEY}
+        networking:
+          type: unrestricted
+
+environments:
+  bailian-cli:
+    description: "百炼 CLI 云端环境"
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+      packages:
+        npm: [bailian-cli]
+    metadata:
+      team: platform
+
+agents:
+  bailian-cli:
+    description: "Gathers information from the codebase and web"
+    model: qwen3.7-max
+    instructions: |
+      你是一个创意内容自动执行 Agent。你通过调用已安装 Skill 提供的 CLI 命令完成用户任务。
+      【覆盖规则】跳过 Skill 中的 "Agent pre-flight checklist"（versioning.md），无需执行版本检查，直接运行 bl 命令。
+    environment: bailian-cli
+    vault: secrets
+    tools:
+      builtin: [bash, write, read, edit, glob, grep, download_file]
+      mcp:
+        - type: mcp_toolkit
+          mcpServerName: WebSearch
+          defaultConfig:
+            enabled: false
+          configs:
+            - name: bailian_web_search
+              enabled: true
+    mcp_servers:
+      - type: official
+        name: WebSearch
+    skills:
+      - type: official
+        code: bailian-cli
+        version: "1.0"
+    metadata:
+      role: creator

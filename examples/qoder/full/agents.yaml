@@ -1,0 +1,98 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    description: "Development environment with full network access"
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+    metadata:
+      team: platform
+
+  staging:
+    description: "Staging environment with restricted networking"
+    config:
+      type: cloud
+      networking:
+        type: limited
+        allow_mcp_servers: true
+        allow_package_managers: true
+        allowed_hosts:
+          - "api.github.com"
+          - "registry.npmjs.org"
+      packages:
+        apt: [git, curl]
+        pip: [requests]
+    metadata:
+      team: platform
+
+vaults:
+  api-credentials:
+    display_name: "API Credentials"
+    credentials:
+      - name: github-mcp
+        mcp_server_url: "https://mcp.example.com/github"
+        type: static_bearer
+        access_token: ${MCP_GITHUB_TOKEN}
+        protocol: streamable_http
+
+memory_stores:
+  project-kb:
+    description: "Shared project knowledge base"
+    entries:
+      - key: architecture
+        content: |
+          Microservices: API Gateway (Go), Auth (Rust), Worker (Python).
+          All services communicate via gRPC internally, REST externally.
+      - key: deploy-process
+        content: |
+          Deploy flow: PR merged → CI builds → staging auto-deploy → manual prod promote.
+      - key: conventions
+        content: |
+          - Use snake_case for Python, camelCase for Go
+          - All APIs return JSON with { data, error, meta } envelope
+          - Tests required for all public functions
+
+agents:
+  researcher:
+    description: "Gathers information from codebase and web"
+    model: ultimate
+    instructions: |
+      You are a research agent. Search the codebase and web to gather
+      relevant information. Use the memory store for project context.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch, WebFetch]
+    memory_stores: [project-kb]
+    mcp_servers:
+      - name: github
+        url: "https://mcp.example.com/github"
+    vault: api-credentials
+    metadata:
+      role: research
+
+  reviewer:
+    description: "Reviews code for quality and correctness"
+    model: ultimate
+    instructions: |
+      You are a code reviewer. Analyze code changes for correctness,
+      security, and performance. Use the memory store to check conventions.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]
+      permissions:
+        Read: allow
+        Glob: allow
+        Grep: allow
+    memory_stores: [project-kb]
+    metadata:
+      role: review

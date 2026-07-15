@@ -1,0 +1,26 @@
+version: "1"
+
+providers:
+  ark:
+    api_key: ${ARK_API_KEY}
+
+defaults:
+  provider: ark
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  assistant:
+    description: "General-purpose coding assistant"
+    model: doubao-seed-2-1-pro-260628
+    instructions: |
+      You are a helpful coding assistant. You can read files,
+      search codebases, and help with code review.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search, web_fetch]

@@ -1,0 +1,54 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    description: "Development environment with MCP access"
+    config:
+      type: cloud
+      networking:
+        type: limited
+        allow_mcp_servers: true
+        allowed_hosts:
+          - "api.github.com"
+          - "mcp.example.com"
+
+vaults:
+  mcp-credentials:
+    display_name: "MCP Server Credentials"
+    credentials:
+      - name: github-mcp
+        mcp_server_url: "https://mcp.example.com/github"
+        type: static_bearer
+        access_token: ${MCP_GITHUB_TOKEN}
+        protocol: streamable_http
+      - name: jira-mcp
+        mcp_server_url: "https://mcp.example.com/jira"
+        type: static_bearer
+        access_token: ${MCP_JIRA_TOKEN}
+        protocol: sse
+
+agents:
+  dev-assistant:
+    description: "Development assistant with GitHub and Jira access via MCP"
+    model: ultimate
+    instructions: |
+      You are a development assistant with access to GitHub and Jira via MCP.
+      Use GitHub to browse repositories, issues, and pull requests.
+      Use Jira to look up tickets and project status.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, Bash]
+    mcp_servers:
+      - name: github
+        url: "https://mcp.example.com/github"
+      - name: jira
+        url: "https://mcp.example.com/jira"
+    vault: mcp-credentials

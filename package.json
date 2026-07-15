@@ -1,0 +1,82 @@
+{
+	"name": "openagentpack-workspace",
+	"private": true,
+	"description": "Declaratively manage portable cloud AI-agent infrastructure",
+	"license": "Apache-2.0",
+	"homepage": "https://github.com/modelstudioai/OpenAgentPack#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/modelstudioai/OpenAgentPack.git"
+	},
+	"bugs": {
+		"url": "https://github.com/modelstudioai/OpenAgentPack/issues"
+	},
+	"packageManager": "bun@1.3.5",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"prepare": "bash scripts/setup-githooks.sh",
+		"audit": "bun audit",
+		"lint": "biome check . --diagnostic-level=warn --error-on-warnings",
+		"lint:fix": "biome check --write .",
+		"lint:changed": "bash scripts/lint-changed.sh",
+		"format": "biome format --write .",
+		"check:architecture": "bun run check:architecture:deps && bun run check:architecture:semantic",
+		"check:architecture:deps": "dependency-cruiser --config .dependency-cruiser.cjs --output-type err --exclude '(^|/)dist/' apps packages",
+		"check:architecture:semantic": "ast-grep scan --config sgconfig.yml --report-style short apps packages",
+		"verify:scoped": "bun scripts/verify.ts scoped",
+		"verify:fast": "bun scripts/verify.ts scoped",
+		"verify:push": "bun scripts/verify.ts push",
+		"verify:full": "bun scripts/verify.ts full",
+		"verify:release": "bun scripts/verify.ts release",
+		"dev": "bun run dev:server & bun run dev:webui & wait",
+		"dev:webui": "bun run --cwd apps/webui dev",
+		"dev:server": "bun run --cwd apps/server dev",
+		"typecheck": "bun run typecheck:scripts && bun run typecheck:sdk && bun run typecheck:cli && bun run typecheck:playbooks && bun run typecheck:playground && bun run typecheck:webui && bun run typecheck:server",
+		"typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit",
+		"typecheck:sdk": "bun run --cwd packages/sdk typecheck",
+		"typecheck:cli": "bun run --cwd packages/cli typecheck",
+		"typecheck:playbooks": "bun run --cwd packages/playbooks typecheck",
+		"typecheck:playground": "bun run --cwd packages/playground typecheck",
+		"typecheck:webui": "bun run --cwd apps/webui typecheck",
+		"typecheck:server": "bun run --cwd apps/server typecheck",
+		"test": "bun run test:verification && bun run test:sdk && bun run test:cli && bun run test:playbooks && bun run test:webui && bun run test:server",
+		"test:verification": "bun test scripts/*.test.ts scripts/release/*.test.ts",
+		"test:sdk": "bun run --cwd packages/sdk test",
+		"test:cli": "bun run --cwd packages/cli test",
+		"test:playbooks": "bun run --cwd packages/playbooks test",
+		"test:webui": "bun run --cwd apps/webui test",
+		"test:server": "bun run --cwd apps/server test",
+		"build:packages": "bun run scripts/release/build.ts",
+		"build:webui": "bun run --cwd apps/webui build",
+		"build:server": "echo 'server: no build step (runs with bun)'",
+		"build:playground": "bun run --cwd packages/playground build",
+		"openspec": "openspec",
+		"changeset": "bunx changeset",
+		"release:version": "bun run scripts/release/version.ts",
+		"release:publish": "bun run scripts/release/publish.ts",
+		"release:preflight": "bun run verify:release",
+		"release": "bun run release:preflight && bun run release:publish",
+		"release:beta": "bun run changeset && bun run release:version && bun run build:packages && bun run release:publish -- --no-provenance --tag beta",
+		"link": "bun run build:packages && cd packages/cli && npm link"
+	},
+	"devDependencies": {
+		"@ast-grep/cli": "^0.44.1",
+		"@biomejs/biome": "^2.5.3",
+		"@changesets/cli": "^2.31.0",
+		"@types/bun": "^1.3.14",
+		"dependency-cruiser": "^17.4.3",
+		"js-yaml": "3.15.0",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3"
+	},
+	"overrides": {
+		"esbuild": "0.28.1",
+		"fast-equals": "5.3.3"
+	},
+	"trustedDependencies": [
+		"@ast-grep/cli"
+	]
+}

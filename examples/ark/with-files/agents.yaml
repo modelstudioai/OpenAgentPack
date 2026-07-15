@@ -1,0 +1,20 @@
+version: "1"
+
+# Ark — file upload example.
+#
+# Demonstrates uploading a local file to the Ark Files API via `agents apply`.
+# The uploaded file_id is stored in state and can be referenced by other resources.
+#
+# Usage:
+#   agents apply -f examples/ark/with-files/agents.yaml
+#
+providers:
+  ark:
+    api_key: ${ARK_API_KEY}
+
+defaults:
+  provider: ark
+
+files:
+  sample-data:
+    source: ./data/sample.txt

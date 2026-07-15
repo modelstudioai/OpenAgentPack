@@ -1,0 +1,21 @@
+id: no-free-text-planned-action-reason-parsing-tsx
+language: Tsx
+severity: error
+message: Do not make machine decisions by parsing PlannedAction.reason display text; use structured fields such as driftKind instead.
+files:
+  - apps/**/*.tsx
+rule:
+  any:
+    - pattern: $ACTION.reason.includes($$$ARGS)
+    - pattern: $ACTION.reason.match($$$ARGS)
+    - pattern: $ACTION.reason.search($$$ARGS)
+    - pattern: $ACTION.reason.startsWith($$$ARGS)
+    - pattern: $ACTION.reason.endsWith($$$ARGS)
+    - pattern: $ACTION.reason === $TEXT
+    - pattern: $TEXT === $ACTION.reason
+    - pattern: $ACTION.reason !== $TEXT
+    - pattern: $TEXT !== $ACTION.reason
+constraints:
+  ACTION:
+    regex: ^(action|plannedAction|planned|planAction|applyAction)$
+note: This mirrors no-free-text-planned-action-reason-parsing for TSX files.

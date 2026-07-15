@@ -1,0 +1,12 @@
+# Core infrastructure requires maintainer review.
+/.github/                          @modelstudioai/openagentpack-maintainers
+/scripts/                          @modelstudioai/openagentpack-maintainers
+/package.json                      @modelstudioai/openagentpack-maintainers
+/bun.lock                          @modelstudioai/openagentpack-maintainers
+
+# Workspace package boundaries.
+/packages/sdk/src/internal/providers/interface.ts     @modelstudioai/openagentpack-maintainers
+/packages/sdk/src/internal/providers/capabilities.ts  @modelstudioai/openagentpack-maintainers
+/packages/sdk/src/internal/providers/registry.ts      @modelstudioai/openagentpack-maintainers
+/packages/sdk/src/internal/providers/base-client.ts   @modelstudioai/openagentpack-maintainers
+/packages/sdk/src/internal/types/                     @modelstudioai/openagentpack-maintainers

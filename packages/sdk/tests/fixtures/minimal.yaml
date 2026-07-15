@@ -1,0 +1,34 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: all
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+skills:
+  code-review:
+    source: ./skills/code-review/
+
+agents:
+  assistant:
+    description: "A simple assistant"
+    model:
+      claude: claude-sonnet-4-6
+      qoder: ultimate
+    instructions: |
+      You are a helpful assistant.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+    skills: [code-review]

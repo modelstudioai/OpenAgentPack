@@ -1,0 +1,26 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  test-assistant:
+    description: "Integration test agent"
+    model:
+      qoder: ultimate
+    instructions: |
+      You are a helpful test assistant.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]

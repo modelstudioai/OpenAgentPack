@@ -1,0 +1,44 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: limited
+        allow_mcp_servers: true
+        allowed_hosts:
+          - "api.github.com"
+          - "mcp.example.com"
+
+vaults:
+  mcp-credentials:
+    display_name: "MCP Server Credentials"
+    credentials:
+      - name: github-mcp
+        mcp_server_url: "https://mcp.example.com/github"
+        type: static_bearer
+        access_token: ${MCP_GITHUB_TOKEN}
+        protocol: streamable_http
+
+agents:
+  github-assistant:
+    description: "Assistant with GitHub MCP access"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are a development assistant with access to GitHub via MCP.
+      You can browse repositories, issues, and pull requests.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+    mcp_servers:
+      - name: github
+        url: "https://mcp.example.com/github"
+    vault: mcp-credentials

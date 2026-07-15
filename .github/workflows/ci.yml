@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-verification:
+    name: Prepare verification matrix
+    runs-on: ubuntu-latest
+    outputs:
+      steps: ${{ steps.profile.outputs.steps }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+      - id: profile
+        name: Read full profile from the verification module
+        run: echo "steps=$(bun scripts/verify.ts full --list-steps)" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify / ${{ matrix.step }}
+    needs: prepare-verification
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        step: ${{ fromJSON(needs.prepare-verification.outputs.steps) }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+      - run: bun install --frozen-lockfile
+      - name: Run verification step
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bun scripts/verify.ts full --step "${{ matrix.step }}"
+
+  policy-surface:
+    name: Policy surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - name: Require [policy] marker when control files change
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          # The control plane: deterministic gates and the rules that govern them.
+          # Editing any of these changes what every other check enforces, so the
+          # change must be explicit — a [policy] marker in the commit range.
+          patterns='
+          .dependency-cruiser.cjs
+          sgconfig.yml
+          biome.json
+          tools/architecture/
+          .githooks/
+          .claude/hooks/
+          .github/workflows/
+          scripts/lint-changed.sh
+          scripts/verify.ts
+          scripts/verify.test.ts
+          scripts/release/
+          scripts/setup-githooks.sh
+          '
+
+          base="$BASE_SHA"
+          # New branch / first push: no usable base; nothing to diff against.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No base commit to compare against; skipping policy-surface check."
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$base" "$HEAD_SHA")
+          touched=""
+          for p in $patterns; do
+            hit=$(printf '%s\n' "$changed" | grep -F "$p" || true)
+            if [ -n "$hit" ]; then
+              touched="$touched$hit"$'\n'
+            fi
+          done
+
+          if [ -z "$touched" ]; then
+            echo "No control-plane files changed."
+            exit 0
+          fi
+
+          echo "Control-plane files changed:"
+          printf '%s' "$touched" | sed 's/^/  - /'
+
+          if git log "$base..$HEAD_SHA" --format=%B | grep -qF '[policy]'; then
+            echo "Found [policy] marker in commit range. OK."
+            exit 0
+          fi
+
+          echo "::error::Control-plane files changed without a [policy] marker in any commit message."
+          echo "Add '[policy]' to a commit message to acknowledge changing the verification harness itself."
+          exit 1
+
+  package-compatibility:
+    name: Package compatibility / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/verify.ts release --step build-packages
+      - run: bun scripts/verify.ts release --step package-smoke
+
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    needs: [prepare-verification, verify, policy-surface, package-compatibility]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.prepare-verification.result }}" != "success" ] || \
+             [ "${{ needs.verify.result }}" != "success" ] || \
+             [ "${{ needs.policy-surface.result }}" != "success" ] || \
+             [ "${{ needs.package-compatibility.result }}" != "success" ]; then
+            echo "One or more required checks failed."
+            exit 1
+          fi
+          echo "All checks passed."

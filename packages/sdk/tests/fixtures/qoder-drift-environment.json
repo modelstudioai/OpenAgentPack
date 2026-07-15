@@ -1,0 +1,19 @@
+{
+	"id": "env_test",
+	"name": "dev",
+	"description": "Agents live drift original environment",
+	"config": {
+		"type": "cloud",
+		"networking": {
+			"type": "unrestricted"
+		}
+	},
+	"metadata": {
+		"agents.project": "tmp",
+		"agents.resource": "dev",
+		"cma_test": "drift-validation"
+	},
+	"status": "ready",
+	"created_at": "2026-06-20T00:00:00Z",
+	"updated_at": "2026-06-20T00:00:01Z"
+}

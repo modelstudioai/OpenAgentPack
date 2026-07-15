@@ -1,0 +1,65 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+memory_stores:
+  project-kb:
+    description: "Shared knowledge base for the reporter"
+    entries:
+      - key: cadence
+        content: |
+          The team ships on Tuesdays and Thursdays.
+          Daily reports should compare against the previous working day.
+
+agents:
+  reporter:
+    description: "Generates daily engineering reports"
+    model: ultimate
+    instructions: |
+      You are an engineering reporter. Summarize recent activity into a concise
+      daily report. Recall project cadence from the knowledge base first.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch]
+    memory_stores: [project-kb]
+
+# Deployment is emulated on Qoder: `apply` only records local state
+# (remote_id = null); `agents deployment run` materializes it into a Session.
+# The schedule, define_outcome rubric, and memory_store access modifier below
+# are not enforced server-side and will surface warning diagnostics on plan.
+deployments:
+  daily-report:
+    agent: reporter
+    description: "Daily report (emulated -> Session on run)"
+    schedule:
+      expression: "0 9 * * *"
+      timezone: UTC
+    initial_events:
+      - type: user.message
+        content: "Summarize yesterday's commits and generate the daily report."
+      - type: user.define_outcome
+        description: "Daily report quality gate"
+        rubric: "Must include an executive summary and at least three key metrics."
+        max_iterations: 3
+    resources:
+      - type: memory_store
+        memory_store: project-kb
+        access: read_only
+      # File resource with a local `source`: on Qoder the file is uploaded at
+      # `deployment run` time and attached to the materialized Session.
+      - type: file
+        source: ./data/report-template.md
+        mount_path: /data/report-template.md

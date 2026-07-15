@@ -1,0 +1,37 @@
+[
+	{
+		"id": "qwen3.7-plus",
+		"name": "Qwen3.7-Plus",
+		"description": "高性价比Plus模型，全面升级视觉-语言与智能体能力。"
+	},
+	{
+		"id": "qwen3.7-max",
+		"name": "Qwen3.7-Max",
+		"description": "Qwen3.7系列旗舰Max模型，综合能力最强。"
+	},
+	{
+		"id": "qwen3.6-plus",
+		"name": "Qwen3.6-Plus",
+		"description": "原生视觉语言Plus模型，性能媲美顶尖前沿模型。"
+	},
+	{
+		"id": "qwen3.6-flash",
+		"name": "Qwen3.6-Flash",
+		"description": "轻量Flash模型，重点提升agentic coding与推理能力。"
+	},
+	{
+		"id": "glm-5.1",
+		"name": "GLM-5.1",
+		"description": "智谱AI长程任务模型，744B参数，支持200K上下文。"
+	},
+	{
+		"id": "deepseek-v4-pro",
+		"name": "DeepSeek-V4-Pro",
+		"description": "旗舰MoE模型，总参1.6T，顶尖推理与代码能力。"
+	},
+	{
+		"id": "deepseek-v4-flash",
+		"name": "DeepSeek-V4-Flash",
+		"description": "轻量MoE模型，推理快、延迟低、成本低。"
+	}
+]

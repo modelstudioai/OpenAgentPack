@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ESNext"],
+		"types": ["node", "bun"],
+		"paths": {
+			"@/*": ["../../apps/server/src/*"],
+			"@openagentpack/server/app": ["../../apps/server/src/app.ts"],
+			"@openagentpack/playbooks": ["../../packages/playbooks/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts", "bin/**/*.ts", "scripts/**/*.ts"],
+	"exclude": ["node_modules"]
+}

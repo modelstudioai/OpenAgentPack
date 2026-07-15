@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussion
+    url: https://github.com/modelstudioai/OpenAgentPack/discussions
+    about: Ask questions, share ideas, or start a general conversation.
+  - name: New Provider Ideas
+    url: https://github.com/modelstudioai/OpenAgentPack/discussions/categories/ideas
+    about: Discuss new provider integrations before starting implementation.

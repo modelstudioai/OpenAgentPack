@@ -1,0 +1,21 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: sk-test
+    workspace_id: ws-test
+
+defaults:
+  provider: bailian
+
+agents:
+  assistant:
+    model: qwen3.7-max
+    instructions: "Use the presentation skill when needed."
+    skills:
+      - type: official
+        code: pptx
+        version: "1.0"
+      - type: custom
+        skill_id: skill_uploaded_xxx
+        version: "2.0"

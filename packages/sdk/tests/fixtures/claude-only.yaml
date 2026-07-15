@@ -1,0 +1,26 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  test-assistant:
+    description: "Integration test agent"
+    model:
+      claude: claude-sonnet-4-6
+    instructions: |
+      You are a helpful test assistant.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
