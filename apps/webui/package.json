@@ -7,7 +7,6 @@
 		"build": "vite build && bun ../../scripts/check-web-bundle.ts",
 		"preview": "vite preview",
 		"test": "bun test",
-		"build:inventory": "node work/bailian-interface-inventory/build.mjs",
 		"typecheck": "tsc --noEmit"
 	},
 	"keywords": [],

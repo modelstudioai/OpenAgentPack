@@ -3,12 +3,19 @@ import chalk from "chalk";
 import { configureLogger, log } from "../../src/logger.ts";
 
 const originalLevel = chalk.level;
+const originalNoColor = process.env.NO_COLOR;
 
 beforeEach(() => {
+	delete process.env.NO_COLOR;
 	chalk.level = 1;
 });
 
 afterEach(() => {
+	if (originalNoColor === undefined) {
+		delete process.env.NO_COLOR;
+	} else {
+		process.env.NO_COLOR = originalNoColor;
+	}
 	chalk.level = originalLevel;
 });
 
@@ -90,6 +97,13 @@ test("color enabled keeps chalk active", () => {
 	configureLogger({ verbose: 0, quiet: false, color: true });
 
 	expect(chalk.level).toBe(1);
+});
+
+test("NO_COLOR overrides the default color setting", () => {
+	process.env.NO_COLOR = "1";
+	configureLogger({ verbose: 0, quiet: false, color: true });
+
+	expect(chalk.level).toBe(0);
 });
 
 test("plain is suppressed under quiet", () => {

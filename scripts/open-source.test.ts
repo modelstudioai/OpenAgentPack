@@ -79,6 +79,7 @@ describe("open-source repository invariants", () => {
 
 	test("generated internal artifacts are absent", () => {
 		expect(existsSync(resolve(root, "apps/webui/outputs"))).toBe(false);
+		expect(publicWorktreeFiles().filter((file) => file.startsWith("apps/webui/work/"))).toEqual([]);
 		for (const pkg of ["sdk", "cli", "playground"]) {
 			expect(existsSync(resolve(root, `packages/${pkg}/LICENSE`))).toBe(false);
 		}

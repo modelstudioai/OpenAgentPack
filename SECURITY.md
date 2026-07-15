@@ -2,7 +2,17 @@
 
 ## Supported Versions
 
-OpenAgentPack is awaiting open-source approval and has no supported public release yet. Until the first release, security fixes land on `main`. After publication, fixes will target the latest `@openagentpack/cli`, `@openagentpack/sdk`, and `@openagentpack/playground` prerelease; reporters should reproduce against the latest available version when possible.
+OpenAgentPack is currently in public beta. Security fixes target the latest published beta of
+`@openagentpack/cli`, `@openagentpack/sdk`, and `@openagentpack/playground`, as well as `main`.
+Reporters should reproduce against the latest available version when possible.
+
+| Version | Supported |
+|---------|:---------:|
+| Latest `0.0.x` beta | Yes |
+| Older prereleases | No |
+
+The beta may contain breaking API or configuration changes before `1.0`. Security support does
+not imply API stability.
 
 ## Reporting a Vulnerability
 

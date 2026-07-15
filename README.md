@@ -8,7 +8,11 @@
 
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](./LICENSE)
 [![CI](https://github.com/modelstudioai/OpenAgentPack/actions/workflows/ci.yml/badge.svg)](https://github.com/modelstudioai/OpenAgentPack/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@openagentpack/cli?label=npm&color=cb3837)](https://www.npmjs.com/package/@openagentpack/cli)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+> [!IMPORTANT]
+> OpenAgentPack is in beta. Public APIs and the `agents.yaml` schema may change before `1.0`. See the [changelog](./CHANGELOG.md).
 
 <p align="center">
   <img src="https://img.alicdn.com/imgextra/i3/O1CN01xWDp5P1EP90HOZx9q_!!6000000000343-2-tps-1254-1254.png" width="360" alt="OpenAgentPack: one agents.yaml for multiple managed-agent providers">
@@ -22,40 +26,44 @@ One `agents.yaml` defines an agent's environment, model, instructions, tools, sk
 
 ```bash
 npm install -g @openagentpack/cli
-agents init && agents validate && agents plan
+agents init
+# Configure one provider's credentials, then:
+agents validate && agents plan
 ```
 
-[Run the 5-minute quick start](./docs/getting-started.md) · [View provider support](./docs/reference/providers.md) · [Browse runnable examples](./docs/examples.md)
+[Run the 5-minute quick start](./docs/getting-started.md) · [View provider support](./docs/reference/providers.md) · [Browse runnable examples](./docs/examples.md) · [Roadmap](./ROADMAP.md)
 
 ## Why now
 
-Agent harnesses are converging on a stable shape — environment, vault, memory, skills, files, MCP servers, prompt, agent loop, multi-agent orchestration. Two shifts ride alongside: agents moving from local runtimes to remote managed ones, and AI-native teams moving from individual productivity to organizational productivity. What's still missing is **reliable, portable agent infrastructure** that doesn't lock you to one provider.
+Agents are moving from personal tools to enterprise digital workers. But the things that make an agent valuable — its prompts, skills, knowledge files, tools, and runtime configuration — still live mainly inside cloud-provider consoles.
+
+These are business assets. They should be managed, reviewed, handed over, reproduced, and migrated like code, data, and documents — not trapped as a pile of clicks in one console.
 
 ## Why OpenAgentPack
 
-You built an agent somewhere — a prompt, tools, skills, knowledge files, credentials, runtime settings. Those are your business assets, but today they live as a pile of clicks inside one vendor's console: impossible to review in a PR, roll back, reproduce, or move. As agents move from "call a model API in your own code" to "assemble an agent inside a vendor console", vendor lock-in re-forms **one layer up** — at the managed harness. OpenAgentPack is a bet against that.
+OpenAgentPack puts a declarative control plane between the agent and the cloud platform. The enterprise owns the declaration; provider adapters render it into real managed agents on Bailian, Qoder, Claude, or Volcengine Ark.
 
-OpenAgentPack turns those assets into a portable agent definition that deploys to different agent platforms. Three things this gives you:
+The goal is to make an agent an enterprise-controlled, portable, and inheritable digital asset.
 
-### No platform lock-in
+### Declaration and portability: the agent as a blueprint
 
-Your agent isn't locked to one platform. Today on Bailian, tomorrow on Qoder / Claude / Volcengine Ark — and more to come.
+Borrowing Docker's declarative idea, OpenAgentPack brings everything that determines what an agent is — model, instructions, tools, skills, environment, files, and credential references — into one `agents.yaml` blueprint. The blueprint can live in Git, pass through pull-request review, reproduce an agent, and move across providers.
 
-### Reproduce, migrate, compare
+### State and governance: plan before execution
 
-The same agent can run on multiple platforms; see which is cheaper, better, or faster.
+Borrowing Terraform's state-driven workflow, OpenAgentPack keeps desired config, local state, and remote state distinct. `plan` previews creates, updates, and deletes; `apply` executes them in dependency order; drift detection finds console-side changes; and a previous declaration can restore a known-good configuration.
 
-### Your agent is your asset
+### Validation and experience: Playground as the showroom
 
-Prompts, tools, skills, knowledge files, configuration — no longer just a pile of clicks in a console, but something you can save, reuse, review, and hand off.
+Even a precise blueprint needs to be experienced. Playground runs real sessions from the same declaration and lets teams exercise the same scenario against different providers. Provider comparison becomes an observable result, not only a capability matrix.
 
-Focus on business innovation, not on babysitting agent infra. Switch providers the way Docker lets you switch hosts, and keep your definition intact across the move.
+> OpenAgentPack uses a Docker-like declaration to draw the agent blueprint, a Terraform-like state model to manage construction and acceptance, and Playground as the showroom — so enterprises can manage agents the way they manage code.
 
-The rest is mechanics: a single `agents.yaml`, a `validate → plan → apply` workflow, content-hash diffing, dependency-aware ordering, drift recovery. The YAML is always the single source of truth. See [Agents as code](./docs/concepts/agents-as-code.md) for the mental model and [CONTEXT.md](./CONTEXT.md) for the precise vocabulary (agent harness vs. agent infra, capability contract).
+The mechanics are a single `agents.yaml`, a `validate → plan → apply` workflow, content-hash diffing, dependency-aware ordering, and drift recovery. The YAML remains the source of truth. See [Agents as code](./docs/concepts/agents-as-code.md) for the mental model and [CONTEXT.md](./CONTEXT.md) for the precise vocabulary.
 
 - **Declarative** — one `agents.yaml` describes your whole agent stack. Commit it, review it in a PR, roll it back.
 - **Terraform-style workflow** — `validate → plan → apply`. Preview every create / update / delete before it happens.
-- **Multi-provider** — the same agent definition deploys to Bailian, Qoder, Claude, or Volcengine Ark. Switch vendors by changing two lines.
+- **Multi-provider** — reuse the core declaration across Bailian, Qoder, Claude, and Volcengine Ark; the [capability contract](./docs/reference/providers.md) makes native, emulated, and unsupported differences explicit.
 - **Incremental** — content-hash diffing updates only what actually changed; no redundant API calls.
 - **Dependency-aware** — Environment → Skill → Agent are created in topological order; a failed dependency skips its dependents instead of leaving half-built state.
 - **Drift recovery** — detects when remote config has drifted from your declaration and reconciles it. The YAML is always the single source of truth.
@@ -70,7 +78,7 @@ The rest is mechanics: a single `agents.yaml`, a `validate → plan → apply` w
 
 `agents playground` launches a local WebUI, fetches the matching `@openagentpack/playground` package on demand, and opens it in your browser. Use `--provider` to target `bailian`, `qoder`, `ark`, or `claude`.
 
-[Watch the Playground demo video](https://cloud.video.taobao.com/vod/f9cVQvN8vYeW2YfRZ59qv5SgJUDgsm-r48mpKIB0Has.mp4)
+[Watch the Playground demo video](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
 ## Quick start
 
@@ -191,6 +199,8 @@ Or launch a packaged local UI with `agents playground --provider <bailian|qoder|
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for the dev setup, merge requirements, and how to add a new provider. All participants are expected to follow our [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+Use [GitHub Discussions](https://github.com/modelstudioai/OpenAgentPack/discussions) for questions and design proposals, and [GitHub Issues](https://github.com/modelstudioai/OpenAgentPack/issues) for reproducible bugs and accepted work. Current priorities are tracked in the [public roadmap](./ROADMAP.md).
 
 ## Security
 
