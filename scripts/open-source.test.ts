@@ -24,6 +24,14 @@ function publicWorktreeFiles(): string[] {
 		.filter((file) => file && isReadableRegularFile(resolve(root, file)));
 }
 
+function publicWorktreeFilesMatching(predicate: (file: string) => boolean): string[] {
+	return publicWorktreeFiles().filter(predicate);
+}
+
+function isVisiblePath(file: string): boolean {
+	return file.split("/").every((segment) => !segment.startsWith("."));
+}
+
 function output(command: string[]): string {
 	const result = Bun.spawnSync(command, { cwd: root, stdout: "pipe", stderr: "pipe" });
 	if (result.exitCode !== 0) throw new Error(result.stderr.toString());
@@ -45,7 +53,9 @@ describe("open-source repository invariants", () => {
 	});
 
 	test("published packages have no runtime dependency on private workspaces", () => {
-		const packageFiles = output(["rg", "--files", "-g", "package.json"]).trim().split("\n").filter(Boolean);
+		const packageFiles = publicWorktreeFilesMatching(
+			(file) => isVisiblePath(file) && (file === "package.json" || file.endsWith("/package.json")),
+		);
 		const manifests = packageFiles.map(
 			(file) =>
 				JSON.parse(readFileSync(resolve(root, file), "utf8")) as {
@@ -91,7 +101,7 @@ describe("open-source repository invariants", () => {
 	});
 
 	test("all local Markdown links resolve", () => {
-		const files = output(["rg", "--files", "-g", "*.md"]).trim().split("\n").filter(Boolean);
+		const files = publicWorktreeFilesMatching((file) => isVisiblePath(file) && file.endsWith(".md"));
 		const missing: string[] = [];
 		for (const file of files) {
 			const body = readFileSync(resolve(root, file), "utf8");
@@ -106,10 +116,9 @@ describe("open-source repository invariants", () => {
 	});
 
 	test("third-party GitHub Actions are pinned to full commit SHAs", () => {
-		const workflows = output(["rg", "--files", ".github/workflows", "-g", "*.yml", "-g", "*.yaml"])
-			.trim()
-			.split("\n")
-			.filter(Boolean);
+		const workflows = publicWorktreeFilesMatching(
+			(file) => file.startsWith(".github/workflows/") && (file.endsWith(".yml") || file.endsWith(".yaml")),
+		);
 		const unpinned: string[] = [];
 		for (const file of workflows) {
 			const body = readFileSync(resolve(root, file), "utf8");

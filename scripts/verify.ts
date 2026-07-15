@@ -54,8 +54,11 @@ function gitCommitExists(ref: string): boolean {
 
 export function resolveComparisonBase(explicitBase = process.env.BASE): string | undefined {
 	if (explicitBase && !/^0+$/.test(explicitBase)) {
-		if (!gitCommitExists(explicitBase)) throw new Error(`Verification BASE '${explicitBase}' is not a commit.`);
-		return explicitBase;
+		if (gitCommitExists(explicitBase)) return explicitBase;
+		if (process.env.GITHUB_ACTIONS !== "true") {
+			throw new Error(`Verification BASE '${explicitBase}' is not a commit.`);
+		}
+		console.warn(`Verification BASE '${explicitBase}' is unavailable after a history rewrite; using a local fallback.`);
 	}
 	return output(["git", "merge-base", "HEAD", "origin/HEAD"]) || output(["git", "rev-parse", "HEAD^"]) || undefined;
 }
