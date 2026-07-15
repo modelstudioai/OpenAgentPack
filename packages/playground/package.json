@@ -1,0 +1,57 @@
+{
+	"name": "@openagentpack/playground",
+	"version": "0.0.2-beta.0",
+	"description": "OpenAgentPack Playground — one-command local web UI for OpenAgentPack",
+	"license": "Apache-2.0",
+	"keywords": [
+		"ai-agents",
+		"playground",
+		"web-ui",
+		"openagentpack"
+	],
+	"homepage": "https://github.com/modelstudioai/OpenAgentPack/tree/main/packages/playground#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/modelstudioai/OpenAgentPack.git",
+		"directory": "packages/playground"
+	},
+	"bugs": {
+		"url": "https://github.com/modelstudioai/OpenAgentPack/issues"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"type": "module",
+	"bin": {
+		"agents-playground": "dist/bin/playground.js"
+	},
+	"files": [
+		"dist",
+		"web",
+		"LICENSE"
+	],
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
+	"scripts": {
+		"build": "bun run scripts/build-web.ts && tsup",
+		"start": "node dist/bin/playground.js",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@hono/node-server": "^1.19.0",
+		"@hono/zod-openapi": "^1.4.0",
+		"@openagentpack/sdk": "workspace:*",
+		"hono": "^4.12.28",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@openagentpack/playbooks": "workspace:*",
+		"@openagentpack/server": "workspace:*",
+		"@types/node": "^25.9.3",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3"
+	}
+}

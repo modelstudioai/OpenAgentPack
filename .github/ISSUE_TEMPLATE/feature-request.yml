@@ -1,0 +1,32 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    attributes:
+      label: Problem
+      description: What problem are you trying to solve? Describe the pain, not only the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Proposed solution
+      description: How do you think this should work?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider?
+
+  - type: dropdown
+    attributes:
+      label: Would you contribute a PR?
+      options:
+        - "Yes, I would like to implement this"
+        - "I could with guidance"
+        - "No, just suggesting"
+    validations:
+      required: true

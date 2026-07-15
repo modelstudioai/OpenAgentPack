@@ -1,0 +1,45 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+skills:
+  bailian-cli-skill:
+    source: ./skills/bailian-cli.zip
+    description: "Aliyun Model Studio CLI (bl) command reference and usage guide"
+
+environments:
+  bailian-cli:
+    description: "Qoder Cloud Agents CLI environment"
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+      packages:
+        npm: [bailian-cli]
+    metadata:
+      team: platform
+
+agents:
+  bailian-cli:
+    description: "Gathers information from the codebase and web。"
+    model: auto
+    instructions: |
+      你是一个创意内容自动执行 Agent。你通过调用已安装 Skill 提供的 CLI 命令完成用户任务。
+      【覆盖规则】跳过 Skill 中的 "Agent pre-flight checklist"（versioning.md），无需执行版本检查，直接运行 bl 命令。
+    environment: bailian-cli
+    tools:
+      builtin: [Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch, DeliverArtifacts]
+    mcp_servers:
+      - name: Firecrawl
+        type: http
+        url: "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp"
+    skills:
+      - bailian-cli-skill
+    metadata:
+      role: creator

@@ -1,0 +1,27 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: sk-test
+    workspace_id: ws-test
+
+defaults:
+  provider: bailian
+
+agents:
+  assistant:
+    model: qwen3.7-max
+    instructions: "Use official MCP tools when helpful."
+    tools:
+      builtin: [read]
+      mcp:
+        - type: mcp_toolkit
+          mcpServerName: WebSearch
+          defaultConfig:
+            enabled: false
+          configs:
+            - name: bailian_web_search
+              enabled: true
+    mcp_servers:
+      - type: official
+        name: WebSearch

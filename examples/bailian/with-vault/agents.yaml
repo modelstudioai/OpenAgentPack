@@ -1,0 +1,38 @@
+version: "1"
+
+# Bailian (阿里云百炼 AgentStudio) — vault + credentials example.
+#
+# A vault holds MCP credentials (currently `static_bearer`) that an agent can
+# reference by name. On `agents apply` this creates the vault via `POST /vaults`
+# and each credential via `POST /vaults/{id}/credentials`; `agents destroy` removes
+# it via `DELETE /vaults/{id}`.
+#
+# Credentials are read from .env at the repo root (Bun auto-loads it):
+#   DASHSCOPE_API_KEY    — Bearer token (sk-...)
+#   BAILIAN_WORKSPACE_ID — workspace id (llm-...)
+#   MCP_BEARER_TOKEN     — static bearer token for the downstream MCP server
+#
+# This targets PRODUCTION. With no `base_url`, the client derives the endpoint
+# from workspace_id:
+#   https://<workspace_id>.cn-beijing.maas.aliyuncs.com/api/v1/agentstudio
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+# A vault is a named bundle of credentials. Each credential authenticates the
+# agent to a downstream MCP server. Bailian's credentials API currently accepts
+# the `environment_variable` type (an injected secret), not `static_bearer`.
+vaults:
+  secrets:
+    display_name: Cli Secrets
+    credentials:
+      - name: mcp-token
+        type: environment_variable
+        secret_name: MCP_TOKEN
+        secret_value: ${MCP_BEARER_TOKEN}
+        networking:
+          type: unrestricted

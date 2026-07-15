@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["node"],
+		"resolveJsonModule": true,
+		"paths": {
+			"@/*": ["./src/*"],
+			"@openagentpack/playbooks": ["../../packages/playbooks/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules"]
+}

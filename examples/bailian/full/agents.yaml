@@ -1,0 +1,73 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+environments:
+  dev:
+    description: "Development environment with full network access"
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+    metadata:
+      team: platform
+
+  staging:
+    description: "Staging environment with package preloads"
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+      packages:
+        apt: [git, curl]
+        pip: [requests]
+    metadata:
+      team: platform
+
+skills:
+  code-review:
+    source: ./skills/code-review/
+    description: "Structured code review with severity levels"
+
+agents:
+  researcher:
+    description: "Gathers information from the codebase and web"
+    model: qwen3.7-max
+    instructions: |
+      You are a research agent. Search the codebase and use the bailian_web_search MCP
+      tool to gather relevant information, then summarize with sources.
+    environment: dev
+    tools:
+      builtin: [bash, read, glob, grep]
+      mcp:
+        - type: mcp_toolkit
+          mcpServerName: WebSearch
+          defaultConfig:
+            enabled: false
+          configs:
+            - name: bailian_web_search
+              enabled: true
+    mcp_servers:
+      - type: official
+        name: WebSearch
+    metadata:
+      role: research
+
+  reviewer:
+    description: "Reviews code for quality and correctness"
+    model: qwen3.7-max
+    instructions: |
+      You are a code reviewer. Analyze code changes for correctness, security,
+      and performance. Apply the code-review skill to structure findings.
+    environment: staging
+    tools:
+      builtin: [read, glob, grep]
+    skills: [code-review]
+    metadata:
+      role: review

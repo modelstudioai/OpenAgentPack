@@ -1,0 +1,31 @@
+#!/bin/sh
+# pre-push:把待推送范围交给统一 verification harness 的 push profile。
+# 注意:git hook 可被 `git push --no-verify` 绕过,是便利不是强制;硬墙在 CI。
+export PATH="$HOME/.bun/bin:$PATH"
+
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: 找不到 bun(检查 ~/.bun/bin 是否在 PATH),跳过验证。" >&2
+  exit 0
+fi
+
+# 让 lint:changed 比对"将要推送的范围"而非(通常已干净的)工作区。
+# stdin 行格式: <local ref> <local sha> <remote ref> <remote sha>。取首条远端 sha 作基线;
+# 远端无此分支(全 0)时回退到与 origin/HEAD 的 merge-base。
+remote_sha=$(awk 'NR==1{print $4}')
+if [ -n "$remote_sha" ] && [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+  BASE="$remote_sha"
+else
+  BASE=$(git merge-base HEAD origin/HEAD 2>/dev/null || echo "")
+fi
+export BASE
+
+echo "pre-push: 跑统一 verification harness 的 push profile…"
+if ! bun run verify:push; then
+  echo "" >&2
+  echo "pre-push: verify:push 未通过,push 已中止。修好后再推,或 git push --no-verify 强推。" >&2
+  exit 1
+fi
+exit 0

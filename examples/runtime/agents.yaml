@@ -1,0 +1,39 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+memory_stores:
+  project-kb:
+    description: "Project knowledge base for storing learnings across sessions"
+
+skills:
+  code-review:
+    source: ./skills/code-review/
+    description: "Structured code review skill"
+
+agents:
+  researcher:
+    description: "Research and code analysis agent"
+    model:
+      qoder: ultimate
+    instructions: |
+      You are a research agent specialized in code analysis.
+      When asked to review code, use the code-review skill.
+      Store important findings in memory for future reference.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch, WebFetch]
+    skills: [code-review]
+    memory_stores: [project-kb]

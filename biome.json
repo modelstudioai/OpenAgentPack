@@ -1,0 +1,101 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/dist",
+			"!**/.next",
+			"!**/out",
+			"!**/coverage",
+			"!**/bun.lock",
+			"!**/*.svg",
+			"!**/apps/webui/.agents-webui",
+			"!**/apps/webui/outputs",
+			"!**/bailian-app-control",
+			"!**/bailian-managed-agents",
+			"!**/architecture-review-*.html",
+			"!**/.claude/settings.local.json"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"indentWidth": 2,
+		"lineWidth": 120
+	},
+	"assist": {
+		"actions": { "source": { "organizeImports": "on" } },
+		"includes": ["**", "!**/src/index.ts", "!**/src/types/index.ts"]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"a11y": {
+				"noSvgWithoutTitle": "off",
+				"noStaticElementInteractions": "warn",
+				"useKeyWithClickEvents": "warn",
+				"useSemanticElements": "warn",
+				"useButtonType": "warn",
+				"useAriaPropsSupportedByRole": "warn"
+			},
+			"complexity": {
+				"noImportantStyles": "off"
+			},
+			"correctness": {
+				"noUnusedVariables": "warn",
+				"noUnusedImports": "warn"
+			},
+			"performance": {
+				"noImgElement": "off"
+			},
+			"style": {
+				"noNonNullAssertion": "off",
+				"noDescendingSpecificity": "off",
+				"useNodejsImportProtocol": "error"
+			},
+			"suspicious": {
+				"noExplicitAny": "warn",
+				"noArrayIndexKey": "warn",
+				"noImplicitAnyLet": "warn",
+				"noAssignInExpressions": "warn",
+				"noTemplateCurlyInString": "warn",
+				"noDuplicateProperties": "warn"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["**/tests/**", "**/*.test.ts", "**/*.test.tsx", "examples/**", "scripts/**"],
+			"linter": {
+				"rules": {
+					"style": { "noNonNullAssertion": "off" },
+					"suspicious": { "noExplicitAny": "off" }
+				}
+			}
+		}
+	],
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always",
+			"trailingCommas": "all"
+		}
+	},
+	"json": {
+		"formatter": {
+			"trailingCommas": "none"
+		}
+	},
+	"css": {
+		"formatter": {
+			"enabled": true
+		}
+	}
+}

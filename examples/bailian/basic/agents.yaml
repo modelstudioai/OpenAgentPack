@@ -1,0 +1,36 @@
+version: "1"
+
+# Bailian (阿里云百炼 AgentStudio) — minimal agent example.
+#
+# Credentials are read from .env at the repo root (Bun auto-loads it):
+#   DASHSCOPE_API_KEY    — Bearer token (sk-...)
+#   BAILIAN_WORKSPACE_ID — workspace id (llm-...)
+#
+# This targets PRODUCTION. With no `base_url`, the client derives the endpoint
+# from workspace_id:
+#   https://<workspace_id>.cn-beijing.maas.aliyuncs.com/api/v1/agentstudio
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  assistant:
+    description: "General-purpose coding assistant"
+    model: qwen3.7-max
+    instructions: |
+      You are a helpful coding assistant. You can run shell commands,
+      read files, and search the codebase to help with tasks.
+    environment: dev
+    tools:
+      builtin: [bash, read, glob, grep]

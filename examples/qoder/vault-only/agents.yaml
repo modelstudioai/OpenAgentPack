@@ -1,0 +1,24 @@
+version: "1"
+
+# Qoder vault-only 测试配置。
+# 只声明一个 vault（含 1 个 static_bearer 凭证），不含 environment/agent。
+#   agents apply   -> POST /api/v1/cloud/vaults（vault + 内联凭证一并创建）
+#   agents destroy -> DELETE /vaults/{id}
+#
+# gateway 省略时默认 https://api.qoder.com/api/v1/cloud
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+
+vaults:
+  test-vault:
+    display_name: "Test Vault"
+    credentials:
+      - name: mcp-token
+        type: static_bearer
+        mcp_server_url: "https://mcp.example.com/server"
+        protocol: streamable_http
+        access_token: ${MCP_BEARER_TOKEN}

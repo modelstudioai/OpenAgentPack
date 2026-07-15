@@ -1,0 +1,33 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+# Skills upload via the 2-step Files API flow: the source directory is zipped,
+# POSTed to /files, then registered via /skills with the returned file_id.
+skills:
+  code-review:
+    source: ./skills/code-review/
+    description: "Structured code review with severity levels"
+
+agents:
+  reviewer:
+    description: "Code review specialist"
+    model: qwen3.7-max
+    instructions: ./prompts/reviewer.md
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+    skills: [code-review]

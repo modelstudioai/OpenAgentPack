@@ -1,0 +1,186 @@
+{
+	"categories": [
+		{ "key": "all", "label": "全部" },
+		{ "key": "image", "label": "生成图片" },
+		{ "key": "video", "label": "创建视频" },
+		{ "key": "qa", "label": "知识问答" },
+		{ "key": "game", "label": "创建游戏" },
+		{ "key": "web", "label": "创建网站" },
+		{ "key": "data", "label": "数据分析" }
+	],
+	"cards": [
+		{
+			"category": "image",
+			"height": 240,
+			"playbookName": "宠物玩具互动",
+			"prompt": "帮我生成一张宠物和玩具互动的可爱图片，背景是温暖的客厅",
+			"playbookSlug": "designer",
+			"imageId": 1,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-pet-toy-livingroom/1200/900",
+				"coverUrl": "https://picsum.photos/seed/showcase-pet-toy-livingroom/640/480",
+				"thumbs": [
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-pet-toy-livingroom/1200/900" },
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-pet-toy-closeup/1200/900" },
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-pet-toy-wide/1200/900" }
+				]
+			}
+		},
+		{
+			"category": "video",
+			"height": 400,
+			"playbookName": "美妆口播带货视频",
+			"prompt": "帮我创建一个30秒的美妆产品口播带货视频脚本，突出产品功效",
+			"playbookSlug": "designer",
+			"imageId": 2,
+			"media": {
+				"type": "video",
+				"url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+				"poster": "https://picsum.photos/seed/showcase-beauty-live/1280/720",
+				"coverUrl": "https://picsum.photos/seed/showcase-beauty-live/640/400"
+			}
+		},
+		{
+			"category": "qa",
+			"height": 280,
+			"playbookName": "宠物逗猫棒互动图",
+			"prompt": "如何挑选适合不同年龄段猫咪的逗猫棒？请从材质、长度、安全性等方面分析",
+			"playbookSlug": "writer",
+			"imageId": 3,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-cat-wand/1200/900",
+				"coverUrl": "https://picsum.photos/seed/showcase-cat-wand/640/480"
+			}
+		},
+		{
+			"category": "game",
+			"height": 360,
+			"playbookName": "商品360度视频",
+			"prompt": "帮我设计一个商品360度旋转展示的网页小游戏，支持鼠标拖拽交互",
+			"playbookSlug": "engineer",
+			"imageId": 4,
+			"media": {
+				"type": "video",
+				"url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/friday.mp4",
+				"poster": "https://picsum.photos/seed/showcase-product-360/1280/720",
+				"coverUrl": "https://picsum.photos/seed/showcase-product-360/640/360"
+			}
+		},
+		{
+			"category": "web",
+			"height": 220,
+			"playbookName": "宠物配饰穿戴",
+			"prompt": "帮我创建一个宠物配饰电商落地页，展示项圈、衣服、鞋子三个分类",
+			"playbookSlug": "engineer",
+			"imageId": 5,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-pet-accessories/1200/800",
+				"coverUrl": "https://picsum.photos/seed/showcase-pet-accessories/640/440"
+			}
+		},
+		{
+			"category": "data",
+			"height": 300,
+			"playbookName": "口播带货视频",
+			"prompt": "帮我分析最近一个月口播带货视频的转化率数据，生成可视化图表",
+			"playbookSlug": "data-analyst",
+			"imageId": 6,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-live-commerce-chart/1200/800",
+				"coverUrl": "https://picsum.photos/seed/showcase-live-commerce-chart/640/480"
+			}
+		},
+		{
+			"category": "image",
+			"height": 380,
+			"playbookName": "玩具互动套组视频",
+			"prompt": "生成一组儿童玩具互动场景的产品宣传图，卡通风格，明亮色调",
+			"playbookSlug": "designer",
+			"imageId": 7,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-kids-toy-set/1200/900",
+				"coverUrl": "https://picsum.photos/seed/showcase-kids-toy-set/640/480",
+				"thumbs": [
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-kids-toy-set/1200/900" },
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-kids-toy-set-alt/1200/900" }
+				]
+			}
+		},
+		{
+			"category": "video",
+			"height": 260,
+			"playbookName": "宠物服装试穿",
+			"prompt": "帮我制作一个宠物服装试穿的短视频脚本，15秒内展示3套服装切换",
+			"playbookSlug": "designer",
+			"imageId": 8,
+			"media": {
+				"type": "video",
+				"url": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+				"poster": "https://picsum.photos/seed/showcase-pet-fashion/1280/720",
+				"coverUrl": "https://picsum.photos/seed/showcase-pet-fashion/640/360"
+			}
+		},
+		{
+			"category": "qa",
+			"height": 320,
+			"playbookName": "仓鼠玩具互动",
+			"prompt": "仓鼠适合什么类型的玩具？跑轮、隧道、啃咬玩具各有什么注意事项",
+			"playbookSlug": "writer",
+			"imageId": 9,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-hamster-toy/1200/900",
+				"coverUrl": "https://picsum.photos/seed/showcase-hamster-toy/640/480"
+			}
+		},
+		{
+			"category": "web",
+			"height": 280,
+			"playbookName": "项链互动套图",
+			"prompt": "帮我创建一个珠宝项链的产品展示页面，支持点击切换不同款式",
+			"playbookSlug": "engineer",
+			"imageId": 10,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-necklace-web/1200/900",
+				"coverUrl": "https://picsum.photos/seed/showcase-necklace-web/640/480",
+				"thumbs": [
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-necklace-web/1200/900" },
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-necklace-gold/1200/900" },
+					{ "type": "image", "url": "https://picsum.photos/seed/showcase-necklace-silver/1200/900" }
+				]
+			}
+		},
+		{
+			"category": "game",
+			"height": 240,
+			"playbookName": "AR试戴体验",
+			"prompt": "设计一个AR眼镜试戴的Web小游戏，用户可以选择不同款式实时预览",
+			"playbookSlug": "engineer",
+			"imageId": 11,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-ar-tryon/1200/800",
+				"coverUrl": "https://picsum.photos/seed/showcase-ar-tryon/640/480"
+			}
+		},
+		{
+			"category": "data",
+			"height": 300,
+			"playbookName": "电商销售报表",
+			"prompt": "帮我生成本季度电商各品类销售额对比报表，包含环比增长率分析",
+			"playbookSlug": "data-analyst",
+			"imageId": 12,
+			"media": {
+				"type": "image",
+				"url": "https://picsum.photos/seed/showcase-ecommerce-report/1200/800",
+				"coverUrl": "https://picsum.photos/seed/showcase-ecommerce-report/640/480"
+			}
+		}
+	]
+}

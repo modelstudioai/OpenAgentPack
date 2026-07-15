@@ -1,0 +1,101 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    description: "Development environment with full network access"
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+    metadata:
+      team: platform
+
+  staging:
+    description: "Staging environment with restricted networking"
+    config:
+      type: cloud
+      networking:
+        type: limited
+        allow_mcp_servers: true
+        allow_package_managers: true
+        allowed_hosts:
+          - "api.github.com"
+          - "registry.npmjs.org"
+      packages:
+        apt: [git, curl]
+        npm: [typescript]
+    metadata:
+      team: platform
+
+vaults:
+  api-credentials:
+    display_name: "API Credentials"
+    credentials:
+      - name: github-mcp
+        mcp_server_url: "https://mcp.example.com/github"
+        type: static_bearer
+        access_token: ${MCP_GITHUB_TOKEN}
+        protocol: streamable_http
+
+skills:
+  code-review:
+    source: ./skills/code-review/
+    description: "Structured code review with severity levels"
+  summarize:
+    source: ./skills/summarize/
+    description: "Produce concise summaries"
+
+agents:
+  researcher:
+    description: "Gathers information from codebase and web"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are a research agent. Search the codebase and web to gather
+      relevant information. Be thorough and cite sources.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search, web_fetch]
+    skills: [summarize]
+    metadata:
+      role: research
+
+  reviewer:
+    description: "Reviews code for quality and correctness"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are a code reviewer. Analyze code changes using the code-review
+      skill format. Focus on correctness, security, and performance.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+      permissions:
+        read: allow
+        glob: allow
+        grep: allow
+    skills: [code-review]
+    metadata:
+      role: review
+
+  lead:
+    description: "Coordinates researcher and reviewer"
+    model: claude-sonnet-4-6
+    instructions: ./prompts/lead.md
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+    mcp_servers:
+      - name: github
+        url: "https://mcp.example.com/github"
+    vault: api-credentials
+    multiagent:
+      type: coordinator
+      agents: [researcher, reviewer]
+    metadata:
+      role: coordinator

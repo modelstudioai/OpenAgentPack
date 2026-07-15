@@ -1,0 +1,30 @@
+version: "1"
+
+# Bailian official Skill example.
+#
+# This binds the platform-provided PPTX Skill to an agent. The Skill is not
+# created, updated, uploaded, or deleted by OpenAgentPack; it is only referenced.
+#
+# Credentials are read from .env at the repo root (Bun auto-loads it):
+#   DASHSCOPE_API_KEY    — Bearer token (sk-...)
+#   BAILIAN_WORKSPACE_ID — workspace id (llm-...)
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+agents:
+  presentation-helper:
+    description: "Assistant with Bailian's official PPTX Skill"
+    model: qwen3.7-max
+    instructions: |
+      You help create, inspect, and update presentation decks.
+      When a request involves slides, presentations, decks, or .pptx files,
+      use the official PPTX Skill.
+    skills:
+      - type: official
+        code: pptx
+        version: "1.0"

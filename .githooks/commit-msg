@@ -1,0 +1,8 @@
+#!/bin/sh
+# 本仓 core.hooksPath 指向 .githooks/,会绕过全局 hooks。
+# 在此显式转发到全局 commit-msg(@ai-coding-workshop),保留 commit message 校验。
+GLOBAL_HOOK="$HOME/.githooks/commit-msg"
+if [ -x "$GLOBAL_HOOK" ]; then
+  exec "$GLOBAL_HOOK" "$@"
+fi
+exit 0

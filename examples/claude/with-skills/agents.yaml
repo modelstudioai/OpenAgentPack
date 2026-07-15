@@ -1,0 +1,34 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+skills:
+  code-review:
+    source: ./skills/code-review/
+    description: "Structured code review with severity levels"
+
+agents:
+  reviewer:
+    description: "Code review specialist"
+    model: claude-sonnet-4-6
+    instructions: ./prompts/reviewer.md
+    environment: dev
+    tools:
+      builtin: [read, glob, grep]
+      permissions:
+        read: allow
+        glob: allow
+        grep: allow
+    skills: [code-review]

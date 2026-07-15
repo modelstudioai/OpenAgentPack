@@ -1,0 +1,47 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: all
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  reporter:
+    model:
+      claude: claude-sonnet-4-6
+      qoder: ultimate
+    instructions: |
+      You write reports.
+    environment: dev
+
+deployments:
+  daily-report:
+    agent: reporter
+    description: "Daily report run"
+    schedule:
+      expression: "0 9 * * *"
+      timezone: UTC
+    initial_events:
+      - type: user.message
+        content: "Generate today's report"
+      - type: user.define_outcome
+        description: "Report quality gate"
+        rubric: "Must include an executive summary"
+        max_iterations: 3
+    resources:
+      - type: github_repository
+        url: "https://github.com/acme/reports"
+        checkout:
+          branch: main
+        mount_path: /repo

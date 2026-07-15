@@ -1,0 +1,55 @@
+version: "1"
+
+providers:
+  bailian:
+    api_key: ${DASHSCOPE_API_KEY}
+    workspace_id: ${BAILIAN_WORKSPACE_ID}
+
+defaults:
+  provider: bailian
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  reporter:
+    description: "Generates daily engineering reports"
+    model: qwen3.7-max
+    instructions: |
+      You are an engineering reporter. Summarize recent activity into a concise
+      daily report following the provided template.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search]
+
+# Deployment is EMULATED on Bailian (no native deployment primitive):
+#   - `agents apply` records local state only (remote_id = null)
+#   - `agents deployment run daily-report` expands it into a Session, uploads the
+#     file resource, and replays the initial_events.
+# `schedule` and `define_outcome` are NOT enforced server-side and will surface
+# warning diagnostics on plan. Use external cron/CI for scheduled runs.
+deployments:
+  daily-report:
+    agent: reporter
+    description: "Daily report (emulated -> Session on run)"
+    schedule:
+      expression: "0 9 * * *"
+      timezone: UTC
+    initial_events:
+      - type: user.message
+        content: "Summarize yesterday's commits and generate the daily report."
+      # define_outcome is accepted in config but filtered out on Bailian (no
+      # server-side outcome evaluation); kept here for cross-provider parity.
+      - type: user.define_outcome
+        description: "Daily report quality gate"
+        rubric: "Must include an executive summary and at least three key metrics."
+        max_iterations: 3
+    resources:
+      # Local file uploaded at `deployment run` time and mounted into the Session.
+      - type: file
+        source: ./data/report-template.md
+        mount_path: /data/report-template.md

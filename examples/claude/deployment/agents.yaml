@@ -1,0 +1,47 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  reporter:
+    description: "Generates daily engineering reports"
+    model: claude-sonnet-4-6
+    instructions: |
+      You are an engineering reporter. Summarize recent activity into a concise
+      daily report with an executive summary and key metrics.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, web_search, web_fetch]
+
+deployments:
+  daily-report:
+    agent: reporter
+    description: "Scheduled daily report (server-side cron + outcome grading)"
+    schedule:
+      expression: "0 9 * * *"
+      timezone: UTC
+    initial_events:
+      - type: user.message
+        content: "Summarize yesterday's commits and generate the daily report."
+      - type: user.define_outcome
+        description: "Daily report quality gate"
+        rubric: "Must include an executive summary and at least three key metrics."
+        max_iterations: 3
+    # File resource with a local `source`: Claude uploads it during `apply`
+    # (Files API) and mounts the returned file_id at run time.
+    resources:
+      - type: file
+        source: ./data/report-template.md
+        mount_path: /data/report-template.md

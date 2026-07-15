@@ -1,0 +1,35 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+skills:
+  code-review:
+    source: ./skills/code-review/
+    description: "Structured code review with severity levels"
+
+agents:
+  reviewer:
+    description: "Code review specialist"
+    model: ultimate
+    instructions: ./prompts/reviewer.md
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]
+      permissions:
+        Read: allow
+        Glob: allow
+        Grep: allow
+    skills: [code-review]

@@ -1,0 +1,27 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  assistant:
+    description: "General-purpose coding assistant"
+    model: ultimate
+    instructions: |
+      You are a helpful coding assistant. You can read files,
+      search codebases, and help with code review.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch, WebFetch]

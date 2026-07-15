@@ -1,0 +1,36 @@
+node_modules
+.repo-backups
+.DS_Store
+.codegraph
+
+# build output
+dist
+out
+coverage
+*.lcov
+*.tsbuildinfo
+
+# app output
+.next
+build
+.qoder
+.cursor
+
+# playground: webui build copied in at build time (shipped via package.json "files", not committed)
+packages/playground/web/
+
+# local environment and state
+.env
+.env.*
+*.state.json
+agents.state.json
+agents.synced.yaml
+.agents-webui/
+/.idea/
+
+
+# generated interface inventory output (source lives under apps/webui/work/)
+/apps/webui/outputs/
+
+# scratch/temp output
+/.tmp/

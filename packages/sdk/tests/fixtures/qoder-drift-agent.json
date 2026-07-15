@@ -1,0 +1,21 @@
+{
+	"id": "agent_test",
+	"name": "assistant",
+	"description": "Agents live drift original agent",
+	"model": "ultimate",
+	"system": "You are a temporary Agents live drift validation agent. Reply with original.\n",
+	"version": 2,
+	"tools": [
+		{
+			"type": "agent_toolset_20260401",
+			"enabled_tools": ["Read"]
+		}
+	],
+	"metadata": {
+		"agents.project": "tmp",
+		"agents.resource": "assistant",
+		"cma_test": "drift-validation"
+	},
+	"created_at": "2026-06-20T00:00:00Z",
+	"updated_at": "2026-06-20T00:00:01Z"
+}
