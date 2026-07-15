@@ -83,6 +83,7 @@ providers:
   bailian:
     api_key: test-key
     workspace_id: test-workspace
+    base_url: http://127.0.0.1:1
 
 defaults:
   provider: bailian
