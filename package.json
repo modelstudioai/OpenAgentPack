@@ -43,7 +43,7 @@
 		"typecheck:playground": "bun run --cwd packages/playground typecheck",
 		"typecheck:webui": "bun run --cwd apps/webui typecheck",
 		"typecheck:server": "bun run --cwd apps/server typecheck",
-		"test": "bun run test:verification && bun run test:sdk && bun run test:cli && bun run test:playbooks && bun run test:webui && bun run test:server",
+		"test": "bun run build:sdk && bun run test:verification && bun run test:sdk && bun run test:cli && bun run test:playbooks && bun run test:webui && bun run test:server",
 		"test:verification": "bun test scripts/*.test.ts scripts/release/*.test.ts",
 		"test:sdk": "bun run --cwd packages/sdk test",
 		"test:cli": "bun run --cwd packages/cli test",
