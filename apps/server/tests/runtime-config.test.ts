@@ -24,7 +24,7 @@ describe("WebUI state scope", () => {
 });
 
 describe("buildRuntimeConfig", () => {
-	const ENV_KEYS = ["DASHSCOPE_API_KEY", "BAILIAN_WORKSPACE_ID", "BAILIAN_BASE_URL"] as const;
+	const ENV_KEYS = ["AGENTS_PROVIDER", "DASHSCOPE_API_KEY", "BAILIAN_WORKSPACE_ID", "BAILIAN_BASE_URL"] as const;
 
 	function withEnv(overrides: Record<string, string | undefined>, fn: () => Promise<void>) {
 		const saved = new Map<string, string | undefined>();
@@ -48,6 +48,7 @@ describe("buildRuntimeConfig", () => {
 	test("assembles a validated config from env + playbooks; base_url omitted when unset", async () => {
 		await withEnv(
 			{
+				AGENTS_PROVIDER: "bailian",
 				DASHSCOPE_API_KEY: "sk-test",
 				BAILIAN_WORKSPACE_ID: "ws-test",
 				BAILIAN_BASE_URL: undefined,
@@ -79,6 +80,7 @@ describe("buildRuntimeConfig", () => {
 	test("passes BAILIAN_BASE_URL through as an override when set", async () => {
 		await withEnv(
 			{
+				AGENTS_PROVIDER: "bailian",
 				DASHSCOPE_API_KEY: "sk-test",
 				BAILIAN_WORKSPACE_ID: "ws-test",
 				BAILIAN_BASE_URL: "https://example.test/api",
@@ -94,6 +96,7 @@ describe("buildRuntimeConfig", () => {
 	test("fails fast when a required credential env var is missing", async () => {
 		await withEnv(
 			{
+				AGENTS_PROVIDER: "bailian",
 				DASHSCOPE_API_KEY: undefined,
 				BAILIAN_WORKSPACE_ID: "ws-test",
 				BAILIAN_BASE_URL: undefined,
