@@ -52,10 +52,13 @@ function gitCommitExists(ref: string): boolean {
 	return Bun.spawnSync(["git", "cat-file", "-e", `${ref}^{commit}`], { cwd: root, stderr: "ignore" }).exitCode === 0;
 }
 
-export function resolveComparisonBase(explicitBase = process.env.BASE): string | undefined {
+export function resolveComparisonBase(
+	explicitBase = process.env.BASE,
+	allowMissingExplicitBase = process.env.GITHUB_ACTIONS === "true",
+): string | undefined {
 	if (explicitBase && !/^0+$/.test(explicitBase)) {
 		if (gitCommitExists(explicitBase)) return explicitBase;
-		if (process.env.GITHUB_ACTIONS !== "true") {
+		if (!allowMissingExplicitBase) {
 			throw new Error(`Verification BASE '${explicitBase}' is not a commit.`);
 		}
 		console.warn(`Verification BASE '${explicitBase}' is unavailable after a history rewrite; using a local fallback.`);

@@ -43,18 +43,11 @@ describe("verification profiles", () => {
 	});
 
 	test("rejects an explicit BASE that is not a commit", () => {
-		expect(() => resolveComparisonBase("not-a-real-commit")).toThrow("is not a commit");
+		expect(() => resolveComparisonBase("not-a-real-commit", false)).toThrow("is not a commit");
 	});
 
 	test("falls back when a push base disappeared after a GitHub history rewrite", () => {
-		const previous = process.env.GITHUB_ACTIONS;
-		process.env.GITHUB_ACTIONS = "true";
-		try {
-			expect(resolveComparisonBase("not-a-real-commit")).toBeTruthy();
-		} finally {
-			if (previous === undefined) delete process.env.GITHUB_ACTIONS;
-			else process.env.GITHUB_ACTIONS = previous;
-		}
+		expect(resolveComparisonBase("not-a-real-commit", true)).toBeTruthy();
 	});
 });
 
