@@ -8,7 +8,7 @@ Thanks for your interest in improving OpenAgentPack. By participating you agree 
 |-------|-----|
 | Dev setup, verification, package boundaries | [docs/contributing/development.md](./docs/contributing/development.md) |
 | Adding a new provider | [docs/contributing/provider-development.md](./docs/contributing/provider-development.md) |
-| npm release workflow | [docs/contributing/release.md](./docs/contributing/release.md) |
+| npm release workflow | [English](./docs/contributing/release.md) · [简体中文](./docs/contributing/release.zh-CN.md) |
 | Architecture and how it works | [docs/architecture/how-it-works.md](./docs/architecture/how-it-works.md) |
 
 ## Quick start

@@ -1,27 +1,34 @@
-name: Release
+name: Publish npm
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      channel:
+        description: npm channel to publish
+        required: true
+        type: choice
+        options:
+          - beta
+          - stable
+      confirm:
+        description: Type PUBLISH to confirm
+        required: true
+        type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   # Publishing three packages is not atomic. Never cancel a run after the first
-  # package may already have reached npm; the publish script is also idempotent
-  # so a failed run can safely be retried.
+  # package may already have reached npm; exact versions are safe to retry.
+  group: npm-publish
   cancel-in-progress: false
 
 jobs:
-  release:
-    # Missing repository variables resolve to an empty string, so a newly
-    # created repository cannot publish until maintainers explicitly opt in.
-    if: vars.NPM_RELEASE_ENABLED == 'true'
+  publish:
+    if: vars.NPM_RELEASE_ENABLED == 'true' && inputs.confirm == 'PUBLISH'
     runs-on: ubuntu-latest
+    environment: npm-release
     permissions:
       contents: write
       id-token: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -43,22 +50,48 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Validate channel, branch, and package versions
+        id: release
+        run: >-
+          bun run scripts/release/channel.ts validate
+          --channel "${{ inputs.channel }}"
+          --ref "${{ github.ref_name }}"
+          --output "$GITHUB_OUTPUT"
+
       - name: Verify release
-        env:
-          BASE: ${{ github.event.before }}
         run: bun run verify:release
 
-      - name: Create Release PR or Publish
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
-        with:
-          version: bun run release:version
-          publish: bun run release:publish
-          commit: "chore: release packages"
-          title: "chore: release packages"
+      - name: Publish packages with npm Trusted Publishing
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Bootstrap only: set this secret for the first publication, then remove
-          # and revoke it after npm Trusted Publishers are configured. With the
-          # secret absent, npm authenticates through OIDC trusted publishing.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+        run: bun run release:publish
+
+      - name: Create immutable Git tag
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if git rev-parse --verify --quiet "refs/tags/${tag}"; then
+            test "$(git rev-list -n 1 "${tag}")" = "$GITHUB_SHA" || {
+              echo "::error::${tag} already points to another commit"
+              exit 1
+            }
+          else
+            git tag --annotate "${tag}" --message "${tag}"
+            git push origin "${tag}"
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "GitHub Release ${tag} already exists; nothing to do."
+          elif test "${CHANNEL}" = beta; then
+            gh release create "${tag}" --verify-tag --generate-notes --prerelease --title "${tag}"
+          else
+            gh release create "${tag}" --verify-tag --generate-notes --title "${tag}"
+          fi

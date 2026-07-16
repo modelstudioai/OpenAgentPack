@@ -136,6 +136,7 @@ npm install -g @openagentpack/cli
 ```
 
 This provides the `agents` command. To run from source instead, see [Contributing](./CONTRIBUTING.md).
+Beta testers can install `@openagentpack/cli@beta`; see the [release guide](./docs/contributing/release.md#what-users-install) for version pinning and switching back to stable.
 
 ## Provider support
 

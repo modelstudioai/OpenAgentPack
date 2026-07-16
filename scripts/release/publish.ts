@@ -1,7 +1,7 @@
 /**
  * 按拓扑顺序发布所有包到 npm
  * 发布前自动将 exports 从 ./src/*.ts 重写为 ./dist/*.js，发布后恢复
- * 用法: bun run scripts/release/publish.ts [--dry-run] [--tag <tag>]
+ * 用法: bun run scripts/release/publish.ts [--dry-run]
  */
 
 import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
@@ -26,6 +26,30 @@ export function publishedVersionMatches(raw: string, version: string): boolean {
 
 export function shouldSkipPublishedVersion(dryRun: boolean, published: boolean): boolean {
 	return !dryRun && published;
+}
+
+export interface PublishEnvironment {
+	GITHUB_ACTIONS?: string;
+	GITHUB_WORKFLOW?: string;
+	GITHUB_EVENT_NAME?: string;
+}
+
+export function assertPublishEnvironment(
+	dryRun: boolean,
+	environment: PublishEnvironment = {
+		GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
+		GITHUB_WORKFLOW: process.env.GITHUB_WORKFLOW,
+		GITHUB_EVENT_NAME: process.env.GITHUB_EVENT_NAME,
+	},
+): void {
+	if (
+		!dryRun &&
+		(environment.GITHUB_ACTIONS !== "true" ||
+			environment.GITHUB_WORKFLOW !== "Publish npm" ||
+			environment.GITHUB_EVENT_NAME !== "workflow_dispatch")
+	) {
+		throw new Error("Real npm publishing is allowed only from the GitHub Actions Publish npm workflow.");
+	}
 }
 
 export function inferDistTag(version: string): string | undefined {
@@ -117,11 +141,9 @@ function trackedFileContents(path: string): string | undefined {
 function main(): number {
 	const args = process.argv.slice(2);
 	const dryRun = args.includes("--dry-run");
-	const noProvenance = args.includes("--no-provenance");
-	const tagIdx = args.indexOf("--tag");
-	const tag = tagIdx !== -1 ? args[tagIdx + 1] : undefined;
+	assertPublishEnvironment(dryRun);
 
-	console.log(`Publishing packages${dryRun ? " (dry-run)" : ""}${tag ? ` with tag: ${tag}` : ""}...\n`);
+	console.log(`Publishing packages${dryRun ? " (dry-run)" : ""}...\n`);
 	const versions = workspaceVersions();
 
 	for (const pkg of PACKAGES) {
@@ -136,10 +158,10 @@ function main(): number {
 			continue;
 		}
 
-		const publishTag = tag ?? inferDistTag(manifest.version);
+		const publishTag = inferDistTag(manifest.version);
 		const cmd = ["npm", "publish", "--access", "public"];
 		if (dryRun) cmd.push("--dry-run");
-		else if (!noProvenance) cmd.push("--provenance");
+		else cmd.push("--provenance");
 		if (publishTag) cmd.push("--tag", publishTag);
 
 		console.log(`\n--- Publishing ${manifest.name} ---`);
