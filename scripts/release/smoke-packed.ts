@@ -20,6 +20,13 @@ const root = resolve(import.meta.dirname, "../..");
 
 type PackedPackage = { filename: string };
 
+export function packedFilename(raw: string, pkg: string): string {
+	const parsed = JSON.parse(raw) as PackedPackage[] | Record<string, PackedPackage>;
+	const packed = Array.isArray(parsed) ? parsed : Object.values(parsed);
+	if (packed.length !== 1 || !packed[0]?.filename) throw new Error(`Unexpected npm pack output for ${pkg}`);
+	return packed[0].filename;
+}
+
 function run(command: string[], cwd: string, stdout: "inherit" | "pipe" = "inherit"): string {
 	const result = Bun.spawnSync(command, { cwd, stdout, stderr: "inherit" });
 	if (result.exitCode !== 0) throw new Error(`Command failed (${result.exitCode}): ${command.join(" ")}`);
@@ -38,9 +45,7 @@ function packPackages(destination: string): string[] {
 			licenseStaged = true;
 			originalManifest = rewriteManifestForPublish(pkgDir, versions);
 			const raw = run(["npm", "pack", "--json", "--pack-destination", destination], pkgDir, "pipe");
-			const packed = JSON.parse(raw) as PackedPackage[];
-			if (packed.length !== 1 || !packed[0]?.filename) throw new Error(`Unexpected npm pack output for ${pkg}`);
-			return join(destination, packed[0].filename);
+			return join(destination, packedFilename(raw, pkg));
 		} finally {
 			if (originalManifest !== undefined) restorePackageJson(pkgDir, originalManifest);
 			if (licenseStaged) restoreLicense(pkgDir, originalLicense);
