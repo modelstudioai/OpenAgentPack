@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	assertPublishEnvironment,
 	inferDistTag,
+	publishCommand,
 	publishedPackageSpec,
 	publishedVersionMatches,
 	shouldSkipPublishedVersion,
@@ -29,6 +30,20 @@ describe("release publish recovery", () => {
 		expect(inferDistTag("1.0.1-beta.5")).toBe("beta");
 		expect(inferDistTag("2.0.0-rc.1")).toBe("rc");
 		expect(inferDistTag("1.0.1")).toBeUndefined();
+	});
+
+	test("uses a registry-independent pack check for dry runs", () => {
+		expect(publishCommand(true, "1.2.3")).toEqual(["npm", "pack", "--dry-run"]);
+		expect(publishCommand(false, "1.2.3")).toEqual(["npm", "publish", "--access", "public", "--provenance"]);
+		expect(publishCommand(false, "1.2.3-beta.4")).toEqual([
+			"npm",
+			"publish",
+			"--access",
+			"public",
+			"--provenance",
+			"--tag",
+			"beta",
+		]);
 	});
 
 	test("allows real publishing only inside GitHub Actions", () => {

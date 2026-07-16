@@ -22,13 +22,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  preflight:
     if: vars.NPM_RELEASE_ENABLED == 'true' && inputs.confirm == 'PUBLISH'
     runs-on: ubuntu-latest
-    environment: npm-release
+    outputs:
+      channel: ${{ steps.release.outputs.channel }}
+      version: ${{ steps.release.outputs.version }}
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -63,6 +64,38 @@ jobs:
       - name: Verify release
         run: bun run verify:release
 
+  publish:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install trusted-publishing npm CLI
+        run: |
+          npm install --global npm@12.0.1
+          npm --version
+
+      - name: Build publishable packages
+        run: |
+          bun install --frozen-lockfile
+          bun run build:packages
+
       - name: Publish packages with npm Trusted Publishing
         env:
           NPM_CONFIG_PROVENANCE: "true"
@@ -70,7 +103,7 @@ jobs:
 
       - name: Create immutable Git tag
         env:
-          VERSION: ${{ steps.release.outputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           tag="v${VERSION}"
           if git rev-parse --verify --quiet "refs/tags/${tag}"; then
@@ -85,11 +118,62 @@ jobs:
             git push origin "${tag}"
           fi
 
+  registry-ready:
+    needs: [preflight, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - run: npm install --global npm@12.0.1
+      - name: Wait for the fixed release group to reach npm
+        run: bun scripts/release/consumer-smoke.ts wait --version "${{ needs.preflight.outputs.version }}"
+
+  post-release-consumer:
+    name: Consumer / ${{ matrix.os }} / Node ${{ matrix.node }}
+    needs: [preflight, registry-ready]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: npm install --global npm@12.0.1
+      - name: Install and execute the public packages
+        run: bun scripts/release/consumer-smoke.ts smoke --version "${{ needs.preflight.outputs.version }}"
+
+  finalize-release:
+    needs: [preflight, publish, post-release-consumer]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.release.outputs.version }}
-          CHANNEL: ${{ steps.release.outputs.channel }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
         run: |
           tag="v${VERSION}"
           if gh release view "${tag}" >/dev/null 2>&1; then

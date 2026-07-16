@@ -41,7 +41,7 @@ Choose the SemVer impact and describe the change for the generated changelog. On
 5. Select `release/0.1.0-beta` in the workflow branch dropdown, choose `beta`, type `PUBLISH`, and run it.
 6. Approve the `npm-release` Environment deployment after reviewing the commit and job summary.
 
-The publish workflow validates that the selected branch, package version, and channel agree. It publishes with the npm `beta` dist-tag, creates an immutable `v0.1.0-beta.N` tag, and creates a GitHub prerelease.
+The publish workflow validates that the selected branch, package version, and channel agree. It publishes with the npm `beta` dist-tag and creates the immutable `v0.1.0-beta.N` tag. It then installs that exact version from the public npm registry on Linux, Windows, and macOS under Node.js 22 and 24. The GitHub prerelease is created only after all six consumer jobs pass.
 
 For another beta, merge fixes and their changesets into `main`, then rerun **Prepare Beta Release** for the same series. The workflow merges `main` into the beta branch and calculates the next beta. Never merge the beta branch back into `main`; delete it after the stable release.
 
@@ -52,7 +52,21 @@ For another beta, merge fixes and their changesets into `main`, then rerun **Pre
 3. Select `main`, choose `stable`, type `PUBLISH`, and run it.
 4. Approve the `npm-release` Environment deployment after reviewing the exact package version.
 
-Only a clean `X.Y.Z` version on `main` can publish to npm's `latest` tag. A successful run creates the matching immutable Git tag and GitHub Release. Publishing is idempotent: packages whose exact version already exists are skipped, so a partially failed run can be retried.
+Only a clean `X.Y.Z` version on `main` can publish to npm's `latest` tag. Publishing creates the matching immutable Git tag, waits for all three packages to become visible in the public registry, and runs the six-job consumer matrix. The GitHub Release is the final certification step and is created only after that matrix passes. Publishing is idempotent: packages whose exact version already exists are skipped, so a partially failed publish can be retried from the same commit.
+
+## Post-release consumer verification
+
+The release is not considered complete when `npm publish` returns successfully. The workflow must also prove that a clean external consumer can install and execute the public packages from npm:
+
+| Runner | Required Node.js versions |
+|---|---|
+| Ubuntu | 22, 24 |
+| Windows | 22, 24 |
+| macOS | 22, 24 |
+
+Each matrix job installs the exact version independently, verifies npm registry signatures and provenance, loads every public SDK entry point, runs CLI help/version/offline validation, and starts the Playground over HTTP. It does not consume workspace packages, local tarballs, or build artifacts from the publish job.
+
+The `Package compatibility canary` workflow also installs npm's `latest` release on all three operating systems under Node.js 26 every Wednesday. Canary failures do not affect an existing release, but they should be triaged before Node.js 26 becomes part of the supported LTS matrix.
 
 ## Local verification
 
@@ -60,7 +74,7 @@ Only a clean `X.Y.Z` version on `main` can publish to npm's `latest` tag. A succ
 bun run verify:release
 ```
 
-This runs the full repository checks, builds the packages, performs `npm publish --dry-run`, and installs the packed artifacts into clean Node.js 20 and 24 consumer projects. To inspect only the package tarballs:
+This runs the full repository checks, builds the packages, performs a registry-independent `npm pack --dry-run`, and installs the packed artifacts as a clean external consumer. CI runs that package smoke under Node.js 22 and 24. To inspect only the package tarballs:
 
 ```bash
 bun run build:packages
@@ -91,5 +105,7 @@ After installing the CLI, run `agents --help`. A beta user returns to stable wit
 
 - If npm authentication fails, compare the Trusted Publisher repository, workflow filename, and Environment character-for-character with the table above.
 - If a package published before another failed, rerun the same workflow from the same commit. Already-published exact versions are skipped.
+- If all packages published but a post-release consumer job fails, keep the immutable tag, do not unpublish or move the tag, and do not create the GitHub Release. Fix the compatibility issue and publish a new patch version; npm package versions cannot be overwritten.
+- Registry visibility is retried for five minutes before it is classified as a release failure. Retry the same workflow only when npm propagation, rather than package compatibility, was the cause.
 - If a version tag already points at another commit, stop. Tags are immutable; investigate the repository history instead of moving or deleting the tag.
 - If **Prepare Beta Release** reports no unreleased changesets, add a changeset on `main` before preparing another beta.

@@ -57,6 +57,14 @@ export function inferDistTag(version: string): string | undefined {
 	return prerelease?.[1];
 }
 
+export function publishCommand(dryRun: boolean, version: string): string[] {
+	if (dryRun) return ["npm", "pack", "--dry-run"];
+	const command = ["npm", "publish", "--access", "public", "--provenance"];
+	const publishTag = inferDistTag(version);
+	if (publishTag) command.push("--tag", publishTag);
+	return command;
+}
+
 function isVersionPublished(name: string, version: string): boolean {
 	const result = Bun.spawnSync(["npm", "view", publishedPackageSpec(name, version), "version", "--json"], {
 		cwd: root,
@@ -158,11 +166,7 @@ function main(): number {
 			continue;
 		}
 
-		const publishTag = inferDistTag(manifest.version);
-		const cmd = ["npm", "publish", "--access", "public"];
-		if (dryRun) cmd.push("--dry-run");
-		else cmd.push("--provenance");
-		if (publishTag) cmd.push("--tag", publishTag);
+		const cmd = publishCommand(dryRun, manifest.version);
 
 		console.log(`\n--- Publishing ${manifest.name} ---`);
 		let originalLicense: string | undefined;
