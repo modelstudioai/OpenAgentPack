@@ -1,12 +1,12 @@
 # Core infrastructure requires maintainer review.
-/.github/                          @modelstudioai/openagentpack-maintainers
-/scripts/                          @modelstudioai/openagentpack-maintainers
-/package.json                      @modelstudioai/openagentpack-maintainers
-/bun.lock                          @modelstudioai/openagentpack-maintainers
+/.github/                          @heimanba
+/scripts/                          @heimanba
+/package.json                      @heimanba
+/bun.lock                          @heimanba
 
 # Workspace package boundaries.
-/packages/sdk/src/internal/providers/interface.ts     @modelstudioai/openagentpack-maintainers
-/packages/sdk/src/internal/providers/capabilities.ts  @modelstudioai/openagentpack-maintainers
-/packages/sdk/src/internal/providers/registry.ts      @modelstudioai/openagentpack-maintainers
-/packages/sdk/src/internal/providers/base-client.ts   @modelstudioai/openagentpack-maintainers
-/packages/sdk/src/internal/types/                     @modelstudioai/openagentpack-maintainers
+/packages/sdk/src/internal/providers/interface.ts     @heimanba
+/packages/sdk/src/internal/providers/capabilities.ts  @heimanba
+/packages/sdk/src/internal/providers/registry.ts      @heimanba
+/packages/sdk/src/internal/providers/base-client.ts   @heimanba
+/packages/sdk/src/internal/types/                     @heimanba
