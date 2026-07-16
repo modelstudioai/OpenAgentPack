@@ -138,6 +138,8 @@ describe("open-source repository invariants", () => {
 		expect(workflow).toContain("id-token: write");
 		expect(workflow).toContain("cancel-in-progress: false");
 		expect(workflow).toContain("workflow_dispatch:");
+		expect(workflow).toContain('git config user.name "github-actions[bot]"');
+		expect(workflow).toContain("github-actions[bot]@users.noreply.github.com");
 	});
 
 	test("public worktree has no high-confidence secrets or internal machine references", () => {
