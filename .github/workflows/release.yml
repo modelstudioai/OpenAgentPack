@@ -45,7 +45,9 @@ jobs:
           package-manager-cache: false
 
       - name: Install trusted-publishing npm CLI
-        run: npm install --global npm@12.0.0
+        run: |
+          npm install --global npm@12.0.1
+          npm --version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
