@@ -1,0 +1,81 @@
+name: Prepare Beta Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable SemVer series, for example 0.1.0
+        required: true
+        type: string
+
+concurrency:
+  group: prepare-beta-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.5"
+
+      - name: Validate requested version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be a stable SemVer such as 0.1.0"
+            exit 1
+          fi
+
+      - name: Prepare isolated beta branch
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          branch="release/${VERSION}-beta"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+            git fetch origin "${branch}"
+            git checkout --branch "${branch}" --track "origin/${branch}"
+            git merge --no-edit origin/main
+          else
+            git checkout --branch "${branch}" origin/main
+            bunx changeset pre enter beta
+          fi
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Calculate next beta version
+        run: bun run release:version
+
+      - name: Validate calculated beta version
+        id: release
+        run: >-
+          bun run scripts/release/channel.ts validate
+          --channel beta
+          --ref "release/${{ inputs.version }}-beta"
+          --expected "${{ inputs.version }}"
+          --output "$GITHUB_OUTPUT"
+
+      - name: Commit and push beta branch
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "::error::No unreleased changesets are available for the next beta."
+            exit 1
+          fi
+          git add --all
+          git commit --message "chore: prepare ${VERSION}"
+          git push origin HEAD

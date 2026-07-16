@@ -136,6 +136,7 @@ npm install -g @openagentpack/cli
 ```
 
 安装后即可使用 `agents` 命令。若想从源码运行，见 [贡献指南](./CONTRIBUTING.md)。
+Beta 用户可以安装 `@openagentpack/cli@beta`；固定版本及切回稳定版的方法见 [发布指南](./docs/contributing/release.zh-CN.md#用户如何安装)。
 
 ## Provider 支持
 

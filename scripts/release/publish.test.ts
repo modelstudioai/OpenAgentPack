@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { inferDistTag, publishedPackageSpec, publishedVersionMatches, shouldSkipPublishedVersion } from "./publish.ts";
+import {
+	assertPublishEnvironment,
+	inferDistTag,
+	publishedPackageSpec,
+	publishedVersionMatches,
+	shouldSkipPublishedVersion,
+} from "./publish.ts";
 
 describe("release publish recovery", () => {
 	test("uses an exact package version when querying npm", () => {
@@ -23,5 +29,17 @@ describe("release publish recovery", () => {
 		expect(inferDistTag("1.0.1-beta.5")).toBe("beta");
 		expect(inferDistTag("2.0.0-rc.1")).toBe("rc");
 		expect(inferDistTag("1.0.1")).toBeUndefined();
+	});
+
+	test("allows real publishing only inside GitHub Actions", () => {
+		const workflow = {
+			GITHUB_ACTIONS: "true",
+			GITHUB_WORKFLOW: "Publish npm",
+			GITHUB_EVENT_NAME: "workflow_dispatch",
+		};
+		expect(() => assertPublishEnvironment(false, {})).toThrow("GitHub Actions");
+		expect(() => assertPublishEnvironment(false, { ...workflow, GITHUB_WORKFLOW: "CI" })).toThrow("GitHub Actions");
+		expect(() => assertPublishEnvironment(false, workflow)).not.toThrow();
+		expect(() => assertPublishEnvironment(true, {})).not.toThrow();
 	});
 });

@@ -129,9 +129,13 @@ describe("open-source repository invariants", () => {
 		expect(unpinned).toEqual([]);
 	});
 
-	test("npm release is opt-in and cannot be cancelled mid-publish", () => {
+	test("npm publishing is manual, approval-gated, and cannot be cancelled mid-publish", () => {
 		const workflow = readFileSync(resolve(root, ".github/workflows/release.yml"), "utf8");
-		expect(workflow).toContain("if: vars.NPM_RELEASE_ENABLED == 'true'");
+		expect(workflow).not.toMatch(/\npush:/);
+		expect(workflow).toContain("environment: npm-release");
+		expect(workflow).toContain("vars.NPM_RELEASE_ENABLED == 'true'");
+		expect(workflow).toContain("inputs.confirm == 'PUBLISH'");
+		expect(workflow).toContain("id-token: write");
 		expect(workflow).toContain("cancel-in-progress: false");
 		expect(workflow).toContain("workflow_dispatch:");
 	});
