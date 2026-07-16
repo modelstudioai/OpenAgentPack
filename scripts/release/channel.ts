@@ -48,7 +48,8 @@ export function validateReleaseIdentity(
 	if (expectedBase && base !== expectedBase) {
 		throw new Error(`beta branch series ${base} does not match requested ${expectedBase}`);
 	}
-	if (!new RegExp(`^${base.replaceAll(".", "\\.")}-beta\\.[0-9]+$`).test(version)) {
+	const betaVersion = /^([0-9]+\.[0-9]+\.[0-9]+)-beta\.[0-9]+$/.exec(version);
+	if (!betaVersion || betaVersion[1] !== base) {
 		throw new Error(`beta package version must match ${base}-beta.N; found ${version}`);
 	}
 	return { channel, version, distTag: "beta" };
