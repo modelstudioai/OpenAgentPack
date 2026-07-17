@@ -1,5 +1,12 @@
 # @openagentpack/cli
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [ba1af83]
+  - @openagentpack/sdk@0.1.1
+
 ## 0.1.0
 
 ### Minor Changes
