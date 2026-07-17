@@ -52,6 +52,15 @@ describe("open-source repository invariants", () => {
 		expect(changesets.fixed).toContainEqual(manifests.map((manifest) => manifest.name));
 	});
 
+	test("public packages require a maintained Node.js baseline", () => {
+		for (const pkg of ["sdk", "playground", "cli"]) {
+			const manifest = JSON.parse(readFileSync(resolve(root, `packages/${pkg}/package.json`), "utf8")) as {
+				engines?: { node?: string };
+			};
+			expect(manifest.engines?.node).toBe(">=22");
+		}
+	});
+
 	test("published packages have no runtime dependency on private workspaces", () => {
 		const packageFiles = publicWorktreeFilesMatching(
 			(file) => isVisiblePath(file) && (file === "package.json" || file.endsWith("/package.json")),
@@ -140,6 +149,15 @@ describe("open-source repository invariants", () => {
 		expect(workflow).toContain("workflow_dispatch:");
 		expect(workflow).toContain('git config user.name "github-actions[bot]"');
 		expect(workflow).toContain("github-actions[bot]@users.noreply.github.com");
+		expect(workflow).toContain("registry-ready:");
+		expect(workflow).toContain("post-release-consumer:");
+		expect(workflow).toContain("os: [ubuntu-latest, windows-latest, macos-latest]");
+		expect(workflow).toContain("node: [22, 24]");
+		expect(workflow).toContain("needs: [preflight, publish, post-release-consumer]");
+		const consumerGate = workflow.indexOf("post-release-consumer:");
+		const finalize = workflow.indexOf("finalize-release:");
+		expect(consumerGate).toBeGreaterThan(-1);
+		expect(finalize).toBeGreaterThan(consumerGate);
 	});
 
 	test("public worktree has no high-confidence secrets or internal machine references", () => {
