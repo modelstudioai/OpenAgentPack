@@ -35,11 +35,16 @@ export type ActionType = z.infer<typeof ActionTypeSchema>;
 export const DriftKindSchema = z.enum(["none", "local", "remote", "both"]);
 export type DriftKind = z.infer<typeof DriftKindSchema>;
 
+export const PlanReadinessImpactSchema = z.enum(["none", "non_blocking", "blocking"]);
+export type PlanReadinessImpact = z.infer<typeof PlanReadinessImpactSchema>;
+
 export const PlannedActionSchema = z.object({
 	action: ActionTypeSchema,
 	address: ResourceAddressSchema,
 	reason: z.string(),
 	driftKind: DriftKindSchema.optional(),
+	readinessImpact: PlanReadinessImpactSchema.optional(),
+	changedPaths: z.array(z.string()).optional(),
 	before: z.record(z.string(), z.unknown()).optional(),
 	after: z.record(z.string(), z.unknown()).optional(),
 	dependencies: z.array(ResourceAddressSchema),

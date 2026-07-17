@@ -9,7 +9,9 @@ import type { ProjectConfig } from "../types/config.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { ResourceAddress, StateFile } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
+import { getResourceDeclaration } from "./declaration.ts";
 import { computeResourceHash } from "./hasher.ts";
+import { buildReadinessBaseline, classifyReadinessImpact, diffReadinessBaseline } from "./plan-semantics.ts";
 
 export interface PlanOptions {
 	providers?: string[];
@@ -48,6 +50,7 @@ export async function buildPlan(
 				action: "create",
 				address,
 				driftKind: "none",
+				readinessImpact: "blocking",
 				reason: "Resource does not exist in state",
 				after: { content_hash: desiredHash },
 				dependencies: deps,
@@ -56,10 +59,13 @@ export async function buildPlan(
 			(existing.desired_hash ?? existing.content_hash) !== desiredHash &&
 			existing.drift_status === "drifted"
 		) {
+			const changedPaths = collectChangedPaths(address, config, existing, true);
 			actions.push({
 				action: "update",
 				address,
 				driftKind: "both",
+				readinessImpact: classifyReadinessImpact("update", changedPaths),
+				changedPaths,
 				reason: "Local config changed and remote drift detected",
 				before: {
 					content_hash: existing.desired_hash ?? existing.content_hash,
@@ -70,20 +76,26 @@ export async function buildPlan(
 				dependencies: deps,
 			});
 		} else if ((existing.desired_hash ?? existing.content_hash) !== desiredHash) {
+			const changedPaths = collectChangedPaths(address, config, existing, false);
 			actions.push({
 				action: "update",
 				address,
 				driftKind: "local",
+				readinessImpact: classifyReadinessImpact("update", changedPaths),
+				changedPaths,
 				reason: "Local config changed",
 				before: { content_hash: existing.desired_hash ?? existing.content_hash },
 				after: { content_hash: desiredHash },
 				dependencies: deps,
 			});
 		} else if (existing.drift_status === "drifted") {
+			const changedPaths = existing.drift_paths;
 			actions.push({
 				action: "update",
 				address,
 				driftKind: "remote",
+				readinessImpact: classifyReadinessImpact("update", changedPaths),
+				changedPaths,
 				reason: "Remote drift detected",
 				before: {
 					content_hash: existing.desired_hash ?? existing.content_hash,
@@ -98,6 +110,7 @@ export async function buildPlan(
 				action: "no-op",
 				address,
 				driftKind: "none",
+				readinessImpact: "none",
 				reason:
 					existing.drift_status === "unchecked"
 						? "No changes detected (remote content drift unchecked)"
@@ -116,6 +129,7 @@ export async function buildPlan(
 			action: "delete",
 			address: res.address,
 			driftKind: "none",
+			readinessImpact: "blocking",
 			reason: "Resource removed from configuration",
 			before: { content_hash: res.desired_hash ?? res.content_hash },
 			dependencies: [],
@@ -123,6 +137,21 @@ export async function buildPlan(
 	}
 
 	return { actions, diagnostics: diagnostics.getAll() };
+}
+
+function collectChangedPaths(
+	address: ResourceAddress,
+	config: ProjectConfig,
+	existing: StateFile["resources"][number],
+	includeRemote: boolean,
+): string[] | undefined {
+	const current = buildReadinessBaseline(getResourceDeclaration(address, config));
+	const localPaths = existing.desired_readiness_baseline
+		? diffReadinessBaseline(existing.desired_readiness_baseline, current)
+		: undefined;
+	if (!includeRemote) return localPaths;
+	if (!localPaths && !existing.drift_paths) return undefined;
+	return [...new Set([...(localPaths ?? []), ...(existing.drift_paths ?? [])])].sort();
 }
 
 function getDependencies(address: ResourceAddress, graph: ReturnType<typeof buildDependencyGraph>): ResourceAddress[] {

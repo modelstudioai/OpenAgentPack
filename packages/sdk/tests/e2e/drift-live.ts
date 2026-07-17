@@ -2,7 +2,7 @@ import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "bun";
 
-const repo = new URL("../..", import.meta.url).pathname;
+const repo = new URL("../../../..", import.meta.url).pathname;
 const stamp = new Date()
 	.toISOString()
 	.replace(/[-:.TZ]/g, "")
@@ -10,7 +10,7 @@ const stamp = new Date()
 
 async function runAgents(args: string[]) {
 	const proc = spawn({
-		cmd: ["bun", "run", "bin/agents.ts", ...args],
+		cmd: ["bun", "run", "packages/cli/bin/agents.ts", ...args],
 		cwd: repo,
 		stdout: "pipe",
 		stderr: "pipe",
@@ -129,7 +129,10 @@ agents:
 		const after = await api(base, `/agents/${agentId}`, headers);
 		const ok =
 			agentAction?.action === "update" &&
-			/drift/i.test(agentAction.reason ?? "") &&
+			agentAction?.readinessImpact === "non_blocking" &&
+			Array.isArray(agentAction?.changedPaths) &&
+			agentAction.changedPaths.length === 1 &&
+			agentAction.changedPaths[0] === "description" &&
 			after.description === "Agents live drift original agent";
 		console.log(`qoder live drift validation=${ok ? "passed" : "failed"}`);
 		return ok;
@@ -146,8 +149,9 @@ async function validateBailian(): Promise<boolean | "skipped"> {
 	const dir = `/tmp/${name}`;
 	const configPath = join(dir, "agents.yaml");
 	const statePath = join(dir, "agents.state.json");
-	const base = Bun.env.BAILIAN_BASE_URL;
-	if (!base) return "skipped";
+	const base =
+		Bun.env.BAILIAN_BASE_URL ??
+		`https://${Bun.env.BAILIAN_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/api/v1/agentstudio`;
 	const headers = { Authorization: `Bearer ${Bun.env.DASHSCOPE_API_KEY}`, "Content-Type": "application/json" };
 	let agentId: string | undefined;
 	let envId: string | undefined;
@@ -238,7 +242,10 @@ agents:
 		const after = await api(base, `/agents/${agentId}`, headers);
 		const ok =
 			agentAction?.action === "update" &&
-			/drift/i.test(agentAction.reason ?? "") &&
+			agentAction?.readinessImpact === "non_blocking" &&
+			Array.isArray(agentAction?.changedPaths) &&
+			agentAction.changedPaths.length === 1 &&
+			agentAction.changedPaths[0] === "description" &&
 			after.description === "Agents live drift original agent";
 		console.log(`bailian live drift validation=${ok ? "passed" : "failed"}`);
 		return ok;

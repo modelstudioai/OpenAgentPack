@@ -803,6 +803,16 @@
 																			"type": "string",
 																			"enum": ["none", "local", "remote", "both"]
 																		},
+																		"readinessImpact": {
+																			"type": "string",
+																			"enum": ["none", "non_blocking", "blocking"]
+																		},
+																		"changedPaths": {
+																			"type": "array",
+																			"items": {
+																				"type": "string"
+																			}
+																		},
 																		"before": {
 																			"type": "object",
 																			"additionalProperties": {

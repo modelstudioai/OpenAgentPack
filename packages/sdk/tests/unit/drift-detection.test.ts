@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { buildReadinessBaseline } from "../../src/internal/planner/plan-semantics.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
 import { refreshState } from "../../src/internal/planner/refresh.ts";
 import type {
@@ -73,6 +74,7 @@ describe("drift-aware refresh", () => {
 		const refreshed = state.getResource({ type: "agent", name: "assistant", provider: "qoder" })!;
 		expect(refreshed.drift_status).toBe("drifted");
 		expect(refreshed.remote_hash).toBe(contentHash({ ...desired, description: "remote drift" }));
+		expect(refreshed.drift_paths).toEqual(["description"]);
 	});
 
 	test("keeps provider scoping during refresh", async () => {
@@ -117,6 +119,78 @@ describe("Qoder comparable fixtures", () => {
 });
 
 describe("planner drift classification", () => {
+	test("marks remote description-only drift as non-blocking without consulting reason text", async () => {
+		const desired = config.agents!.assistant!;
+		const desiredHash = contentHash(desired);
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({
+			address: { type: "agent", name: "assistant", provider: "qoder" },
+			remote_id: "agent_1",
+			content_hash: desiredHash,
+			desired_hash: desiredHash,
+			desired_comparable_hash: desiredHash,
+			desired_readiness_baseline: buildReadinessBaseline(desired),
+		});
+
+		await refreshState(state, new Map([["qoder", fakeProvider({ ...desired, description: "remote drift" })]]), {
+			config,
+		});
+		const plan = await buildPlan(config, state.getStateFile());
+
+		expect(plan.actions[0]).toMatchObject({
+			action: "update",
+			driftKind: "remote",
+			readinessImpact: "non_blocking",
+			changedPaths: ["description"],
+		});
+	});
+
+	test("keeps runtime-affecting remote drift blocking", async () => {
+		const desired = config.agents!.assistant!;
+		const desiredHash = contentHash(desired);
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({
+			address: { type: "agent", name: "assistant", provider: "qoder" },
+			remote_id: "agent_1",
+			content_hash: desiredHash,
+			desired_hash: desiredHash,
+			desired_comparable_hash: desiredHash,
+			desired_readiness_baseline: buildReadinessBaseline(desired),
+		});
+
+		await refreshState(state, new Map([["qoder", fakeProvider({ ...desired, model: "different" })]]), { config });
+		const plan = await buildPlan(config, state.getStateFile());
+
+		expect(plan.actions[0]).toMatchObject({
+			action: "update",
+			readinessImpact: "blocking",
+			changedPaths: ["model"],
+		});
+	});
+
+	test("marks a local description-only change as non-blocking when the state has a readiness baseline", async () => {
+		const previous = { ...config.agents!.assistant!, description: "previous" };
+		const plan = await buildPlan(config, {
+			resources: [
+				{
+					address: { type: "agent", name: "assistant", provider: "qoder" },
+					remote_id: "agent_1",
+					content_hash: contentHash(previous),
+					desired_hash: contentHash(previous),
+					desired_readiness_baseline: buildReadinessBaseline(previous),
+					drift_status: "in_sync",
+				},
+			],
+		});
+
+		expect(plan.actions[0]).toMatchObject({
+			action: "update",
+			driftKind: "local",
+			readinessImpact: "non_blocking",
+			changedPaths: ["description"],
+		});
+	});
+
 	test("plans update for remote drift without local yaml changes", async () => {
 		const desiredHash = contentHash(config.agents!.assistant!);
 		const plan = await buildPlan(config, {

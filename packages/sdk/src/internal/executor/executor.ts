@@ -1,7 +1,9 @@
 import { dirname, resolve } from "node:path";
 import { UserError } from "../errors.ts";
 import { computeComparableDesiredHash } from "../planner/comparable.ts";
+import { getResourceDeclaration } from "../planner/declaration.ts";
 import { computeResourceHash } from "../planner/hasher.ts";
+import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { ApiError, ConflictError } from "../providers/base-client.ts";
 import { readComparableIfSupported } from "../providers/drift-support.ts";
 import type { RemoteResource } from "../providers/interface.ts";
@@ -454,8 +456,10 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 		content_hash: hash,
 		desired_hash: hash,
 		desired_comparable_hash: remoteHash,
+		desired_readiness_baseline: buildReadinessBaseline(getResourceDeclaration(address, ctx.config)),
 		remote_hash: remoteHash,
 		remote_snapshot: remoteSnapshot,
+		drift_paths: [],
 		drift_status: remoteHash ? "in_sync" : undefined,
 	});
 	return adopted;

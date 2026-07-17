@@ -6,6 +6,7 @@ import { emitRuntimeFeedback, type RuntimeFeedbackSink } from "../types/runtime-
 import type { ResourceState } from "../types/state.ts";
 import { contentHash } from "../utils/hash.ts";
 import { getResourceDeclaration } from "./declaration.ts";
+import { diffChangedPaths } from "./plan-semantics.ts";
 
 export interface RefreshResult {
 	removed: ResourceState[];
@@ -75,6 +76,10 @@ export async function refreshState(
 				const desiredComparableHash = desiredComparable === null ? undefined : contentHash(desiredComparable);
 				const baselineHash = res.desired_comparable_hash ?? desiredComparableHash;
 				const driftStatus = baselineHash && remoteHash !== baselineHash ? "drifted" : "in_sync";
+				const driftPaths =
+					driftStatus === "drifted" && desiredComparable !== null
+						? diffChangedPaths(desiredComparable, remote.comparable)
+						: [];
 
 				state.setResource({
 					...res,
@@ -84,6 +89,7 @@ export async function refreshState(
 					desired_comparable_hash: res.desired_comparable_hash ?? desiredComparableHash,
 					remote_hash: remoteHash,
 					remote_snapshot: remote.snapshot ?? remote.comparable,
+					drift_paths: driftPaths,
 					drift_status: driftStatus,
 				});
 				dirty = true;
