@@ -150,6 +150,7 @@ describe("open-source repository invariants", () => {
 		expect(workflow).toContain('git config user.name "github-actions[bot]"');
 		expect(workflow).toContain("github-actions[bot]@users.noreply.github.com");
 		expect(workflow).toContain("registry-ready:");
+		expect(workflow).toMatch(/registry-ready:[\s\S]*?timeout-minutes: 20/);
 		expect(workflow).toContain("post-release-consumer:");
 		expect(workflow).toContain("os: [ubuntu-latest, windows-latest, macos-latest]");
 		expect(workflow).toContain("node: [22, 24]");

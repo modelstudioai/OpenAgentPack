@@ -25,7 +25,8 @@ export function registryVersion(raw: string, name: string): string {
 	} catch {
 		// Fall through to the stable error below.
 	}
-	throw new Error(`npm registry returned an invalid version for ${name}`);
+	const summary = raw.trim().replaceAll(/\s+/g, " ").slice(0, 200) || "<empty>";
+	throw new Error(`npm registry returned an invalid version for ${name}; received: ${summary}`);
 }
 
 export function commonRegistryVersion(entries: ReadonlyArray<{ name: string; version: string }>): string {
@@ -46,11 +47,14 @@ function run(command: string[], cwd: string, stdout: "inherit" | "pipe" = "inher
 }
 
 function npmVersion(name: string, requested: string): string {
-	const result = Bun.spawnSync(["npm", "view", `${name}@${requested}`, "version", "--json", "--registry", REGISTRY], {
-		cwd: root,
-		stdout: "pipe",
-		stderr: "pipe",
-	});
+	const result = Bun.spawnSync(
+		["npm", "view", `${name}@${requested}`, "version", "--json", "--prefer-online", "--registry", REGISTRY],
+		{
+			cwd: root,
+			stdout: "pipe",
+			stderr: "pipe",
+		},
+	);
 	if (result.exitCode !== 0) {
 		throw new Error(result.stderr.toString().trim() || `${name}@${requested} is not visible in the npm registry`);
 	}
@@ -72,20 +76,29 @@ export function resolvePublishedVersion(requested: string): string {
 export async function waitForRegistry(
 	requested: string,
 	options: { attempts?: number; delayMs?: number } = {},
+	dependencies: {
+		resolve?: (requested: string) => string;
+		sleep?: (delayMs: number) => Promise<void>;
+		log?: (message: string) => void;
+	} = {},
 ): Promise<string> {
-	const attempts = options.attempts ?? 30;
+	const attempts = options.attempts ?? 90;
 	const delayMs = options.delayMs ?? 10_000;
+	const resolve = dependencies.resolve ?? resolvePublishedVersion;
+	const sleep = dependencies.sleep ?? Bun.sleep;
+	const log = dependencies.log ?? console.log;
 	let lastError: unknown;
 	for (let attempt = 1; attempt <= attempts; attempt++) {
 		try {
-			const version = resolvePublishedVersion(requested);
-			console.log(`✓ All published packages are visible at ${version}`);
+			const version = resolve(requested);
+			log(`✓ All published packages are visible at ${version}`);
 			return version;
 		} catch (error) {
 			lastError = error;
 			if (attempt === attempts) break;
-			console.log(`Registry not ready (${attempt}/${attempts}); retrying in ${delayMs / 1000}s...`);
-			await Bun.sleep(delayMs);
+			const reason = error instanceof Error ? error.message : String(error);
+			log(`Registry not ready (${attempt}/${attempts}): ${reason}; retrying in ${delayMs / 1000}s...`);
+			await sleep(delayMs);
 		}
 	}
 	throw lastError;
