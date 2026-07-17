@@ -209,7 +209,7 @@ export type AgentsConfig = {
 	[key: string]: string;
 };
 
-/** GET /api/config — effective provider config: on-disk ~/.agents/config.json with process.env (and therefore .env) fallback. */
+/** GET /api/config — effective provider config: on-disk ~/.agents/config.json with process.env/.env fallback for all provider fields. */
 export type AgentsConfigSnapshot = Partial<AgentsConfig>;
 
 export type SaveAgentsConfigOptions = { body: AgentsConfig };

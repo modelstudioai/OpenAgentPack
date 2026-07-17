@@ -3,7 +3,6 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArtifactAccessProvider } from "@/lib/artifact-access-context";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
-import { collectDeliveredFiles, extractArtifacts, lastAssistantText } from "@/lib/view/artifact";
 import { deriveRunPhase, isRunLoadingDetails, runCreatingLabel, runStatusLabel } from "@/lib/view/run-phase";
 import { buildRunTimeline } from "@/lib/view/run-timeline";
 import { isTaskInProgress } from "@/lib/view/task-view";
@@ -11,16 +10,13 @@ import { typeIcons } from "./constants";
 import { useRunFollowup } from "./hooks/useRunFollowup";
 import { useRunTimelineScroll } from "./hooks/useRunTimelineScroll";
 import { useTaskRunStream } from "./hooks/useTaskRunStream";
-import { RunArtifacts } from "./RunArtifacts";
 import { RunHeader } from "./RunHeader";
 import { RunInput } from "./RunInput";
-import { RunMobileTabs } from "./RunMobileTabs";
 import { RunTimeline } from "./RunTimeline";
-import type { MobileTab, TaskRunModalProps } from "./types";
+import type { TaskRunModalProps } from "./types";
 
-export default function TaskRunModal({ open, task, onTaskUpdate, onClose, onMakeSame }: TaskRunModalProps) {
+export default function TaskRunModal({ open, task, onTaskUpdate, onClose }: TaskRunModalProps) {
 	const [isFull, setIsFull] = useState(false);
-	const [mobileTab, setMobileTab] = useState<MobileTab>("product");
 	const submitInFlightRef = useRef(false);
 
 	const taskRef = useRef(task);
@@ -84,15 +80,6 @@ export default function TaskRunModal({ open, task, onTaskUpdate, onClose, onMake
 
 	const Icon = typeIcons[task.type];
 	const isLoadingDetails = isRunLoadingDetails(task, phase);
-	const isCanceled = phase === "canceled";
-	const resultText = lastAssistantText(task.events);
-	const { segments: artifactSegments } = extractArtifacts(resultText);
-	// Delivered artifact files (qoder DeliverArtifacts) carry only a file_id, so they can't be found
-	// by the URL scanner — collect them from event metadata and append as download cards.
-	const deliveredSegments = collectDeliveredFiles(task.events).map(
-		(file) => ({ type: "delivered_file", file }) as const,
-	);
-	const segments = [...artifactSegments, ...deliveredSegments];
 	const timelineItems = buildRunTimeline(task.events, { isRunning });
 	const creatingLabel = runCreatingLabel(task);
 	const statusLabel = runStatusLabel(task, phase);
@@ -100,7 +87,7 @@ export default function TaskRunModal({ open, task, onTaskUpdate, onClose, onMake
 	return createPortal(
 		<ArtifactAccessProvider onRegenerate={regenerateDownloadLink} regenerateBusy={send.sending}>
 			<div className="case-modal-overlay">
-				<div className={`case-modal task-run-modal ${isFull ? "full" : ""}`} data-mtab={mobileTab}>
+				<div className={`case-modal task-run-modal ${isFull ? "full" : ""}`}>
 					<button className="case-modal-close" onClick={onClose} type="button">
 						<X size={20} />
 					</button>
@@ -111,22 +98,9 @@ export default function TaskRunModal({ open, task, onTaskUpdate, onClose, onMake
 						statusLabel={statusLabel}
 						isFull={isFull}
 						onToggleFull={() => setIsFull((v) => !v)}
-						onMakeSame={onMakeSame}
-						onClose={onClose}
 					/>
 
-					<RunMobileTabs mobileTab={mobileTab} onTabChange={setMobileTab} />
-
 					<div className="case-modal-body">
-						<RunArtifacts
-							Icon={Icon}
-							phase={phase}
-							creatingLabel={creatingLabel}
-							errorText={task.error || (isCanceled ? "任务已取消。" : "执行过程中出现异常，请稍后重试。")}
-							segments={segments}
-							resultText={resultText}
-						/>
-
 						<div className="case-modal-chat">
 							<RunTimeline
 								task={task}

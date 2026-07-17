@@ -54,16 +54,23 @@ describe("agents-config", () => {
 		const prevProvider = process.env.AGENTS_PROVIDER;
 		const prevKey = process.env.DASHSCOPE_API_KEY;
 		const prevWs = process.env.BAILIAN_WORKSPACE_ID;
+		const prevQoderPat = process.env.QODER_PAT;
+		const prevArkKey = process.env.ARK_API_KEY;
+		const prevAnthropicKey = process.env.ANTHROPIC_API_KEY;
 		process.env.AGENTS_CONFIG_PATH = path;
 		delete process.env.AGENTS_PROVIDER;
 		process.env.DASHSCOPE_API_KEY = "from-env-key";
 		process.env.BAILIAN_WORKSPACE_ID = "from-env-ws";
+		process.env.QODER_PAT = "from-env-qoder";
+		delete process.env.ARK_API_KEY;
+		delete process.env.ANTHROPIC_API_KEY;
 		try {
 			const config = await readProviderConfig();
 			expect(config).toEqual({
 				AGENTS_PROVIDER: "bailian",
 				DASHSCOPE_API_KEY: "from-env-key",
 				BAILIAN_WORKSPACE_ID: "from-env-ws",
+				QODER_PAT: "from-env-qoder",
 			});
 		} finally {
 			if (prevConfigPath === undefined) delete process.env.AGENTS_CONFIG_PATH;
@@ -74,6 +81,12 @@ describe("agents-config", () => {
 			else process.env.DASHSCOPE_API_KEY = prevKey;
 			if (prevWs === undefined) delete process.env.BAILIAN_WORKSPACE_ID;
 			else process.env.BAILIAN_WORKSPACE_ID = prevWs;
+			if (prevQoderPat === undefined) delete process.env.QODER_PAT;
+			else process.env.QODER_PAT = prevQoderPat;
+			if (prevArkKey === undefined) delete process.env.ARK_API_KEY;
+			else process.env.ARK_API_KEY = prevArkKey;
+			if (prevAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+			else process.env.ANTHROPIC_API_KEY = prevAnthropicKey;
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
@@ -84,9 +97,15 @@ describe("agents-config", () => {
 		const prevConfigPath = process.env.AGENTS_CONFIG_PATH;
 		const prevKey = process.env.DASHSCOPE_API_KEY;
 		const prevWs = process.env.BAILIAN_WORKSPACE_ID;
+		const prevQoderPat = process.env.QODER_PAT;
+		const prevArkKey = process.env.ARK_API_KEY;
+		const prevAnthropicKey = process.env.ANTHROPIC_API_KEY;
 		process.env.AGENTS_CONFIG_PATH = path;
 		process.env.DASHSCOPE_API_KEY = "env-key";
 		process.env.BAILIAN_WORKSPACE_ID = "env-ws";
+		delete process.env.QODER_PAT;
+		delete process.env.ARK_API_KEY;
+		delete process.env.ANTHROPIC_API_KEY;
 		try {
 			await writeFile(
 				path,
@@ -113,6 +132,12 @@ describe("agents-config", () => {
 			else process.env.DASHSCOPE_API_KEY = prevKey;
 			if (prevWs === undefined) delete process.env.BAILIAN_WORKSPACE_ID;
 			else process.env.BAILIAN_WORKSPACE_ID = prevWs;
+			if (prevQoderPat === undefined) delete process.env.QODER_PAT;
+			else process.env.QODER_PAT = prevQoderPat;
+			if (prevArkKey === undefined) delete process.env.ARK_API_KEY;
+			else process.env.ARK_API_KEY = prevArkKey;
+			if (prevAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+			else process.env.ANTHROPIC_API_KEY = prevAnthropicKey;
 			await rm(dir, { recursive: true, force: true });
 		}
 	});

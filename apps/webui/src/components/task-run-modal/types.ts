@@ -1,9 +1,10 @@
+import type { LucideIcon as LucideIconType } from "lucide-react";
 import type { RunPhase } from "@/lib/view/run-phase";
 import type { Task } from "../TaskBox";
 
 export type { RunPhase };
-
-export type LucideIcon = React.ComponentType<{ size?: number }>;
+export type LucideIcon = LucideIconType;
+export type MobileTab = "product" | "chat";
 
 export interface TaskRunModalProps {
 	open: boolean;
@@ -12,8 +13,6 @@ export interface TaskRunModalProps {
 	onClose: () => void;
 	onMakeSame?: (input: { prompt: string; agentId?: string }) => void;
 }
-
-export type MobileTab = "product" | "chat";
 
 export interface SendState {
 	sending: boolean;

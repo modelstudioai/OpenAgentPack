@@ -1,9 +1,11 @@
 import type { SessionEvent } from "@openagentpack/sdk";
+import { type ArtifactSegment, collectDeliveredFiles, extractArtifacts } from "./artifact";
 import { type DisplayBucket, displayBucketOf, eventData, eventText } from "./session-event-display";
 
 export type RunTimelineItem =
 	| { kind: "message"; event: SessionEvent; key: string }
-	| { kind: "tool_chain"; events: SessionEvent[]; key: string; isActive: boolean };
+	| { kind: "tool_chain"; events: SessionEvent[]; key: string; isActive: boolean }
+	| { kind: "artifact"; segments: ArtifactSegment[]; key: string };
 
 /** 工具名 → 统计摘要用的中文类别 */
 const TOOL_SUMMARY_LABELS: Record<string, string> = {
@@ -248,7 +250,15 @@ export function buildToolChainRows(events: SessionEvent[]): ToolChainRow[] {
 	return rows;
 }
 
-/** 将 session events 拆成消息块与工具链块，供运行轨迹面板渲染。 */
+/** 对单条 assistant 消息提取 Artifact segments（过滤掉纯文本段） */
+function extractMessageArtifacts(event: SessionEvent): ArtifactSegment[] {
+	const text = eventText(event);
+	if (!text) return [];
+	const { segments } = extractArtifacts(text);
+	return segments.filter((s) => s.type !== "text");
+}
+
+/** 将 session events 拆成消息块、工具链块与产物块，供运行轨迹面板渲染。 */
 export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: boolean } = {}): RunTimelineItem[] {
 	const items: RunTimelineItem[] = [];
 	let chainBuffer: SessionEvent[] = [];
@@ -257,7 +267,7 @@ export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: 
 
 	const flushChain = (cursor: number) => {
 		if (chainBuffer.length === 0) return;
-		// 仅有空 thinking 标记、无可展示行时不生成操作区块（避免「暂无工具操作记录」）
+		// Ignore provider-only thinking markers when they do not produce a visible operation row.
 		if (buildToolChainRows(chainBuffer).length === 0) {
 			chainBuffer = [];
 			return;
@@ -287,6 +297,18 @@ export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: 
 				event,
 				key: timelineEventKey(event, i),
 			});
+
+			// 紧跟 assistant 消息后插入内联产物卡片
+			if (event.role !== "user") {
+				const artifactSegments = extractMessageArtifacts(event);
+				if (artifactSegments.length > 0) {
+					items.push({
+						kind: "artifact",
+						segments: artifactSegments,
+						key: `artifact:${timelineEventKey(event, i)}`,
+					});
+				}
+			}
 			continue;
 		}
 
@@ -307,7 +329,28 @@ export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: 
 	}
 
 	flushChain(events.length);
+
+	// 末尾追加通过 Files API 交付的文件（DeliveredFile），它们无法从消息文本中提取
+	const deliveredFiles = collectDeliveredFiles(events);
+	if (deliveredFiles.length > 0) {
+		const deliveredSegments: ArtifactSegment[] = deliveredFiles.map(
+			(file) => ({ type: "delivered_file", file }) as const,
+		);
+		items.push({
+			kind: "artifact",
+			segments: deliveredSegments,
+			key: `delivered:${deliveredFiles.map((f) => f.file_id).join("|")}`,
+		});
+	}
+
 	return items;
+}
+
+/** Extract visible message events for consumers that do not need tool/artifact rows. */
+export function getDisplayEvents(task: { events: SessionEvent[] }): SessionEvent[] {
+	return buildRunTimeline(task.events)
+		.filter((item): item is Extract<RunTimelineItem, { kind: "message" }> => item.kind === "message")
+		.map((item) => item.event);
 }
 
 interface ShouldShowAgentReplyingOptions {
@@ -336,11 +379,4 @@ export function shouldShowAgentReplying({
 	// 追问已提交但尚未进入运行态：仅在最后一条是用户消息时提示。
 	const last = timelineItems[timelineItems.length - 1];
 	return last?.kind === "message" && last.event.role === "user";
-}
-
-/** 从 timeline 中提取纯 message 类 events（供去重测试与展示过滤） */
-export function getDisplayEvents(task: { events: SessionEvent[] }): SessionEvent[] {
-	return buildRunTimeline(task.events)
-		.filter((item): item is Extract<RunTimelineItem, { kind: "message" }> => item.kind === "message")
-		.map((item) => item.event);
 }

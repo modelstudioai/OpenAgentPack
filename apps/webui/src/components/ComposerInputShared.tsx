@@ -80,8 +80,9 @@ export function PromptGhostEditor({
 		<div className={wrapClassName}>
 			<PromptEditorSlot slotId={slotId} className={`prompt-editor-slot ${editorClassName}`} />
 			<div className={hintRowClassName}>
+				<span className={`composer-mobile-placeholder ${hasValue ? "hidden" : ""}`}>输入你的想法</span>
 				<span className={`prompt-ghost ${hasValue ? "hidden" : ghostClassName}`.trim()}>{ghostText}</span>
-				<span className={`shortcut-hint ${hasValue ? "hidden" : ""}`}>
+				<span className={`shortcut-hint ${hasValue ? "hidden" : ""}`} aria-hidden="true">
 					<kbd>Tab</kbd>
 				</span>
 			</div>
