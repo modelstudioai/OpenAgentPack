@@ -3,7 +3,7 @@ import { AGENTS_CONFIG_PROVIDERS } from "@/lib/agents-config";
 
 export const AgentsConfigSchema = z
 	.object({
-		AGENTS_PROVIDER: z.enum(AGENTS_CONFIG_PROVIDERS).optional(),
+		AGENTS_PROVIDER: z.enum(AGENTS_CONFIG_PROVIDERS),
 	})
 	.catchall(z.string())
 	.openapi("AgentsConfig");

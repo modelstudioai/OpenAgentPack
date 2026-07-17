@@ -6,6 +6,18 @@
 	},
 	"components": {
 		"schemas": {
+			"AgentsConfigSnapshot": {
+				"type": "object",
+				"properties": {
+					"AGENTS_PROVIDER": {
+						"type": "string",
+						"enum": ["bailian", "qoder", "ark", "claude"]
+					}
+				},
+				"additionalProperties": {
+					"type": "string"
+				}
+			},
 			"ErrorResponse": {
 				"type": "object",
 				"properties": {
@@ -21,13 +33,97 @@
 				},
 				"required": ["error"]
 			},
+			"AgentsConfigReady": {
+				"type": "object",
+				"properties": {
+					"ready": {
+						"type": "boolean"
+					},
+					"provider": {
+						"type": "string",
+						"enum": ["bailian", "qoder", "ark", "claude"]
+					}
+				},
+				"required": ["ready"]
+			},
+			"AgentsConfig": {
+				"type": "object",
+				"properties": {
+					"AGENTS_PROVIDER": {
+						"type": "string",
+						"enum": ["bailian", "qoder", "ark", "claude"]
+					}
+				},
+				"required": ["AGENTS_PROVIDER"],
+				"additionalProperties": {
+					"type": "string"
+				}
+			},
+			"SaveAgentsConfigBody": {
+				"type": "object",
+				"properties": {
+					"AGENTS_PROVIDER": {
+						"type": "string",
+						"enum": ["bailian", "qoder", "ark", "claude"]
+					}
+				},
+				"required": ["AGENTS_PROVIDER"],
+				"additionalProperties": {
+					"type": "string"
+				}
+			},
 			"SessionListResponse": {
 				"type": "object",
 				"properties": {
 					"data": {
 						"type": "array",
 						"items": {
-							"$ref": "#/components/schemas/Session"
+							"type": "object",
+							"properties": {
+								"session_id": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string"
+								},
+								"title": {
+									"type": "string"
+								},
+								"agent": {
+									"type": "object",
+									"properties": {
+										"agent_id": {
+											"type": "string"
+										},
+										"name": {
+											"type": "string"
+										},
+										"version": {
+											"type": "number"
+										}
+									},
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"environment_id": {
+									"type": "string",
+									"nullable": true
+								},
+								"created_at": {
+									"type": "string"
+								},
+								"updated_at": {
+									"type": "string"
+								},
+								"metadata": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["session_id"]
 						}
 					},
 					"next_page_token": {
@@ -37,126 +133,450 @@
 				},
 				"required": ["data"]
 			},
-			"Session": {
+			"SessionDetailResponse": {
+				"type": "object",
+				"properties": {
+					"session": {
+						"type": "object",
+						"properties": {
+							"session_id": {
+								"type": "string"
+							},
+							"status": {
+								"type": "string"
+							},
+							"title": {
+								"type": "string"
+							},
+							"agent": {
+								"type": "object",
+								"properties": {
+									"agent_id": {
+										"type": "string"
+									},
+									"name": {
+										"type": "string"
+									},
+									"version": {
+										"type": "number"
+									}
+								},
+								"additionalProperties": {
+									"nullable": true
+								}
+							},
+							"environment_id": {
+								"type": "string",
+								"nullable": true
+							},
+							"created_at": {
+								"type": "string"
+							},
+							"updated_at": {
+								"type": "string"
+							},
+							"metadata": {
+								"type": "object",
+								"additionalProperties": {
+									"type": "string"
+								}
+							}
+						},
+						"required": ["session_id"]
+					},
+					"events": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"event_id": {
+									"type": "string"
+								},
+								"type": {
+									"type": "string"
+								},
+								"role": {
+									"type": "string"
+								},
+								"created_at": {
+									"type": "string"
+								},
+								"content": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"type": {
+												"type": "string"
+											},
+											"text": {
+												"type": "string"
+											},
+											"data": {
+												"nullable": true
+											}
+										},
+										"required": ["type"],
+										"additionalProperties": {
+											"nullable": true
+										}
+									}
+								},
+								"metadata": {
+									"type": "object",
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"is_error": {
+									"type": "boolean",
+									"nullable": true
+								},
+								"code": {
+									"type": "string",
+									"nullable": true
+								},
+								"message": {
+									"type": "string",
+									"nullable": true
+								}
+							},
+							"required": ["type"]
+						}
+					},
+					"events_next_page_token": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["session", "events"]
+			},
+			"SessionDeleteResponse": {
 				"type": "object",
 				"properties": {
 					"session_id": {
 						"type": "string"
 					},
+					"deleted": {
+						"type": "boolean"
+					}
+				},
+				"required": ["session_id", "deleted"]
+			},
+			"SessionEventsPageResponse": {
+				"type": "object",
+				"properties": {
+					"events": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"event_id": {
+									"type": "string"
+								},
+								"type": {
+									"type": "string"
+								},
+								"role": {
+									"type": "string"
+								},
+								"created_at": {
+									"type": "string"
+								},
+								"content": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"type": {
+												"type": "string"
+											},
+											"text": {
+												"type": "string"
+											},
+											"data": {
+												"nullable": true
+											}
+										},
+										"required": ["type"],
+										"additionalProperties": {
+											"nullable": true
+										}
+									}
+								},
+								"metadata": {
+									"type": "object",
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"is_error": {
+									"type": "boolean",
+									"nullable": true
+								},
+								"code": {
+									"type": "string",
+									"nullable": true
+								},
+								"message": {
+									"type": "string",
+									"nullable": true
+								}
+							},
+							"required": ["type"]
+						}
+					},
+					"events_next_page_token": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["events"]
+			},
+			"ProviderFileInfo": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"filename": {
+						"type": "string"
+					},
+					"mime_type": {
+						"type": "string"
+					},
+					"size_bytes": {
+						"type": "number"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"downloadable": {
+						"type": "boolean"
+					},
 					"status": {
 						"type": "string"
 					},
-					"title": {
+					"purpose": {
 						"type": "string"
 					},
-					"agent": {
-						"type": "object",
-						"properties": {
-							"agent_id": {
-								"type": "string"
-							},
-							"name": {
-								"type": "string"
-							},
-							"version": {
-								"type": "number"
-							}
-						},
-						"additionalProperties": {
-							"nullable": true
-						}
+					"available": {
+						"type": "boolean"
+					}
+				},
+				"required": ["id", "filename", "mime_type", "size_bytes", "created_at"]
+			},
+			"ProviderSkillInfo": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"source": {
+						"type": "string",
+						"enum": ["custom", "official"]
+					},
+					"status": {
+						"type": "string",
+						"enum": ["checking", "active", "rejected", "deleted"]
+					},
+					"latest_version": {
+						"type": "string"
 					},
 					"created_at": {
 						"type": "string"
 					},
 					"updated_at": {
 						"type": "string"
-					},
-					"metadata": {
-						"type": "object",
-						"additionalProperties": {
-							"type": "string"
-						}
 					}
 				},
-				"required": ["session_id"]
-			},
-			"SessionDetailResponse": {
-				"type": "object",
-				"properties": {
-					"session": {
-						"$ref": "#/components/schemas/Session"
-					},
-					"events": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/SessionEvent"
-						}
-					}
-				},
-				"required": ["session", "events"]
-			},
-			"SessionEvent": {
-				"type": "object",
-				"properties": {
-					"event_id": {
-						"type": "string"
-					},
-					"type": {
-						"type": "string"
-					},
-					"role": {
-						"type": "string"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"content": {
-						"type": "array",
-						"items": {
-							"type": "object",
-							"properties": {
-								"type": {
-									"type": "string"
-								},
-								"text": {
-									"type": "string"
-								},
-								"data": {
-									"nullable": true
-								}
-							},
-							"required": ["type"],
-							"additionalProperties": {
-								"nullable": true
-							}
-						}
-					},
-					"metadata": {
-						"type": "object",
-						"additionalProperties": {
-							"nullable": true
-						}
-					},
-					"is_error": {
-						"type": "boolean",
-						"nullable": true
-					},
-					"code": {
-						"type": "string",
-						"nullable": true
-					},
-					"message": {
-						"type": "string",
-						"nullable": true
-					}
-				},
-				"required": ["type"]
+				"required": ["id", "name", "source", "status"]
 			}
 		},
 		"parameters": {}
 	},
 	"paths": {
+		"/api/config": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "Read local OpenAgentPack playground config (~/.agents/config.json)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentsConfigSnapshot"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"put": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SaveAgentsConfigBody"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Save local OpenAgentPack playground config (~/.agents/config.json)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentsConfig"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/config/ready": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "Whether runtime provider credentials are configured in the server process",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentsConfigReady"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/agents": {
 			"get": {
 				"parameters": [
@@ -299,7 +719,8 @@
 																						"memory_store",
 																						"skill",
 																						"agent",
-																						"deployment"
+																						"deployment",
+																						"file"
 																					]
 																				},
 																				"name": {
@@ -322,7 +743,15 @@
 																	"properties": {
 																		"type": {
 																			"type": "string",
-																			"enum": ["environment", "vault", "memory_store", "skill", "agent", "deployment"]
+																			"enum": [
+																				"environment",
+																				"vault",
+																				"memory_store",
+																				"skill",
+																				"agent",
+																				"deployment",
+																				"file"
+																			]
 																		},
 																		"name": {
 																			"type": "string"
@@ -354,7 +783,8 @@
 																						"memory_store",
 																						"skill",
 																						"agent",
-																						"deployment"
+																						"deployment",
+																						"file"
 																					]
 																				},
 																				"name": {
@@ -398,7 +828,8 @@
 																							"memory_store",
 																							"skill",
 																							"agent",
-																							"deployment"
+																							"deployment",
+																							"file"
 																						]
 																					},
 																					"name": {
@@ -471,6 +902,845 @@
 				}
 			}
 		},
+		"/api/cloud-agents": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "prefix",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List raw cloud agents (the resource center's source of truth)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"agents": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"name": {
+														"type": "string"
+													},
+													"description": {
+														"type": "string",
+														"nullable": true
+													},
+													"model": {
+														"nullable": true
+													},
+													"system": {
+														"type": "string"
+													},
+													"tools": {
+														"nullable": true
+													},
+													"skills": {
+														"nullable": true
+													},
+													"mcp_servers": {
+														"nullable": true
+													},
+													"metadata": {
+														"type": "object",
+														"additionalProperties": {
+															"type": "string"
+														}
+													},
+													"version": {
+														"type": "number"
+													},
+													"type": {
+														"type": "string"
+													},
+													"workspace_id": {
+														"type": "string"
+													},
+													"created_at": {
+														"type": "string"
+													},
+													"updated_at": {
+														"type": "string"
+													},
+													"archived_at": {
+														"type": "string",
+														"nullable": true
+													}
+												},
+												"required": ["id"]
+											}
+										}
+									},
+									"required": ["agents"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/cloud-agents/{agentId}/archive": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Archive a cloud agent (soft delete → status=archived)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"ok": {
+											"type": "boolean",
+											"enum": [true]
+										}
+									},
+									"required": ["ok"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/cloud-agents/{agentId}": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"model": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["model"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Update a playbook agent's config (model switch → sync-override)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"ok": {
+											"type": "boolean",
+											"enum": [true]
+										}
+									},
+									"required": ["ok"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/environments": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "List raw cloud environments (the shared base sandbox resource)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"environments": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"name": {
+														"type": "string"
+													},
+													"description": {
+														"type": "string",
+														"nullable": true
+													},
+													"config": {
+														"nullable": true
+													},
+													"metadata": {
+														"type": "object",
+														"additionalProperties": {
+															"type": "string"
+														}
+													},
+													"scope": {
+														"type": "string"
+													},
+													"version": {
+														"type": "number"
+													},
+													"type": {
+														"type": "string"
+													},
+													"workspace_id": {
+														"type": "string"
+													},
+													"created_at": {
+														"type": "string"
+													},
+													"updated_at": {
+														"type": "string"
+													},
+													"archived_at": {
+														"type": "string",
+														"nullable": true
+													}
+												},
+												"required": ["id"]
+											}
+										}
+									},
+									"required": ["environments"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"description": {
+										"type": "string"
+									},
+									"metadata": {
+										"type": "object",
+										"additionalProperties": {
+											"type": "string"
+										}
+									}
+								},
+								"required": ["name"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Create a base cloud environment (cloud + unrestricted networking)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"environment": {
+											"type": "object",
+											"properties": {
+												"id": {
+													"type": "string",
+													"nullable": true
+												},
+												"type": {
+													"type": "string"
+												},
+												"version": {
+													"type": "number"
+												}
+											},
+											"required": ["id", "type"]
+										}
+									},
+									"required": ["environment"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/environments/{environmentId}": {
+			"delete": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "environmentId",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Delete a cloud environment by remote id",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"type": {
+											"type": "string"
+										}
+									},
+									"required": ["id", "type"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/vaults": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "List raw cloud vaults (the shared credential store resource)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"vaults": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"display_name": {
+														"type": "string"
+													},
+													"metadata": {
+														"type": "object",
+														"additionalProperties": {
+															"type": "string"
+														}
+													},
+													"type": {
+														"type": "string"
+													},
+													"created_at": {
+														"type": "string",
+														"nullable": true
+													},
+													"updated_at": {
+														"type": "string",
+														"nullable": true
+													},
+													"archived_at": {
+														"type": "string",
+														"nullable": true
+													}
+												},
+												"required": ["id"]
+											}
+										}
+									},
+									"required": ["vaults"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"metadata": {
+										"type": "object",
+										"additionalProperties": {
+											"type": "string"
+										}
+									},
+									"key": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["name"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Create a base cloud vault holding the user-supplied DASHSCOPE_API_KEY",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string",
+											"nullable": true
+										},
+										"type": {
+											"type": "string"
+										},
+										"version": {
+											"type": "number"
+										}
+									},
+									"required": ["id", "type"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/vaults/{vaultId}": {
+			"delete": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "vaultId",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Delete a cloud vault by remote id",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"type": {
+											"type": "string"
+										}
+									},
+									"required": ["id", "type"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/sessions": {
 			"get": {
 				"parameters": [
@@ -489,6 +1759,14 @@
 						},
 						"required": false,
 						"name": "agentId",
+						"in": "query"
+					},
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "pageToken",
 						"in": "query"
 					}
 				],
@@ -559,11 +1837,39 @@
 										"type": "string",
 										"minLength": 1
 									},
+									"environmentId": {
+										"type": "string",
+										"minLength": 1
+									},
+									"vaultIds": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
 									"title": {
+										"type": "string"
+									},
+									"files": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"fileId": {
+													"type": "string"
+												},
+												"mountPath": {
+													"type": "string"
+												}
+											},
+											"required": ["fileId", "mountPath"]
+										}
+									},
+									"model": {
 										"type": "string"
 									}
 								},
-								"required": ["agentId", "prompt"]
+								"required": ["agentId", "prompt", "environmentId"]
 							}
 						}
 					}
@@ -649,6 +1955,169 @@
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/SessionDetailResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "agentId",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Session deleted",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionDeleteResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}/events": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "agentId",
+						"in": "query"
+					},
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "pageToken",
+						"in": "query"
+					},
+					{
+						"schema": {
+							"type": "integer",
+							"nullable": true
+						},
+						"required": false,
+						"name": "limit",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Paginated session events (newest page first; pass pageToken for older pages)",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SessionEventsPageResponse"
 								}
 							}
 						}
@@ -816,6 +2285,943 @@
 					},
 					"204": {
 						"description": "No active event buffer; caller should fetch the session detail once"
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/files": {
+			"post": {
+				"operationId": "uploadFile",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"file": {
+										"type": "string",
+										"format": "binary"
+									}
+								},
+								"required": ["file"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Upload a workspace file",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProviderFileInfo"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "File exceeds the upload size limit",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"get": {
+				"operationId": "listFiles",
+				"responses": {
+					"200": {
+						"description": "List workspace files",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"files": {
+											"type": "array",
+											"items": {
+												"$ref": "#/components/schemas/ProviderFileInfo"
+											}
+										}
+									},
+									"required": ["files"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/files/status": {
+			"post": {
+				"operationId": "getFileStatuses",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"fileIds": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								},
+								"required": ["fileIds"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Get file scan statuses",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"files": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"status": {
+														"type": "string"
+													},
+													"available": {
+														"type": "boolean"
+													}
+												},
+												"required": ["id"]
+											}
+										}
+									},
+									"required": ["files"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/files/{id}/download": {
+			"get": {
+				"operationId": "downloadFile",
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Resolve a short-lived file download URL",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"url": {
+											"type": "string"
+										},
+										"expires_at": {
+											"type": "string"
+										}
+									},
+									"required": ["url"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/files/{id}": {
+			"delete": {
+				"operationId": "deleteFile",
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "File deleted"
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/skills/upload-file": {
+			"post": {
+				"operationId": "uploadSkillFile",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"file": {
+										"type": "string",
+										"format": "binary"
+									}
+								},
+								"required": ["file"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Upload a skill archive as a file pending audit",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProviderFileInfo"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"413": {
+						"description": "Skill archive exceeds the upload size limit",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/skills": {
+			"post": {
+				"operationId": "createSkill",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"fileId": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["fileId"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Create a skill from an audited file",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProviderSkillInfo"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"get": {
+				"operationId": "listSkills",
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"enum": ["custom", "official"]
+						},
+						"required": false,
+						"name": "source",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List custom or official skills",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"skills": {
+											"type": "array",
+											"items": {
+												"$ref": "#/components/schemas/ProviderSkillInfo"
+											}
+										}
+									},
+									"required": ["skills"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/skills/warm": {
+			"post": {
+				"operationId": "warmSkill",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"url": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["name", "url"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Warm a custom skill until it is active",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"ok": {
+											"type": "boolean",
+											"enum": [true]
+										}
+									},
+									"required": ["ok"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/skills/status": {
+			"post": {
+				"operationId": "getSkillStatuses",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"skillIds": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
+								},
+								"required": ["skillIds"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Get skill scan statuses",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"skills": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"status": {
+														"type": "string",
+														"enum": ["checking", "active", "rejected", "deleted"]
+													}
+												},
+												"required": ["id"]
+											}
+										}
+									},
+									"required": ["skills"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/skills/{id}": {
+			"delete": {
+				"operationId": "deleteSkill",
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Skill deleted"
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/models": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "List the active provider's available models",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"models": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"display_name": {
+														"type": "string"
+													},
+													"is_enabled": {
+														"type": "boolean"
+													},
+													"is_new": {
+														"type": "boolean"
+													}
+												},
+												"required": ["id", "display_name"]
+											}
+										}
+									},
+									"required": ["models"]
+								}
+							}
+						}
 					},
 					"400": {
 						"description": "Bad request",

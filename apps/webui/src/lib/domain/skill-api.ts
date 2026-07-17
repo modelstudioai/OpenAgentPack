@@ -32,15 +32,15 @@ export async function createSkillFromFile(fileId: string): Promise<SkillSummary>
 }
 
 /** List the project's custom skills (workspace-level, newest first). */
-export async function listSkills(limit?: number): Promise<SkillSummary[]> {
-	const { data, error } = await listApiSkills({ query: { limit, source: "custom" } });
+export async function listSkills(): Promise<SkillSummary[]> {
+	const { data, error } = await listApiSkills({ query: { source: "custom" } });
 	if (error) throw new Error(formatApiErrorMessage(error, "获取 Skill 列表失败"));
 	return (data?.skills ?? []).filter((s) => s.source === "custom");
 }
 
 /** List the provider's built-in (official) skill catalog. Read-only — these can't be uploaded or deleted. */
-export async function listOfficialSkills(limit?: number): Promise<SkillSummary[]> {
-	const { data, error } = await listApiSkills({ query: { limit, source: "official" } });
+export async function listOfficialSkills(): Promise<SkillSummary[]> {
+	const { data, error } = await listApiSkills({ query: { source: "official" } });
 	if (error) throw new Error(formatApiErrorMessage(error, "获取内置 Skill 列表失败"));
 	return (data?.skills ?? []).filter((s) => s.source === "official");
 }

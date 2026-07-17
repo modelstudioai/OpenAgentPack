@@ -12,7 +12,8 @@
   bun run --cwd apps/server gen:openapi     # runs scripts/emit-openapi.ts
   ```
 
-  The snapshot can lag behind the route handlers; regenerate it to capture the latest endpoints.
+  The snapshot is required to match the running server. `apps/server/tests/openapi-contract.test.ts`
+  checks both route coverage and snapshot freshness in CI.
 
 ## Registered route groups
 
@@ -29,21 +30,16 @@
 | Skills | `routes/skills.ts` |
 | Models | `routes/models.ts` |
 
-Routes are defined with `@hono/zod-openapi`'s `createRoute`, so each route's request and response shapes are validated by Zod schemas and surfaced in the OpenAPI document.
+Routes are defined with `@hono/zod-openapi`'s `createRoute`, so request validation, typed responses,
+and OpenAPI generation share the same Zod schemas. Multipart files and skill uploads use the same
+route-definition seam while retaining their upload-specific validation.
 
-## Documented endpoints (committed snapshot)
+## Documented endpoints
 
-The committed `openapi.json` (`openapi: 3.0.0`, title `OpenAgentPack API`) currently documents the agents and sessions surface:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/agents` | List agents with readiness. Optional `agentId` query param. |
-| GET | `/api/sessions` | List sessions for an agent. |
-| POST | `/api/sessions` | Create a session. Returns `session_id`. |
-| GET | `/api/sessions/{sessionId}` | Session detail with events. |
-| DELETE | `/api/sessions/{sessionId}` | Delete a session. |
-| POST | `/api/sessions/{sessionId}/messages` | Send a message; returns the updated session with events. |
-| GET | `/api/sessions/{sessionId}/stream` | Stream session events as Server-Sent Events. |
+The committed `openapi.json` (`openapi: 3.0.0`, title `OpenAgentPack API`) is the complete generated
+reference for every `/api/*` operation. It covers config, agents, environments, vaults, sessions,
+files, skills, and models. Read that file or `GET /openapi.json` for the exact methods, paths,
+parameters, and schemas; this page intentionally does not maintain a second handwritten endpoint list.
 
 The SSE stream emits frames with event types `event`, `done`, and `ping`. A `410` response means the event buffer is no longer active — the caller should fetch the session detail once.
 

@@ -12,7 +12,7 @@
 		"start": "bun run src/index.ts",
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
-		"gen:openapi": "bun run scripts/emit-openapi.ts"
+		"gen:openapi": "bun run scripts/emit-openapi.ts && biome format --write openapi.json"
 	},
 	"dependencies": {
 		"@hono/zod-openapi": "^1.4.0",

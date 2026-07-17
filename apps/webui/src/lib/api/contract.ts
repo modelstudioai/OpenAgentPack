@@ -59,7 +59,7 @@ export type CreateSkillFromFileOptions = { body: { fileId: string } };
 // `source` selects the catalog: "custom" (workspace-uploaded, the default) or "official" (the
 // provider's built-in catalog). The provider requires this be explicit to return official skills.
 // Omitted → custom.
-export type ListSkillsOptions = { query?: { limit?: number; source?: "custom" | "official" } };
+export type ListSkillsOptions = { query?: { source?: "custom" | "official" } };
 export type DeleteSkillOptions = { path: { skillId: string } };
 export type GetSkillStatusesOptions = { body: { skillIds: string[] } };
 
@@ -169,7 +169,7 @@ export type UploadFileOptions = {
 // `Agents__<original>`. The list filters by this prefix; display names and mount paths strip it,
 // so the sandbox/user only ever see the clean original name. `limit` caps the single page fetched.
 export type ListFilesOptions = {
-	query?: { prefix?: string; limit?: number };
+	query?: never;
 };
 
 export type DeleteFileOptions = {
