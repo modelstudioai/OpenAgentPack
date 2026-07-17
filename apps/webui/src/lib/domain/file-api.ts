@@ -47,8 +47,8 @@ export async function uploadFile(file: File): Promise<UploadedFile> {
  * (the OpenAPI list has no project-keyword filter). Returns files with the prefix intact —
  * callers strip it for display via stripPrefix.
  */
-export async function listFiles(limit?: number): Promise<UploadedFile[]> {
-	const { data, error } = await listApiFiles({ query: { limit } });
+export async function listFiles(): Promise<UploadedFile[]> {
+	const { data, error } = await listApiFiles();
 	if (error) throw new Error(formatApiErrorMessage(error, "获取文件列表失败"));
 	return (data?.files ?? []).filter((f) => hasPrefix(f.filename));
 }

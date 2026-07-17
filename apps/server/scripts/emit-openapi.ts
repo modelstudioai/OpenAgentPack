@@ -6,7 +6,7 @@ if (!res.ok) {
 }
 
 const doc = await res.json();
-const output = `${JSON.stringify(doc, null, 2)}\n`;
+const output = `${JSON.stringify(doc, null, "\t")}\n`;
 await Bun.write(new URL("../openapi.json", import.meta.url), output);
 
 console.log("Wrote apps/server/openapi.json");
