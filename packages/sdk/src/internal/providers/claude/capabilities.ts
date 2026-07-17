@@ -7,8 +7,8 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 	agent: { tier: "native", reason: "managed agents API" },
 	memory_store: {
 		tier: "unsupported",
-		reason: "no memory store primitive on Claude",
-		remediation: "use skill knowledge or MCP for context persistence",
+		reason: "Claude exposes Memory Stores, but the OpenAgentPack adapter has not implemented them yet",
+		remediation: "use skill knowledge or MCP until Claude Memory Store support is added to the adapter",
 	},
 	mcp_server: { tier: "native", reason: "mcp_servers field on agent" },
 	multiagent: { tier: "native", reason: "coordinator + roster topology" },
