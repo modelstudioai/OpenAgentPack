@@ -474,9 +474,7 @@ function actionKey(action: PlannedAction): string {
 
 function isNonBlockingAgentDrift(action: PlannedAction): boolean {
 	if (action.action === "no-op") return true;
-	if (action.action !== "update") return false;
-	const reason = action.reason.toLowerCase();
-	return reason.includes("metadata") || reason.includes("description");
+	return action.readinessImpact === "non_blocking";
 }
 
 export function collectAgentAddresses(config: ProjectConfig, agentName: string, provider?: string): ResourceAddress[] {

@@ -174,7 +174,7 @@ describe("agent runtime", () => {
 		expect(readiness.driftSeverity).toBe("blocking");
 	});
 
-	test("non-blocking drift when only display metadata changed", async () => {
+	test("uses structured plan impact instead of reason text for non-blocking drift", async () => {
 		const runtime = ctx(
 			baseConfig(),
 			state([
@@ -189,7 +189,8 @@ describe("agent runtime", () => {
 				{
 					action: "update",
 					address: { type: "agent", name: "bailian-cli", provider: "bailian" },
-					reason: "Description metadata changed",
+					reason: "任意展示文案，不参与 readiness 判断",
+					readinessImpact: "non_blocking",
 					dependencies: [],
 				},
 			],

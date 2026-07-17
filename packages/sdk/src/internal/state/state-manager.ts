@@ -43,8 +43,10 @@ export class StateManager implements IStateManager {
 				content_hash: ((r.content_hash ?? r.desired_hash) as string) ?? "",
 				desired_hash: ((r.desired_hash ?? r.content_hash) as string) ?? "",
 				desired_comparable_hash: r.desired_comparable_hash as string | undefined,
+				desired_readiness_baseline: r.desired_readiness_baseline as ResourceState["desired_readiness_baseline"],
 				remote_hash: r.remote_hash as string | undefined,
 				remote_snapshot: r.remote_snapshot,
+				drift_paths: r.drift_paths as string[] | undefined,
 				drift_status: r.drift_status as ResourceState["drift_status"],
 			}));
 			return new StateManager({ resources }, path);

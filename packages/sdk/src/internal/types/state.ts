@@ -13,9 +13,17 @@ export interface ResourceState {
 	content_hash: string;
 	desired_hash?: string;
 	desired_comparable_hash?: string;
+	desired_readiness_baseline?: ResourceReadinessBaseline;
 	remote_hash?: string;
 	remote_snapshot?: unknown;
+	drift_paths?: string[];
 	drift_status?: "in_sync" | "drifted" | "missing" | "unchecked";
+}
+
+export interface ResourceReadinessBaseline {
+	operational_hash: string;
+	description_hash: string;
+	metadata_hash: string;
 }
 
 export interface StateFile {

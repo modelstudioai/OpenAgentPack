@@ -1,5 +1,7 @@
 import { UserError } from "../errors.ts";
 import { type ExecutionResult, executePlan } from "../executor/executor.ts";
+import { getResourceDeclaration } from "../planner/declaration.ts";
+import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { buildPlan } from "../planner/planner.ts";
 import { type RefreshResult, refreshState } from "../planner/refresh.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
@@ -126,6 +128,7 @@ export async function importResource(
 		version: options.resourceVersion,
 		content_hash: contentHash,
 		desired_hash: contentHash,
+		desired_readiness_baseline: buildReadinessBaseline(getResourceDeclaration(address, ctx.config)),
 	};
 	ctx.state.setResource(resource);
 	await ctx.state.save();

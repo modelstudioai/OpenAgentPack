@@ -298,6 +298,9 @@ export interface paths {
 										reason: string;
 										/** @enum {string} */
 										driftKind?: "none" | "local" | "remote" | "both";
+										/** @enum {string} */
+										readinessImpact?: "none" | "non_blocking" | "blocking";
+										changedPaths?: string[];
 										before?: {
 											[key: string]: unknown;
 										};
