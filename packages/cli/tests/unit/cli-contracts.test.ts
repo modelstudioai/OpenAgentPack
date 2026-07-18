@@ -438,6 +438,21 @@ test("models list keeps missing config guidance in the core runtime", async () =
 	expect(result.stderr).toContain("File not found");
 });
 
+test("models list JSON reports providers without dynamic listing support", async () => {
+	const dir = await makeTempDir();
+	const configPath = await writeBailianVaultConfig(dir);
+
+	const result = await runAgents(["models", "list", "--file", configPath, "--provider", "bailian", "--json"]);
+
+	expect(result.exitCode).toBe(0);
+	expect(JSON.parse(result.stdout)).toEqual({
+		provider: "bailian",
+		supportsDynamicListing: false,
+		models: [],
+	});
+	expect(result.stderr).toBe("");
+});
+
 test("migrated CLI commands consume core service APIs instead of composing internals", async () => {
 	const commands = ["destroy.ts", "session.ts", "state.ts", "deployment.ts", "validate.ts", "models.ts"];
 	const banned = [
