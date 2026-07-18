@@ -46,7 +46,7 @@
 			"height": 280,
 			"playbookName": "宠物逗猫棒互动图",
 			"prompt": "如何挑选适合不同年龄段猫咪的逗猫棒？请从材质、长度、安全性等方面分析",
-			"playbookSlug": "writer",
+			"playbookSlug": "researcher",
 			"imageId": 3,
 			"media": {
 				"type": "image",
@@ -59,7 +59,7 @@
 			"height": 360,
 			"playbookName": "商品360度视频",
 			"prompt": "帮我设计一个商品360度旋转展示的网页小游戏，支持鼠标拖拽交互",
-			"playbookSlug": "engineer",
+			"playbookSlug": "designer",
 			"imageId": 4,
 			"media": {
 				"type": "video",
@@ -73,7 +73,7 @@
 			"height": 220,
 			"playbookName": "宠物配饰穿戴",
 			"prompt": "帮我创建一个宠物配饰电商落地页，展示项圈、衣服、鞋子三个分类",
-			"playbookSlug": "engineer",
+			"playbookSlug": "designer",
 			"imageId": 5,
 			"media": {
 				"type": "image",
@@ -86,7 +86,7 @@
 			"height": 300,
 			"playbookName": "口播带货视频",
 			"prompt": "帮我分析最近一个月口播带货视频的转化率数据，生成可视化图表",
-			"playbookSlug": "data-analyst",
+			"playbookSlug": "researcher",
 			"imageId": 6,
 			"media": {
 				"type": "image",
@@ -130,7 +130,7 @@
 			"height": 320,
 			"playbookName": "仓鼠玩具互动",
 			"prompt": "仓鼠适合什么类型的玩具？跑轮、隧道、啃咬玩具各有什么注意事项",
-			"playbookSlug": "writer",
+			"playbookSlug": "researcher",
 			"imageId": 9,
 			"media": {
 				"type": "image",
@@ -143,7 +143,7 @@
 			"height": 280,
 			"playbookName": "项链互动套图",
 			"prompt": "帮我创建一个珠宝项链的产品展示页面，支持点击切换不同款式",
-			"playbookSlug": "engineer",
+			"playbookSlug": "designer",
 			"imageId": 10,
 			"media": {
 				"type": "image",
@@ -161,7 +161,7 @@
 			"height": 240,
 			"playbookName": "AR试戴体验",
 			"prompt": "设计一个AR眼镜试戴的Web小游戏，用户可以选择不同款式实时预览",
-			"playbookSlug": "engineer",
+			"playbookSlug": "designer",
 			"imageId": 11,
 			"media": {
 				"type": "image",
@@ -174,7 +174,7 @@
 			"height": 300,
 			"playbookName": "电商销售报表",
 			"prompt": "帮我生成本季度电商各品类销售额对比报表，包含环比增长率分析",
-			"playbookSlug": "data-analyst",
+			"playbookSlug": "researcher",
 			"imageId": 12,
 			"media": {
 				"type": "image",

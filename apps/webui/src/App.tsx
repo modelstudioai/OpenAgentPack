@@ -157,7 +157,7 @@ export default function Home() {
 			if (bottomBarVisibleRef.current) {
 				bottomBarRef.current?.expand();
 			} else {
-				setTimeout(() => composerHandleRef.current?.focus(), 80);
+				setTimeout(() => composerHandleRef.current?.focusStart(), 80);
 			}
 		},
 		[roleCards],

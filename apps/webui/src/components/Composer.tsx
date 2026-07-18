@@ -17,6 +17,7 @@ import { useSubmitTask } from "./useSubmitTask";
 
 export interface ComposerHandle {
 	focus: () => void;
+	focusStart: () => void;
 }
 
 interface ComposerProps {
@@ -54,6 +55,7 @@ export default function Composer({
 
 	useImperativeHandle(ref, () => ({
 		focus: () => editor?.commands.focus(),
+		focusStart: () => editor?.commands.focus("start", { scrollIntoView: false }),
 	}));
 
 	const hasValue = !isEmpty || inputValue.length > 0;
@@ -114,32 +116,41 @@ export default function Composer({
 			>
 				<ComposerFeeNotice />
 
-				<div className="composer-add-wrap">
-					<AttachFilesButton onClick={openPicker} />
-				</div>
+				<div className="composer-card-shell">
+					<div className="composer-card-inner">
+						<div className="composer-add-wrap">
+							<AttachFilesButton onClick={openPicker} />
+						</div>
 
-				<SelectedFilesStrip />
+						<SelectedFilesStrip />
 
-				<PromptGhostEditor
-					slotId="composer"
-					wrapClassName="prompt-row"
-					editorClassName="prompt-row-editor"
-					hintRowClassName="prompt-hint-row"
-					ghostText={ghostText}
-					hasValue={hasValue}
-				/>
+						<PromptGhostEditor
+							slotId="composer"
+							wrapClassName="prompt-row"
+							editorClassName="prompt-row-editor"
+							hintRowClassName="prompt-hint-row"
+							ghostText={ghostText}
+							hasValue={hasValue}
+						/>
 
-				<div className="composer-footer">
-					<div className="tool-buttons">
-						<AttachFilesButton onClick={openPicker} />
+						<div className="composer-footer">
+							<div className="tool-buttons">
+								<AttachFilesButton onClick={openPicker} />
+							</div>
+							<div className="mode-buttons">
+								<ModelSelector models={models} value={model} onChange={onModelChange} />
+								<TaskBox />
+							</div>
+							<div className="composer-send-wrap">
+								<ComposerSendButton
+									type="submit"
+									hasValue={hasValue}
+									isSubmitting={isSubmitting}
+									canSubmit={canSubmit}
+								/>
+							</div>
+						</div>
 					</div>
-					<div className="mode-buttons">
-						<ModelSelector models={models} value={model} onChange={onModelChange} />
-						<TaskBox />
-					</div>
-				</div>
-				<div className="composer-send-wrap">
-					<ComposerSendButton type="submit" hasValue={hasValue} isSubmitting={isSubmitting} canSubmit={canSubmit} />
 				</div>
 				{filePickerModal}
 			</form>

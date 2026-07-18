@@ -8,12 +8,10 @@ interface RunHeaderProps {
 	statusLabel: string;
 	isFull: boolean;
 	onToggleFull: () => void;
-	onMakeSame?: (input: { prompt: string; agentId?: string }) => void;
-	onClose: () => void;
 }
 
-/** 运行弹窗头部：状态、标题、全屏与做同款 */
-export function RunHeader({ task, phase, statusLabel, isFull, onToggleFull, onMakeSame, onClose }: RunHeaderProps) {
+/** 运行弹窗头部：状态、标题、全屏 */
+export function RunHeader({ task, phase, statusLabel, isFull, onToggleFull }: RunHeaderProps) {
 	return (
 		<div className="case-modal-header">
 			<div className="run-modal-title-wrap">
@@ -27,7 +25,7 @@ export function RunHeader({ task, phase, statusLabel, isFull, onToggleFull, onMa
 					)}
 					<span>{statusLabel}</span>
 				</span>
-				<h2 className="case-modal-title">{task.title}</h2>
+				<h2 className="case-modal-title">{task.prompt || task.title}</h2>
 			</div>
 			<div className="case-modal-actions">
 				<button
@@ -38,18 +36,6 @@ export function RunHeader({ task, phase, statusLabel, isFull, onToggleFull, onMa
 					onClick={onToggleFull}
 				>
 					{isFull ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-				</button>
-				<button
-					className="case-modal-btn primary"
-					type="button"
-					onClick={() => {
-						const prompt = (task.prompt || task.title).trim();
-						if (!prompt || !onMakeSame) return;
-						onMakeSame({ prompt, agentId: task.agentId });
-						onClose();
-					}}
-				>
-					做同款
 				</button>
 			</div>
 		</div>

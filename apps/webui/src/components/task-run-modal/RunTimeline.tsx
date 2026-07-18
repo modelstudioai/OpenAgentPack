@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, type LucideIcon } from "lucide-react";
 import { formatTime } from "@/lib/view/run-event-display";
 import type { RunPhase } from "@/lib/view/run-phase";
 import { type RunTimelineItem, shouldShowAgentReplying } from "@/lib/view/run-timeline";
@@ -6,9 +6,7 @@ import { resolveTaskAttachedFiles } from "@/lib/view/user-message-files";
 import type { Task } from "../TaskBox";
 import UserMessageAttachments from "../UserMessageAttachments";
 import UserMessageContent from "../UserMessageContent";
-import { useNewAgentMessageKeys } from "./hooks/useNewAgentMessageKeys";
 import { RunTimelineItemView } from "./RunTimelineItemView";
-import type { LucideIcon } from "./types";
 
 interface RunTimelineProps {
 	task: Task;
@@ -25,7 +23,7 @@ interface RunTimelineProps {
 	onMessagesScroll: (e: React.UIEvent<HTMLDivElement>) => void;
 }
 
-/** 运行弹窗右侧对话时间线 */
+/** 运行弹窗对话时间线 */
 export function RunTimeline({
 	task,
 	Icon,
@@ -42,19 +40,12 @@ export function RunTimeline({
 }: RunTimelineProps) {
 	const isCreating = phase === "creating";
 	const isRunning = phase === "running";
-	const displayTimeline = !isCreating && !isLoadingDetails;
 	const showAgentReplying = shouldShowAgentReplying({
 		isRunning,
 		sendSending,
 		isCreating,
 		isLoadingDetails,
 		timelineItems,
-	});
-	const revealKeys = useNewAgentMessageKeys({
-		timelineItems,
-		sessionId: task.id,
-		open: true,
-		displayTimeline,
 	});
 
 	return (
@@ -103,9 +94,7 @@ export function RunTimeline({
 							</div>
 						</div>
 					) : (
-						timelineItems.map((item) => (
-							<RunTimelineItemView key={item.key} item={item} revealContent={revealKeys.has(item.key)} />
-						))
+						timelineItems.map((item) => <RunTimelineItemView key={item.key} item={item} />)
 					)}
 
 					{showAgentReplying && (

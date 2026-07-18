@@ -70,9 +70,9 @@ export function validateProviderConfig(input: Record<string, unknown>): Provider
  * 1. `~/.agents/config.json` (or `AGENTS_CONFIG_PATH`)
  * 2. `process.env` (which already includes `.env` loaded by the server bootstrap)
  *
- * The disk file may contain only a provider selection; missing fields are
- * backfilled from the running process environment so users don't have to
- * manually copy values from `.env` into the settings dialog.
+ * The disk file may contain only a provider selection; missing fields for every
+ * provider are backfilled from the running process environment so users can
+ * switch providers in the settings dialog without manually copying `.env`.
  */
 export async function readProviderConfig(): Promise<Partial<ProviderConfig>> {
 	const path = providerConfigPath();
@@ -92,10 +92,13 @@ export async function readProviderConfig(): Promise<Partial<ProviderConfig>> {
 
 	const provider: ProviderConfigProvider = diskConfig.AGENTS_PROVIDER ?? resolveActiveProvider();
 	const merged: Partial<ProviderConfig> = { AGENTS_PROVIDER: provider };
-	for (const field of AGENTS_PROVIDER_FIELDS[provider]) {
-		const diskValue = diskConfig[field.key]?.trim();
-		const envValue = process.env[field.key]?.trim();
-		merged[field.key] = diskValue || envValue;
+	for (const candidateProvider of AGENTS_CONFIG_PROVIDERS) {
+		for (const field of AGENTS_PROVIDER_FIELDS[candidateProvider]) {
+			const diskValue = diskConfig[field.key]?.trim();
+			const envValue = process.env[field.key]?.trim();
+			const value = diskValue || envValue;
+			if (value) merged[field.key] = value;
+		}
 	}
 	return merged;
 }

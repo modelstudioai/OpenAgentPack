@@ -70,33 +70,35 @@ export default function ModelSelector({
 				/>
 			)}
 
-			<div className={`model-selector-dropdown ${open ? "open" : ""}`}>
-				<div className="model-selector-header">切换模型</div>
-				<div className="model-selector-list">
-					{models.map((model) => {
-						const isSelected = model.id === selectedModel.id;
-						return (
-							<button
-								key={model.id}
-								className={`model-selector-item ${isSelected ? "selected" : ""}`}
-								type="button"
-								onClick={() => {
-									onChange(model.id);
-									setOpen(false);
-								}}
-							>
-								<span className="model-item-icon">
-									<ModelIcon icon={model.icon} name={model.name} />
-								</span>
-								<span className="model-item-info">
-									<span className="model-item-name">{model.name}</span>
-									{model.description && <span className="model-item-desc">{model.description}</span>}
-								</span>
-							</button>
-						);
-					})}
+			{open ? (
+				<div className="model-selector-dropdown open">
+					<div className="model-selector-header">切换模型</div>
+					<div className="model-selector-list">
+						{models.map((model) => {
+							const isSelected = model.id === selectedModel.id;
+							return (
+								<button
+									key={model.id}
+									className={`model-selector-item ${isSelected ? "selected" : ""}`}
+									type="button"
+									onClick={() => {
+										onChange(model.id);
+										setOpen(false);
+									}}
+								>
+									<span className="model-item-icon">
+										<ModelIcon icon={model.icon} name={model.name} />
+									</span>
+									<span className="model-item-info">
+										<span className="model-item-name">{model.name}</span>
+										{model.description && <span className="model-item-desc">{model.description}</span>}
+									</span>
+								</button>
+							);
+						})}
+					</div>
 				</div>
-			</div>
+			) : null}
 		</div>
 	);
 }

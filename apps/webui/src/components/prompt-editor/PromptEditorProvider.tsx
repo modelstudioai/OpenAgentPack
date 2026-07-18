@@ -169,7 +169,7 @@ export function PromptEditorProvider({
 							? slotConfigRef.current.bottomBar.tabFillText
 							: slotConfigRef.current.composer.tabFillText;
 					if (fill) {
-						ed.commands.setContent(plainTextToDocJson(fill));
+						ed.chain().setContent(plainTextToDocJson(fill)).setTextSelection(1).run();
 					}
 					return true;
 				}
@@ -210,8 +210,8 @@ export function PromptEditorProvider({
 	// 外部 → Editor 同步（Role Card / 做同款）
 	useEffect(() => {
 		if (!editor) return;
-		if (inputValue === lastExternalValueRef.current) return;
 		const currentPlain = editorToPlainMirror(editor);
+		if (inputValue === lastExternalValueRef.current && inputValue === currentPlain) return;
 		if (inputValue === currentPlain) {
 			lastExternalValueRef.current = inputValue;
 			return;
@@ -259,7 +259,11 @@ export function PromptEditorProvider({
 		const previous = slotsRef.current[id];
 		const wrap = editorWrapRef.current;
 		if (!el && previous && wrap?.parentElement === previous) {
-			hiddenSlotRef.current?.appendChild(wrap);
+			queueMicrotask(() => {
+				if (wrap.parentElement === previous) {
+					hiddenSlotRef.current?.appendChild(wrap);
+				}
+			});
 		}
 		slotsRef.current[id] = el;
 		if (el && wrap && activeSlotRef.current === id) {

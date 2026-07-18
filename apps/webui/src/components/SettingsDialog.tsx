@@ -4,6 +4,7 @@ import {
 	AGENTS_CONFIG_PROVIDERS,
 	type AgentsConfig,
 	type AgentsConfigProvider,
+	type AgentsConfigSnapshot,
 	loadAgentsConfig,
 	persistAgentsConfig,
 	providerFields,
@@ -32,8 +33,20 @@ function emptyFields(provider: AgentsConfigProvider): Record<string, string> {
 	return Object.fromEntries(providerFields(provider).map((field) => [field.key, ""]));
 }
 
+function fieldsFromConfig(
+	provider: AgentsConfigProvider,
+	config: AgentsConfigSnapshot | null | undefined,
+): Record<string, string> {
+	const nextFields = emptyFields(provider);
+	for (const field of providerFields(provider)) {
+		nextFields[field.key] = config?.[field.key] ?? "";
+	}
+	return nextFields;
+}
+
 export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
+	const [configSnapshot, setConfigSnapshot] = useState<AgentsConfigSnapshot | null>(null);
 	const [provider, setProvider] = useState<AgentsConfigProvider | "">("");
 	const [fields, setFields] = useState<Record<string, string>>({});
 	const [visibleSecrets, setVisibleSecrets] = useState<Record<string, boolean>>({});
@@ -47,13 +60,10 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 		void loadAgentsConfig().then((config) => {
 			if (cancelled) return;
 			const savedProvider = isAgentsProvider(config?.AGENTS_PROVIDER) ? config.AGENTS_PROVIDER : "";
+			setConfigSnapshot(config);
 			setProvider(savedProvider);
 			if (savedProvider) {
-				const nextFields = emptyFields(savedProvider);
-				for (const field of providerFields(savedProvider)) {
-					nextFields[field.key] = config?.[field.key] ?? "";
-				}
-				setFields(nextFields);
+				setFields(fieldsFromConfig(savedProvider, config));
 			} else {
 				setFields({});
 			}
@@ -64,11 +74,14 @@ export default function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 		};
 	}, [open]);
 
-	const handleProviderChange = useCallback((nextProvider: AgentsConfigProvider | "") => {
-		setProvider(nextProvider);
-		setFields(nextProvider ? emptyFields(nextProvider) : {});
-		setVisibleSecrets({});
-	}, []);
+	const handleProviderChange = useCallback(
+		(nextProvider: AgentsConfigProvider | "") => {
+			setProvider(nextProvider);
+			setFields(nextProvider ? fieldsFromConfig(nextProvider, configSnapshot) : {});
+			setVisibleSecrets({});
+		},
+		[configSnapshot],
+	);
 
 	const toggleSecretVisibility = useCallback((key: string) => {
 		setVisibleSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
