@@ -287,15 +287,7 @@
 		border-radius: 24px;
 		padding: var(--composer-shine-border-width);
 		pointer-events: none;
-		background-image: radial-gradient(
-			transparent,
-			transparent,
-			#45ebac,
-			#8ec5ff,
-			#ab8aff,
-			transparent,
-			transparent
-		);
+		background-image: radial-gradient(transparent, transparent, #45ebac, #8ec5ff, #ab8aff, transparent, transparent);
 		background-size: 300% 300%;
 		-webkit-mask:
 			linear-gradient(#fff 0 0) content-box,

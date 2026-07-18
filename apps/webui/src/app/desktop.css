@@ -5102,7 +5102,9 @@ dialog.case-modal-overlay {
 	padding: 0;
 	background: var(--soft);
 	cursor: pointer;
-	transition: border-color 0.15s, box-shadow 0.15s;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s;
 }
 
 .inline-artifact-img-wrap:hover {
@@ -5129,7 +5131,9 @@ dialog.case-modal-overlay {
 	background: var(--soft);
 	cursor: pointer;
 	color: var(--ink);
-	transition: border-color 0.15s, background 0.15s;
+	transition:
+		border-color 0.15s,
+		background 0.15s;
 }
 
 .inline-artifact-video-wrap:hover {
@@ -5163,7 +5167,9 @@ dialog.case-modal-overlay {
 	font-size: 13px;
 	color: var(--ink);
 	max-width: 320px;
-	transition: border-color 0.15s, background 0.15s;
+	transition:
+		border-color 0.15s,
+		background 0.15s;
 }
 
 .inline-artifact-card:hover {

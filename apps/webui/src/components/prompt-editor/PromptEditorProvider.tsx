@@ -169,7 +169,7 @@ export function PromptEditorProvider({
 							? slotConfigRef.current.bottomBar.tabFillText
 							: slotConfigRef.current.composer.tabFillText;
 					if (fill) {
-						ed.commands.setContent(plainTextToDocJson(fill));
+						ed.chain().setContent(plainTextToDocJson(fill)).setTextSelection(1).run();
 					}
 					return true;
 				}
