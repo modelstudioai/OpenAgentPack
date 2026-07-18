@@ -4,6 +4,7 @@ import type {
 	CredentialDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
+	InitialEventDecl,
 	MemoryStoreDecl,
 	ModelSpec,
 	VaultDecl,
@@ -222,6 +223,110 @@ export function mapMemoryStore(name: string, decl: MemoryStoreDecl): unknown {
 		name,
 		description: decl.description,
 	};
+}
+
+export function mapDeployment(
+	name: string,
+	decl: DeploymentDecl,
+	refs: ResolvedDeploymentRefs,
+	projectName?: string,
+	uploadedFiles?: Map<string, string>,
+): unknown {
+	const body: Record<string, unknown> = {
+		name,
+		agent:
+			refs.agent_version !== undefined
+				? { id: refs.agent_id, type: "agent", version: refs.agent_version }
+				: refs.agent_id,
+		environment_id: refs.environment_id,
+		initial_events: mapDeploymentInitialEvents(decl.initial_events),
+	};
+
+	if (refs.vault_ids.length) body.vault_ids = refs.vault_ids;
+
+	const resources = mapDeploymentResources(decl, refs, uploadedFiles);
+	if (resources.length) body.resources = resources;
+
+	if (decl.schedule) {
+		body.schedule = {
+			type: "cron",
+			expression: decl.schedule.expression,
+			timezone: decl.schedule.timezone,
+		};
+	}
+
+	if (decl.description) body.description = decl.description;
+
+	if (projectName) {
+		body.metadata = injectMetadata(decl.metadata, projectName, name);
+	} else if (decl.metadata) {
+		body.metadata = decl.metadata;
+	}
+
+	return body;
+}
+
+function mapDeploymentInitialEvents(events: InitialEventDecl[]): unknown[] {
+	return events.map((ev) => {
+		if (ev.type === "user.message" || ev.type === "system.message") {
+			return { type: ev.type, content: [{ type: "text", text: ev.content }] };
+		}
+		const out: Record<string, unknown> = { type: "user.define_outcome" };
+		if (ev.description) out.description = ev.description;
+		if (ev.rubric) {
+			out.rubric = { type: "text", content: ev.rubric };
+		} else if (ev.rubric_file) {
+			out.rubric = { type: "file", file_id: ev.rubric_file };
+		}
+		if (ev.max_iterations !== undefined) out.max_iterations = ev.max_iterations;
+		return out;
+	});
+}
+
+function mapDeploymentResources(
+	decl: DeploymentDecl,
+	refs: ResolvedDeploymentRefs,
+	uploadedFiles?: Map<string, string>,
+): unknown[] {
+	const resources: unknown[] = [];
+	const seenStores = new Set<string>();
+
+	for (const r of decl.resources ?? []) {
+		if (r.type === "file") {
+			const fileId = r.file_id ?? (r.source ? uploadedFiles?.get(r.source) : undefined);
+			if (fileId) {
+				const entry: Record<string, unknown> = { type: "file", file_id: fileId };
+				if (r.mount_path) entry.mount_path = r.mount_path;
+				resources.push(entry);
+			}
+		} else if (r.type === "github_repository") {
+			const entry: Record<string, unknown> = { type: "github_repository", url: r.url };
+			if (r.authorization_token) entry.authorization_token = r.authorization_token;
+			if (r.checkout?.branch) entry.checkout = { type: "branch", name: r.checkout.branch };
+			else if (r.checkout?.commit) entry.checkout = { type: "commit", sha: r.checkout.commit };
+			if (r.mount_path) entry.mount_path = r.mount_path;
+			resources.push(entry);
+		} else if (r.type === "memory_store") {
+			const id = refs.memory_store_ids[r.memory_store];
+			if (id && !seenStores.has(id)) {
+				seenStores.add(id);
+				const entry: Record<string, unknown> = { type: "memory_store", memory_store_id: id };
+				if (r.access) entry.access = r.access;
+				if (r.instructions) entry.instructions = r.instructions;
+				resources.push(entry);
+			}
+		}
+	}
+
+	for (const m of decl.memory_stores ?? []) {
+		const id = refs.memory_store_ids[m];
+		if (id && !seenStores.has(id)) {
+			seenStores.add(id);
+			resources.push({ type: "memory_store", memory_store_id: id });
+		}
+	}
+
+	return resources;
 }
 
 export function mapAgent(

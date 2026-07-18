@@ -55,7 +55,7 @@ import {
 	fileToDecl,
 	mapAgent,
 	mapCredential,
-	mapDeploymentToSession,
+	mapDeployment,
 	mapEnvironment,
 	mapMemoryStore,
 	mapSendMessage,
@@ -358,75 +358,74 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async createDeployment(
-		_name: string,
-		_decl: DeploymentDecl,
-		_refs: ResolvedDeploymentRefs,
-		_basePath: string,
+		name: string,
+		decl: DeploymentDecl,
+		refs: ResolvedDeploymentRefs,
+		basePath: string,
 	): Promise<RemoteResource> {
-		// Emulated: Qoder has no deployments endpoint. The deployment is recorded in
-		// state with remote_id = null and materialized into a session at run time.
-		return { id: null, type: "deployment" };
+		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
+		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
+		const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
+		return toRemoteResource(res);
 	}
 
 	async updateDeployment(
-		_id: string,
-		_name: string,
-		_decl: DeploymentDecl,
-		_refs: ResolvedDeploymentRefs,
-		_basePath: string,
+		id: string,
+		name: string,
+		decl: DeploymentDecl,
+		refs: ResolvedDeploymentRefs,
+		basePath: string,
 	): Promise<RemoteResource> {
-		return { id: null, type: "deployment" };
+		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
+		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
+		const res = (await this.client.post(`/deployments/${id}`, body)) as Record<string, unknown>;
+		return toRemoteResource(res);
 	}
 
-	async deleteDeployment(_id: string): Promise<void> {
-		// Emulated: no remote object to delete.
+	async deleteDeployment(id: string): Promise<void> {
+		await this.client.post(`/deployments/${id}/archive`, {});
 	}
 
 	async runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult> {
-		// Emulated run: upload file resources, create a session bound to the
-		// deployment's agent/environment/vault/memory_stores, then replay messages.
-		const fileIds: string[] = [];
-		for (const r of ctx.decl.resources ?? []) {
-			if (r.type === "file") {
-				if (r.file_id) {
-					fileIds.push(r.file_id);
-				} else if (r.source) {
-					fileIds.push(await this.uploadSessionFile(r.source, ctx.basePath));
-				}
-			}
+		if (!ctx.id) {
+			throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
 		}
-
-		const body = mapDeploymentToSession(ctx.decl, ctx.refs, fileIds);
-		const sessionRes = (await this.client.post("/sessions", body)) as Record<string, unknown>;
-		const sessionId = sessionRes.id as string;
-
-		// Qoder only supports `user.message` as an outbound event, so a
-		// system.message is delivered as a user.message (its content still reaches
-		// the agent). define_outcome events are dropped (warned at plan time).
-		const events = ctx.decl.initial_events
-			.filter((e) => e.type === "user.message" || e.type === "system.message")
-			.map((e) => ({
-				type: "user.message",
-				content: [{ type: "text", text: (e as { content: string }).content }],
-			}));
-
-		if (events.length) {
-			await this.client.post(`/sessions/${sessionId}/events`, { events });
-		}
-
-		return { session_id: sessionId };
+		const res = (await this.client.post(`/deployments/${ctx.id}/run`, {})) as Record<string, unknown>;
+		return {
+			run_id: res.id as string | undefined,
+			session_id: (res.session_id as string | null) ?? null,
+			error: (res.error as { type: string; message: string } | null | undefined) ?? undefined,
+		};
 	}
 
 	async getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
-		// Emulated: no remote object. Report the local record and the session that
-		// `run` would materialize.
-		const plan = mapDeploymentToSession(ctx.decl, ctx.refs, []);
+		if (!ctx.id) {
+			throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
+		}
+		const res = (await this.client.get(`/deployments/${ctx.id}`)) as Record<string, unknown>;
+		const sched = res.schedule as Record<string, unknown> | null | undefined;
 		return {
-			id: ctx.id,
-			status: "emulated (local)",
-			schedule: ctx.decl.schedule,
-			attributes: { materialization_plan: plan },
+			id: res.id as string,
+			status: (res.status as string) ?? "unknown",
+			paused_reason: res.paused_reason as { type: string; error?: { type: string } } | undefined,
+			schedule: sched
+				? {
+						expression: sched.expression as string,
+						timezone: sched.timezone as string,
+					}
+				: undefined,
+			attributes: res,
 		};
+	}
+
+	private async uploadDeploymentFiles(decl: DeploymentDecl, basePath: string): Promise<Map<string, string>> {
+		const map = new Map<string, string>();
+		for (const r of decl.resources ?? []) {
+			if (r.type === "file" && !r.file_id && r.source && !map.has(r.source)) {
+				map.set(r.source, await this.uploadSessionFile(r.source, basePath));
+			}
+		}
+		return map;
 	}
 
 	private async uploadSessionFile(source: string, basePath: string): Promise<string> {

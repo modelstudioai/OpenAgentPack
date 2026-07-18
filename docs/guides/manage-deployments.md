@@ -67,12 +67,13 @@ agents deployment run <name>            # trigger a run
 | Provider | Deployment tier | What `deployment run` does |
 |----------|:--------------:|----------------------------|
 | Claude | native | schedules server-side through the deployments API |
-| Qoder, Bailian, Ark | emulated | expands into a one-shot session at run time |
+| Qoder | native | creates a deployment run and associated session |
+| Bailian, Ark | emulated | expands into a one-shot session at run time |
 
 On the emulated providers, scheduling and outcome rubrics are **not** enforced server-side — use external cron/CI for always-on or scheduled runs.
 
 ## Examples
 
 - Native deployment + outcome rubric: [`examples/claude/deployment/`](../../examples/claude/deployment/)
-- Emulated deployment + memory store: [`examples/qoder/deployment/`](../../examples/qoder/deployment/)
+- Native deployment + memory store: [`examples/qoder/deployment/`](../../examples/qoder/deployment/)
 - Emulated deployment + file resources: [`examples/bailian/deployment/`](../../examples/bailian/deployment/) and [`examples/ark/deployment/`](../../examples/ark/deployment/)
