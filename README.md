@@ -147,7 +147,7 @@ Beta testers can install `@openagentpack/cli@beta`; see the [release guide](./do
 | MCP Server | native | native | native | native |
 | Memory Store | unsupported | native | unsupported | native |
 | Multi-Agent | unsupported | unsupported | native | native |
-| Deployment | emulated | emulated | native | emulated |
+| Deployment | emulated | native | native | emulated |
 | Session | native | native | native | native |
 
 The full capability matrix and per-provider differences live in the [Provider reference](./docs/reference/providers.md).

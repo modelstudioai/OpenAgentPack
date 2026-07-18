@@ -63,4 +63,4 @@ agents state import <address> <remote-id>
 
 Resources (agents, environments, skills…) are **infrastructure** — long-lived, managed by `plan`/`apply`. A **session** is a **runtime** conversation started from an agent. Sessions are managed separately with `agents session` and are not part of the plan/apply lifecycle.
 
-Deployments sit between the two: they are declared as resources but produce runs. On Claude they schedule server-side; on Bailian, Qoder, and Volcengine Ark a `deployment run` expands into a session.
+Deployments sit between the two: they are declared as resources but produce runs. On Qoder and Claude they schedule server-side; on Bailian and Volcengine Ark a `deployment run` expands into a session.

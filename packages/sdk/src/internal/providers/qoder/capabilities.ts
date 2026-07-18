@@ -13,10 +13,8 @@ export const QODER_CAPABILITIES: ProviderCapabilities = {
 		remediation: "deploy agents independently and orchestrate via MCP",
 	},
 	deployment: {
-		tier: "emulated",
-		reason: "no deployment primitive on Qoder; expanded into a session at run time",
-		remediation:
-			"scheduling and outcome rubrics are not enforced server-side — use external cron/CI for always-on or scheduled runs",
+		tier: "native",
+		reason: "deployments API with scheduled and manual runs",
 	},
 	session: { tier: "native", reason: "sessions API" },
 };

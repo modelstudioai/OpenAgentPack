@@ -460,7 +460,7 @@ Deployment 是介于「定义」与「运行」之间的声明式中间层。它
 - **部署层**（Deployment）：声明「用哪个 Agent、带哪些绑定、以什么初始事件和调度运行」。
 - **运行层**（Session）：一次具体的执行实例。
 
-> Provider 差异：Claude 原生支持 Deployment（对应平台的 deployments API，可服务端调度）；百炼、Qoder、火山方舟为**模拟**实现——`apply` 只写本地状态（`remote_id` 为 `null`），`agents deployment run` 时展开为一个 Session。详见 [Provider 参考](../reference/providers.zh-CN.md#模拟emulated资源的能力降级)。
+> Provider 差异：Qoder 和 Claude 原生支持 Deployment（对应平台的 deployments API，可服务端调度）；百炼、火山方舟为**模拟**实现——`apply` 只写本地状态（`remote_id` 为 `null`），`agents deployment run` 时展开为一个 Session。详见 [Provider 参考](../reference/providers.zh-CN.md#模拟emulated资源的能力降级)。
 
 ### 定义 Deployment
 
@@ -498,7 +498,7 @@ deployments:
 
 - `agent` 必填，引用顶层 `agents` 中定义的 Agent。
 - 未声明 `environment` / `vaults` / `memory_stores` 时，**继承所引用 Agent 的声明**；显式声明则覆盖。
-- `schedule.expression` 为 cron 表达式；`timezone` 为必填的 IANA 时区标识。仅 Claude 在服务端执行调度，百炼、Qoder、火山方舟需用外部 cron/CI 触发。
+- `schedule.expression` 为 cron 表达式；`timezone` 为必填的 IANA 时区标识。Qoder 和 Claude 在服务端执行调度，百炼、火山方舟需用外部 cron/CI 触发。
 - `initial_events` **必填**（1–50 条），在 Deployment 运行时按顺序投递给 Agent。
 
 ### 初始事件（initial_events）
@@ -507,7 +507,7 @@ deployments:
 |---------|------|------|
 | `user.message` | `content` | 以用户身份发送的消息 |
 | `system.message` | `content` | 系统提示（Qoder 上展平为 `user.message`） |
-| `user.define_outcome` | `description` / `rubric` / `rubric_file` / `max_iterations` | 定义结果评分目标（仅 Claude 服务端执行评分） |
+| `user.define_outcome` | `description` / `rubric` / `rubric_file` / `max_iterations` | 定义结果评分目标（Qoder 和 Claude 服务端执行评分） |
 
 ### 资源（resources）
 
@@ -515,9 +515,9 @@ Deployment 运行时可挂载的资源：
 
 | 资源类型 | 字段 | 说明 |
 |---------|------|------|
-| `file` | `file_id` / `source` / `mount_path` | 文件资源；`file_id` 引用已上传文件；`source` 为本地路径，Claude 在 `apply` 时上传、Qoder 在 `run` 时上传 |
+| `file` | `file_id` / `source` / `mount_path` | 文件资源；`file_id` 引用已上传文件；`source` 为本地路径，Qoder 和 Claude 在 `apply` 时上传 |
 | `memory_store` | `memory_store` / `access` / `instructions` | 引用 Memory Store；`access` 为 `read_write`（默认）或 `read_only` |
-| `github_repository` | `url` / `checkout` / `mount_path` / `authorization_token` | 检出 Git 仓库（仅 Claude） |
+| `github_repository` | `url` / `checkout` / `mount_path` / `authorization_token` | 检出 Git 仓库（Qoder 和 Claude） |
 
 ### 运行与查看
 
@@ -669,7 +669,7 @@ Session 的架构遵循 Serverless Framework 模式：**定义管理**（`plan/a
 | `memory_stores` | string[] | 否 | 覆盖 Agent 的 Memory Store |
 | `resources` | array | 否 | 运行时挂载的资源（file / memory_store / github_repository） |
 | `initial_events` | array | 是 | 运行时投递的初始事件（user.message / system.message / user.define_outcome），1–50 条 |
-| `schedule` | object | 否 | cron 调度（`expression` + 必填 `timezone`），仅 Claude 服务端执行 |
+| `schedule` | object | 否 | cron 调度（`expression` + 必填 `timezone`），Qoder 和 Claude 服务端执行 |
 | `description` | string | 否 | 描述 |
 | `provider` | string | 否 | 指定 Provider，覆盖 defaults |
 | `metadata` | Record | 否 | 自定义元数据 |
