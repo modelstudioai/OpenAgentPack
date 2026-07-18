@@ -142,6 +142,8 @@ export async function createSessionForAgent(
 	const bindings = buildSessionBindings(agentName, ctx.config, provider, ctx.state, {
 		environment: options.environment,
 		environmentId: options.environmentId,
+		tunnel: options.tunnel,
+		tunnelId: options.tunnelId,
 		vault: options.vault,
 		vaultIds: options.vaultIds,
 		memoryStores: options.memoryStores,
@@ -162,6 +164,8 @@ export async function startSessionRun(
 	const bindings = buildSessionBindings(agentName, ctx.config, provider, ctx.state, {
 		environment: options.environment,
 		environmentId: options.environmentId,
+		tunnel: options.tunnel,
+		tunnelId: options.tunnelId,
 		vault: options.vault,
 		vaultIds: options.vaultIds,
 		memoryStores: options.memoryStores,

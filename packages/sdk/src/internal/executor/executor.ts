@@ -59,6 +59,21 @@ export async function executePlan(
 	const concurrency = clampConcurrency(options.concurrency);
 	const resultsByKey = new Map<string, ActionResult>();
 	const failed = new Set<string>();
+	let stateUpdated = false;
+
+	// Persist the ownership boundary even for an already-converged external
+	// environment. This upgrades state written before the marker existed, so a
+	// later removal from config still cannot delete the provider-owned resource.
+	for (const action of plan.actions) {
+		if (action.address.type !== "environment") continue;
+		const decl = ctx.config.environments?.[action.address.name];
+		const existing = ctx.state.getResource(action.address);
+		if (decl?.environment_id && existing && !existing.externally_managed) {
+			ctx.state.setResource({ ...existing, externally_managed: true });
+			stateUpdated = true;
+		}
+	}
+	if (stateUpdated) await ctx.state.save();
 
 	const actionable = plan.actions.filter((a) => a.action !== "no-op");
 	const mutations = actionable.filter((a) => a.action !== "delete");
@@ -206,6 +221,16 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 		if (!existing) return false;
 		const id = existing.remote_id;
 
+		// External-reference environments are owned outside OpenCMA; deleting them
+		// here would only remove the local state entry.
+		if (type === "environment") {
+			const decl = ctx.config.environments?.[name];
+			if (existing.externally_managed || decl?.environment_id) {
+				ctx.state.removeResource(address);
+				return false;
+			}
+		}
+
 		if (id !== null) {
 			try {
 				switch (type) {
@@ -255,7 +280,18 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 		case "environment": {
 			const decl = ctx.config.environments![name]!;
 			const remoteName = decl.name ?? name;
-			if (isUpdate) {
+			// External-reference environments are owned outside OpenCMA.
+			// Skip remote mutations and just record the pre-existing id in state.
+			if (decl.environment_id) {
+				result = { id: decl.environment_id, type: "environment" };
+				emitRuntimeFeedback(ctx.onFeedback, {
+					type: "resource_action_success",
+					level: "info",
+					action,
+					resource: action.address,
+					message: `${action.action} ${action.address.type}.${action.address.name} (${action.address.provider}) — external reference, no remote mutation`,
+				});
+			} else if (isUpdate) {
 				result = await provider.updateEnvironment(existingId!, remoteName, decl);
 			} else {
 				try {
@@ -452,6 +488,7 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 	ctx.state.setResource({
 		address,
 		remote_id: result.id,
+		externally_managed: type === "environment" && ctx.config.environments?.[name]?.environment_id ? true : undefined,
 		version: result.version,
 		content_hash: hash,
 		desired_hash: hash,

@@ -13,6 +13,7 @@ function fullRefs(): ResolvedDeploymentRefs {
 		agent_id: "agent_123",
 		agent_version: 3,
 		environment_id: "env_456",
+		tunnel_id: "tnl_789",
 		vault_ids: ["vault_a"],
 		memory_store_ids: { notes: "ms_1", archive: "ms_2" },
 	};
@@ -162,6 +163,7 @@ describe("Qoder mapDeploymentToSession", () => {
 
 		expect(body.agent).toBe("agent_123");
 		expect(body.environment_id).toBe("env_456");
+		expect(body.tunnel_id).toBe("tnl_789");
 		expect(body.title).toBe("Daily");
 		expect(body.vault_ids).toEqual(["vault_a"]);
 		expect(body.memory_store_ids).toBeUndefined();
@@ -181,6 +183,7 @@ describe("Qoder mapDeploymentToSession", () => {
 
 		expect(body.agent).toBe("agent_min");
 		expect(body.environment_id).toBe("env_min");
+		expect(body.tunnel_id).toBeUndefined();
 		expect(body.title).toBeUndefined();
 		expect(body.vault_ids).toBeUndefined();
 		expect(body.memory_store_ids).toBeUndefined();
@@ -229,6 +232,7 @@ describe("Qoder mapDeployment", () => {
 		expect(body.name).toBe("daily-report");
 		expect(body.agent).toEqual({ id: "agent_123", type: "agent", version: 3 });
 		expect(body.environment_id).toBe("env_456");
+		expect(body.tunnel_id).toBe("tnl_789");
 		expect(body.initial_events).toEqual([
 			{ type: "user.message", content: [{ type: "text", text: "Run the daily report" }] },
 			{ type: "system.message", content: [{ type: "text", text: "You are punctual" }] },

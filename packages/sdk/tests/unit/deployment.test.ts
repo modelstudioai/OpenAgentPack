@@ -112,6 +112,50 @@ describe("resolveDeploymentRefs", () => {
 		};
 		expect(() => resolveDeploymentRefs("broken", config, "qoder", makeState())).toThrow(/references unknown agent/);
 	});
+
+	test("prefers environment.environment_id over state resolution", () => {
+		const config = makeConfig();
+		config.environments! = {
+			...config.environments,
+			byoc: { environment_id: "env_byoc_xyz", config: { type: "self_hosted" } },
+		};
+		config.agents! = {
+			...config.agents,
+			byocAgent: { model: "gpt-4", instructions: "byoc", environment: "byoc" },
+		};
+		config.deployments! = {
+			...config.deployments,
+			byocDep: { agent: "byocAgent", initial_events: [{ type: "user.message", content: "run" }] },
+		};
+
+		const state = StateManager.initialize("/tmp/dep-test-byoc.json");
+		state.setResource({
+			address: { type: "agent", name: "byocAgent", provider: "qoder" },
+			remote_id: "agent_byoc",
+			content_hash: "h",
+		});
+		// No environment entry in state — environment_id should be used directly.
+		const refs = resolveDeploymentRefs("byocDep", config, "qoder", state);
+		expect(refs.environment_id).toBe("env_byoc_xyz");
+	});
+
+	test("rejects tunnels when the deployment provider is not Qoder", () => {
+		const config = makeConfig();
+		config.tunnels = { internal: { tunnel_id: "tnl_internal" } };
+		config.agents!.researcher!.tunnel = "internal";
+		const state = makeState();
+		state.setResource({
+			address: { type: "agent", name: "researcher", provider: "claude" },
+			remote_id: "agent_claude",
+			content_hash: "h",
+		});
+		state.setResource({
+			address: { type: "environment", name: "dev", provider: "claude" },
+			remote_id: "env_claude",
+			content_hash: "h",
+		});
+		expect(() => resolveDeploymentRefs("daily", config, "claude", state)).toThrow(/only by Qoder/);
+	});
 });
 
 describe("Qoder native deployment CRUD", () => {

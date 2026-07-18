@@ -125,6 +125,8 @@ export async function importResource(
 	const resource: ResourceState = {
 		address,
 		remote_id: remoteId,
+		externally_managed:
+			address.type === "environment" && ctx.config.environments?.[address.name]?.environment_id ? true : undefined,
 		version: options.resourceVersion,
 		content_hash: contentHash,
 		desired_hash: contentHash,

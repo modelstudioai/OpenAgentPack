@@ -5,6 +5,7 @@ import type { ExecContext } from "../../src/internal/executor/context.ts";
 import { executePlan } from "../../src/internal/executor/executor.ts";
 import { ApiError, ConflictError } from "../../src/internal/providers/base-client.ts";
 import type { ProviderAdapter, RemoteResource } from "../../src/internal/providers/interface.ts";
+import type { IStateManager } from "../../src/internal/state/state-manager.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { ProjectConfig } from "../../src/internal/types/config.ts";
 import type { ExecutionPlan } from "../../src/internal/types/plan.ts";
@@ -40,9 +41,13 @@ function createPlan(): ExecutionPlan {
 	};
 }
 
-function makeCtx(provider: ProviderAdapter, state: IStateManager = StateManager.initialize(tmpPath())): ExecContext {
+function makeCtx(
+	provider: ProviderAdapter,
+	state: IStateManager = StateManager.initialize(tmpPath()),
+	ctxConfig: ProjectConfig = config,
+): ExecContext {
 	return {
-		config,
+		config: ctxConfig,
 		configPath: "/tmp/agents.yaml",
 		providers: new Map([["bailian", provider]]),
 		state,
@@ -185,5 +190,127 @@ describe("executor conflict-adopt", () => {
 		expect(result.results[0].status).toBe("success");
 		const saved = state.getResource({ type: "skill", name: "my-skill", provider: "bailian" })!;
 		expect(saved.remote_id).toBe("skill_remote");
+	});
+});
+
+describe("executor external-reference environment", () => {
+	const byocConfig: ProjectConfig = {
+		version: "1",
+		providers: { bailian: { api_key: "test", workspace_id: "ws" } },
+		defaults: { provider: "bailian" },
+		environments: {
+			"byoc-env": {
+				environment_id: "env_byoc_xyz",
+				config: { type: "self_hosted" },
+			},
+		},
+	};
+
+	test("create action skips remote mutation and records environment_id in state", async () => {
+		const calls: string[] = [];
+		const provider = {
+			name: "bailian",
+			validate: async () => {},
+			findResource: async () => null,
+			createEnvironment: async () => {
+				calls.push("createEnvironment");
+				return { id: "should_not_be_used", type: "environment" };
+			},
+			updateEnvironment: async () => {
+				calls.push("updateEnvironment");
+				return { id: "should_not_be_used", type: "environment" };
+			},
+			deleteEnvironment: async () => {
+				calls.push("deleteEnvironment");
+			},
+		} as unknown as ProviderAdapter;
+
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "create",
+					address: { type: "environment", name: "byoc-env", provider: "bailian" },
+					reason: "Resource does not exist in state",
+					after: { content_hash: "h" },
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(plan, makeCtx(provider, state, byocConfig));
+
+		expect(result.partial).toBe(false);
+		expect(result.results[0].status).toBe("success");
+		expect(calls).toEqual([]);
+		const saved = state.getResource({ type: "environment", name: "byoc-env", provider: "bailian" })!;
+		expect(saved.remote_id).toBe("env_byoc_xyz");
+		expect(saved.externally_managed).toBe(true);
+	});
+
+	test("removing an external environment from config only removes its state", async () => {
+		const calls: string[] = [];
+		const provider = {
+			name: "bailian",
+			validate: async () => {},
+			findResource: async () => null,
+			createEnvironment: async () => ({ id: "x", type: "environment" }),
+			updateEnvironment: async () => ({ id: "x", type: "environment" }),
+			deleteEnvironment: async () => {
+				calls.push("deleteEnvironment");
+			},
+		} as unknown as ProviderAdapter;
+
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "delete",
+					address: { type: "environment", name: "byoc-env", provider: "bailian" },
+					reason: "Resource removed from configuration",
+					before: { content_hash: "h" },
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({
+			address: { type: "environment", name: "byoc-env", provider: "bailian" },
+			remote_id: "env_byoc_xyz",
+			externally_managed: true,
+			content_hash: "h",
+		});
+
+		const configWithoutExternalEnvironment: ProjectConfig = {
+			...byocConfig,
+			environments: undefined,
+		};
+		const result = await executePlan(plan, makeCtx(provider, state, configWithoutExternalEnvironment));
+
+		expect(result.partial).toBe(false);
+		expect(result.results[0].status).toBe("success");
+		expect(calls).toEqual([]);
+		expect(state.getResource({ type: "environment", name: "byoc-env", provider: "bailian" })).toBeUndefined();
+	});
+
+	test("marks an existing external environment during a no-op apply", async () => {
+		const provider = {
+			name: "bailian",
+			validate: async () => {},
+			findResource: async () => null,
+		} as unknown as ProviderAdapter;
+		const state = StateManager.initialize(tmpPath());
+		const address = { type: "environment" as const, name: "byoc-env", provider: "bailian" };
+		state.setResource({ address, remote_id: "env_byoc_xyz", content_hash: "h" });
+		const plan: ExecutionPlan = {
+			actions: [{ action: "no-op", address, reason: "No changes detected", dependencies: [] }],
+			diagnostics: [],
+		};
+
+		await executePlan(plan, makeCtx(provider, state, byocConfig));
+
+		expect(state.getResource(address)?.externally_managed).toBe(true);
 	});
 });

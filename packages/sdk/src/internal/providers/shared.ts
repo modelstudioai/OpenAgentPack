@@ -56,6 +56,7 @@ export function buildSessionInfo(
 		id: res.id as string,
 		agent_id: (agent?.id as string) ?? (res.agent_id as string) ?? "",
 		environment_id: res.environment_id as string,
+		tunnel_id: (res.tunnel_id as string) ?? undefined,
 		status: res.status as string,
 		title: res.title as string | undefined,
 		vault_ids: extractVaultIds(res),

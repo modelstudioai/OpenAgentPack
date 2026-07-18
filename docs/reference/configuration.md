@@ -9,6 +9,7 @@ version: "1"
 providers:    { <name>: <provider-config> }
 defaults:     { provider: <name> | "all" }
 environments: { <name>: EnvironmentDecl }
+tunnels:      { <name>: TunnelDecl }
 vaults:       { <name>: VaultDecl }
 memory_stores:{ <name>: MemoryStoreDecl }
 skills:       { <name>: SkillDecl }
@@ -23,6 +24,7 @@ deployments:  { <name>: DeploymentDecl }
 | `providers` | map | yes | One block per provider; each holds its credentials. |
 | `defaults.provider` | string | no | Default target for `plan`/`apply`. `all` targets every declared provider. |
 | `environments` | map | no | Cloud runtimes. |
+| `tunnels` | map | no | Existing Qoder BYOC tunnels referenced by sessions; OpenCMA does not manage their lifecycle. |
 | `vaults` | map | no | Credential stores. |
 | `memory_stores` | map | no | Persistent agent context (Qoder, Volcengine Ark). |
 | `skills` | map | no | Reusable capability modules. |
@@ -72,8 +74,9 @@ environments:
     name: <string>            # optional
     description: <string>     # optional
     provider: <string>       # optional; pin to one provider
+    environment_id: <string> # optional; reference an existing provider environment without managing it
     config:
-      type: cloud
+      type: cloud | self_hosted
       networking: { ... }
       packages: { ... }
     metadata: { <key>: <string> }
@@ -81,13 +84,24 @@ environments:
 
 | Field | Type | Required | Description |
 |-------|------|:--------:|-------------|
-| `config.type` | `"cloud"` | yes | Environment type. |
+| `environment_id` | string | no | Existing environment ID. When present, OpenCMA never creates, updates, or deletes the remote environment. |
+| `config.type` | `"cloud"` \| `"self_hosted"` | yes | Environment type. `self_hosted` is used for Qoder BYOC. |
 | `config.networking.type` | `"unrestricted"` \| `"limited"` | no | Network policy. |
 | `config.networking.allow_mcp_servers` | boolean | no | Allow outbound MCP. |
 | `config.networking.allow_package_managers` | boolean | no | Allow package managers. |
 | `config.networking.allowed_hosts` | string[] | no | Allow-list for `limited` networks. |
 | `config.packages.apt` \| `pip` \| `npm` \| `cargo` \| `gem` \| `go` | string[] | no | Preinstalled packages. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
+
+## Tunnel (Qoder BYOC)
+
+```yaml
+tunnels:
+  internal-network:
+    tunnel_id: tnl_00xxxx
+```
+
+Tunnels are existing Qoder resources allocated by the BYOC administrator. They are passed only when a Qoder session/deployment is created and are never created, updated, or deleted by OpenCMA. See [Use BYOC environments](../guides/use-byoc-environments.md) for a complete setup and lifecycle guide.
 
 ## Vault
 
@@ -166,6 +180,7 @@ agents:
     model: <string> | { <provider>: <string> }
     instructions: <string> | <path>
     environment: <string>
+    tunnel: <string>              # optional; Qoder BYOC tunnel name
     provider: <string>
     tools: { builtin: [...], mcp: [...], permissions: {...} }
     mcp_servers: [ { name, type?, url? } ]
@@ -181,6 +196,7 @@ agents:
 | `model` | string \| map<provider,string> | yes | Single model or a per-provider map. |
 | `instructions` | string | yes | Inline text or a path to a file (resolved relative to the config). |
 | `environment` | string | no | Environment name. |
+| `tunnel` | string | no | Qoder BYOC tunnel name from `tunnels`; unsupported for other providers. |
 | `provider` | string | no | Pin the agent to one provider. |
 | `tools.builtin` | string[] | yes (in `tools`) | Lowercase tool names. |
 | `tools.permissions` | map<string,`"allow"`\|`"ask"`> | no | Per-tool permission policy. |
@@ -214,6 +230,7 @@ deployments:
     agent: <string>
     agent_version: <number>           # optional
     environment: <string>             # optional
+    tunnel: <string>                  # optional; Qoder BYOC only
     vaults: [ <string> ]
     memory_stores: [ <string> ]
     resources: [ DeploymentResource ]
