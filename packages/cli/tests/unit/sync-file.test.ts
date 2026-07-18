@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UserError } from "@openagentpack/sdk";
-import { syncCommand } from "../../src/commands/sync.ts";
+import { removeMissingFileAssociations, syncCommand } from "../../src/commands/sync.ts";
 
 const tempDirs: string[] = [];
 
@@ -29,4 +29,18 @@ test("syncCommand requires --provider when config file is missing", async () => 
 	await expect(syncCommand({ file: missingConfig, out: outPath })).rejects.toThrow(
 		"--provider when no config file exists",
 	);
+});
+
+test("removeMissingFileAssociations keeps existing sources and skips missing files", async () => {
+	const dir = await makeTempDir();
+	await Bun.write(join(dir, "present.txt"), "present\n");
+
+	const config = {
+		files: {
+			present: { source: "present.txt" },
+			missing: { source: "missing.txt" },
+		},
+	};
+
+	expect(removeMissingFileAssociations(config, dir)).toEqual(["missing"]);
 });

@@ -73,6 +73,7 @@ Export a provider's remote configuration into a local `agents.yaml`.
 | `--provider <name>` | Source provider to sync from. |
 | `-o, --out <path>` | Output file (default `agents.synced.yaml`). |
 | `--force` | Overwrite the output file if it exists. |
+| `--skip-missing-files` | Do not prompt for remote files that cannot be downloaded; omit them from the synced output. |
 
 ## `agents migrate`
 
