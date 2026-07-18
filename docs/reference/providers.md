@@ -15,7 +15,7 @@ OpenAgentPack targets multiple agent platforms behind one declarative config. Ea
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
 | Memory Store | unsupported | native | unsupported | native | Qoder and Ark are implemented. Claude's upstream API now has Memory Stores, but its OpenAgentPack adapter does not yet. |
 | Multi-Agent | unsupported | unsupported | native | native | Coordinator topology is available on Claude and Volcengine Ark. |
-| Deployment | emulated | emulated | native | emulated | Non-Claude providers expand a deployment into a session at `run` time. |
+| Deployment | emulated | native | native | emulated | Qoder and Claude use native deployments; Bailian and Ark expand a deployment into a session at `run` time. |
 | Session | native | native | native | native | Runtime sessions are native on every provider. |
 
 - **native** — the provider supports the feature directly.
@@ -47,7 +47,7 @@ The resource matrix above answers whether a declaration can be applied. The tabl
 ### Notable provider-specific behavior
 
 - **Bailian:** skill upload uses the Files API and supports scan-status polling; agent updates create provider-side versions. Official MCP servers are referenced by name.
-- **Qoder:** tool names are translated from the lowercase config vocabulary to PascalCase. Session sends return a cursor, enabling resumable event consumption. `system.message` is flattened to `user.message` when running an emulated deployment.
+- **Qoder:** tool names are translated from the lowercase config vocabulary to PascalCase. Session sends return a cursor, enabling resumable event consumption. Deployments are native and support manual or scheduled runs.
 - **Claude:** deployments are native, including their server-side lifecycle. It is currently the only adapter that downloads remote skill packages during `sync`.
 - **Volcengine Ark:** skills are create + get + attach only in the API behavior verified by this project. Updates re-upload a new skill; list and in-place update are unavailable; deletion is best-effort. Deployment is emulated as a session.
 

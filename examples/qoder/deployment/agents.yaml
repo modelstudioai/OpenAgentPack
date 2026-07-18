@@ -36,14 +36,14 @@ agents:
       builtin: [Read, Glob, Grep, WebSearch]
     memory_stores: [project-kb]
 
-# Deployment is emulated on Qoder: `apply` only records local state
-# (remote_id = null); `agents deployment run` materializes it into a Session.
+# Deployment is native on Qoder: `apply` creates a remote Deployment, and
+# `agents deployment run` creates a Deployment Run with an associated Session.
 # The schedule, define_outcome rubric, and memory_store access modifier below
 # are not enforced server-side and will surface warning diagnostics on plan.
 deployments:
   daily-report:
     agent: reporter
-    description: "Daily report (emulated -> Session on run)"
+    description: "Daily report (native Deployment Run)"
     schedule:
       expression: "0 9 * * *"
       timezone: UTC

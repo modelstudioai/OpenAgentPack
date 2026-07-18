@@ -32,7 +32,7 @@ examples/
 │   ├── with-vault/              vault only
 │   ├── vault-only/              vault-only project
 │   ├── multi-provider/          same agent on both Claude + Qoder
-│   ├── deployment/              schedule + memory_store (emulated)
+│   ├── deployment/              schedule + memory_store (native)
 │   ├── bailian-cli/             Bailian CLI integration
 │   └── full/                    Qoder full-feature stack
 ├── ark/                         Volcengine Ark provider (Managed Agents, doubao)
@@ -59,7 +59,7 @@ examples/
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
 | Memory Store | unsupported | native | unsupported | native | Qoder and Volcengine Ark. |
 | Multi-Agent | unsupported | unsupported | native | native | Claude and Volcengine Ark support coordinator. |
-| Deployment | emulated | emulated | native | emulated | Claude schedules server-side; others expand into a session at `run` time. |
+| Deployment | emulated | native | native | emulated | Qoder and Claude schedule server-side; Bailian and Ark expand into a session at `run` time. |
 | Session | native | native | native | native | All four support runtime sessions. |
 
 ## Tool naming differences

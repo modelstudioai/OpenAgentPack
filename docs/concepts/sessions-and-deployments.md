@@ -23,7 +23,8 @@ How a deployment *runs* depends on the provider's capability tier:
 | Provider | Deployment tier | What `agents deployment run` does |
 |----------|:--------------:|------------------------------------|
 | Claude | native | schedules server-side through the deployments API |
-| Qoder, Bailian, Ark | emulated | expands into a one-shot session at run time |
+| Qoder | native | creates a deployment run and associated session |
+| Bailian, Ark | emulated | expands into a one-shot session at run time |
 
 On the emulated providers, scheduling and outcome rubrics are **not** enforced server-side — use external cron/CI for always-on or scheduled runs.
 
