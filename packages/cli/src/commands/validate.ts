@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
 import { resolveProjectConfig, UserError, validateProjectConfig } from "@openagentpack/sdk";
+import { ensureCredentials } from "../credentials.ts";
 import { log } from "../logger.ts";
 
 export async function validateCommand(options: { file: string }) {
+	ensureCredentials();
 	const configPath = resolve(options.file);
 	log.info(`Validating ${configPath}...`);
 	const { config } = await resolveProjectConfig(options.file);
