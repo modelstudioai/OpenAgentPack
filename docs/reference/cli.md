@@ -120,7 +120,7 @@ Manage scheduled / triggered deployments.
 |------------|-------------|
 | `deployment list` | List deployments tracked in state. |
 | `deployment get <name>` | Show a deployment's status and resolved bindings. |
-| `deployment run <name>` | Trigger a deployment run (native on Claude, emulated as a session on Bailian/Qoder/Volcengine Ark). |
+| `deployment run <name>` | Trigger a deployment run (native on Qoder/Claude, emulated as a session on Bailian/Volcengine Ark). |
 
 ## `agents models`
 

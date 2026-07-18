@@ -114,23 +114,63 @@ describe("resolveDeploymentRefs", () => {
 	});
 });
 
-describe("Qoder emulated deployment CRUD", () => {
-	const adapter = new QoderAdapter("pt-test-dummy");
-	const decl = { agent: "x" } as DeploymentDecl;
-	const refs = {} as ResolvedDeploymentRefs;
+describe("Qoder native deployment CRUD", () => {
+	function makeAdapter() {
+		const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+		const adapter = new QoderAdapter("pt-test-dummy", undefined, "proj") as QoderAdapter & {
+			client: {
+				post: (path: string, body: unknown) => Promise<Record<string, unknown>>;
+				get: (path: string) => Promise<Record<string, unknown>>;
+			};
+		};
+		adapter.client = {
+			async post(path, body) {
+				calls.push({ method: "post", path, body });
+				if (path.endsWith("/run")) return { id: "drun_1", type: "deployment_run", session_id: "sess_1", error: null };
+				return { id: "dep_1", type: "deployment", status: "active" };
+			},
+			async get(path) {
+				calls.push({ method: "get", path });
+				return { id: "dep_1", type: "deployment", status: "active", schedule: null };
+			},
+		};
+		return { adapter, calls };
+	}
 
-	test("createDeployment records a local resource with a null remote id (no HTTP)", async () => {
+	const decl: DeploymentDecl = { agent: "x", initial_events: [{ type: "user.message", content: "run" }] };
+	const refs: ResolvedDeploymentRefs = {
+		agent_id: "agent_1",
+		environment_id: "env_1",
+		vault_ids: [],
+		memory_store_ids: {},
+	};
+
+	test("createDeployment calls the native deployments endpoint", async () => {
+		const { adapter, calls } = makeAdapter();
 		const res = await adapter.createDeployment("d", decl, refs, "/tmp/agents.yaml");
-		expect(res).toEqual({ id: null, type: "deployment" });
+		expect(res).toEqual({ id: "dep_1", type: "deployment" });
+		expect(calls[0]).toMatchObject({ method: "post", path: "/deployments" });
+		expect(calls[0].body).toMatchObject({ name: "d", agent: "agent_1", environment_id: "env_1" });
 	});
 
-	test("updateDeployment also returns a null remote id", async () => {
-		const res = await adapter.updateDeployment("ignored", "d", decl, refs, "/tmp/agents.yaml");
-		expect(res).toEqual({ id: null, type: "deployment" });
+	test("updateDeployment posts a merge update to the remote deployment", async () => {
+		const { adapter, calls } = makeAdapter();
+		const res = await adapter.updateDeployment("dep_1", "d", decl, refs, "/tmp/agents.yaml");
+		expect(res).toEqual({ id: "dep_1", type: "deployment" });
+		expect(calls[0]).toMatchObject({ method: "post", path: "/deployments/dep_1" });
 	});
 
-	test("deleteDeployment is a no-op", async () => {
-		await expect(adapter.deleteDeployment("ignored")).resolves.toBeUndefined();
+	test("deleteDeployment archives the remote deployment", async () => {
+		const { adapter, calls } = makeAdapter();
+		await adapter.deleteDeployment("dep_1");
+		expect(calls[0]).toMatchObject({ method: "post", path: "/deployments/dep_1/archive" });
+	});
+
+	test("runDeployment triggers a native deployment run", async () => {
+		const { adapter, calls } = makeAdapter();
+		const result = await adapter.runDeployment({ name: "d", id: "dep_1", decl, refs, basePath: "/tmp/agents.yaml" });
+		expect(result).toEqual({ run_id: "drun_1", session_id: "sess_1", error: undefined });
+		expect(calls[0]).toMatchObject({ method: "post", path: "/deployments/dep_1/run" });
 	});
 });
 
@@ -157,15 +197,13 @@ describe("deployment plan / diff", () => {
 		expect(idxAgent).toBeLessThan(idxDep);
 	});
 
-	test("emulated provider (qoder) warns about unsupported sub-features; native (claude) does not", async () => {
+	test("native deployment providers do not warn about emulated sub-features", async () => {
 		const { config } = await loadConfig(resolve(FIXTURES, "deployment.yaml"));
 		const plan = await buildPlan(config, { resources: [] });
 
 		const codes = plan.diagnostics.filter((d) => d.severity === "warning").map((d) => d.code);
 
-		expect(codes).toContain("qoder.deployment.schedule_unsupported");
-		expect(codes).toContain("qoder.deployment.define_outcome_unsupported");
-		expect(codes).toContain("qoder.deployment.github_repository_unsupported");
+		expect(codes.some((c) => c.startsWith("qoder.deployment."))).toBe(false);
 		expect(codes.some((c) => c.startsWith("claude.deployment."))).toBe(false);
 	});
 
