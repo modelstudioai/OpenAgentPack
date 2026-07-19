@@ -5,6 +5,7 @@ export interface ProjectConfig {
 	providers: Record<string, unknown>;
 	defaults?: DefaultsConfig;
 	environments?: Record<string, EnvironmentDecl>;
+	tunnels?: Record<string, TunnelDecl>;
 	vaults?: Record<string, VaultDecl>;
 	memory_stores?: Record<string, MemoryStoreDecl>;
 	skills?: Record<string, SkillDecl>;
@@ -23,14 +24,24 @@ export interface EnvironmentDecl {
 	name?: string;
 	description?: string;
 	provider?: ProviderName;
+	/** Pre-existing provider environment id. When set, OpenCMA treats the environment as an external reference and will not create/update/delete it remotely. */
+	environment_id?: string;
 	config: EnvironmentConfig;
 	metadata?: Record<string, string>;
 }
 
 export interface EnvironmentConfig {
-	type: "cloud";
+	type: "cloud" | "self_hosted";
 	networking?: NetworkingConfig;
 	packages?: PackagesConfig;
+}
+
+export interface TunnelDecl {
+	name?: string;
+	description?: string;
+	/** Pre-existing Qoder tunnel id (e.g. tnl_00xxxx). Tunnels are allocated by Qoder BYOC admin and referenced, not created. */
+	tunnel_id: string;
+	metadata?: Record<string, string>;
 }
 
 export interface NetworkingConfig {
@@ -123,6 +134,7 @@ export interface AgentDecl {
 	model: string | Record<ProviderName, ModelSpec>;
 	instructions: string;
 	environment?: string;
+	tunnel?: string;
 	provider?: ProviderName;
 	tools?: AgentToolsDecl;
 	mcp_servers?: McpServerDecl[];
@@ -171,6 +183,7 @@ export interface DeploymentDecl {
 	agent: string;
 	agent_version?: number;
 	environment?: string;
+	tunnel?: string;
 	vaults?: string[];
 	memory_stores?: string[];
 	resources?: DeploymentResourceDecl[];

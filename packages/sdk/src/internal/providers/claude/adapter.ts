@@ -33,6 +33,7 @@ import {
 	buildSessionInfo,
 	exportRemoteResources,
 	locateRemote,
+	notArchived,
 	toCloudAgent,
 	toCloudEnvironment,
 	toCloudVault,
@@ -81,7 +82,9 @@ export class ClaudeAdapter implements ProviderAdapter {
 	};
 
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
-		const raw = await locateRemote(this.client, ClaudeAdapter.ENDPOINT_MAP[type], name, id);
+		// Claude archives agents (POST /agents/{id}/archive) instead of hard-deleting
+		// them; an archived ghost must not count as existing for refresh/adoption.
+		const raw = await locateRemote(this.client, ClaudeAdapter.ENDPOINT_MAP[type], name, id, notArchived);
 		return raw ? toRemoteResource(raw) : null;
 	}
 

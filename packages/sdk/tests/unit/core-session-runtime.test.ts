@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectRuntimeContext } from "../../src/internal/core/project-runtime.ts";
 import {
+	createSessionForAgent,
 	sendSessionMessageAndCollectEvents,
 	startSessionRun,
 	streamMessageEvents,
@@ -141,6 +142,24 @@ describe("core session runtime", () => {
 
 		expect(seen[0]?.status).toBe("idle");
 		expect(calls).toEqual(["createSession", "send:do work", "stream:evt_user"]);
+	});
+
+	test("forwards explicit tunnel overrides when creating a session", async () => {
+		let tunnelId: string | undefined;
+		const provider = {
+			...adapter("qoder", [], true),
+			createSession: async (bindings: { tunnel_id?: string }) => {
+				tunnelId = bindings.tunnel_id;
+				return session();
+			},
+		};
+
+		await createSessionForAgent(ctx(provider), {
+			agent: "assistant",
+			tunnelId: "tnl_override",
+		});
+
+		expect(tunnelId).toBe("tnl_override");
 	});
 
 	test("eventResume=true streams after the created event id", async () => {

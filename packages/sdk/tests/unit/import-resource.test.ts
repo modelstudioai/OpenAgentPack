@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectRuntimeContext } from "../../src/internal/core/project-runtime.ts";
 import { importResource } from "../../src/internal/core/resource-runtime.ts";
+import type { ProviderAdapter } from "../../src/internal/providers/interface.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { ProjectConfig } from "../../src/internal/types/config.ts";
 import type { ResourceAddress } from "../../src/internal/types/state.ts";
@@ -60,5 +61,28 @@ describe("importResource", () => {
 
 		await expect(importResource(ctx(state), address, "dep_1")).rejects.toThrow(/Invalid resource type/);
 		expect(state.listResources()).toEqual([]);
+	});
+
+	test("records the remote comparable as the drift baseline when readable", async () => {
+		const state = StateManager.initialize("/tmp/import-resource-baseline.json");
+		const address: ResourceAddress = { type: "environment", name: "bailian-cli", provider: "bailian" };
+		const provider = {
+			name: "bailian",
+			getDriftSupport: (type: string) => (type === "environment" ? "full" : "unsupported"),
+			readComparableResource: async () => ({
+				id: "env_remote_1",
+				type: "environment",
+				comparable: { config: { type: "cloud" } },
+				snapshot: { config: { type: "cloud" } },
+			}),
+		} as unknown as ProviderAdapter;
+
+		const runtime = ctx(state);
+		runtime.providers = new Map([["bailian", provider]]);
+		const recorded = await importResource(runtime, address, "env_remote_1");
+
+		expect(recorded.desired_comparable_hash).toBeTruthy();
+		expect(recorded.remote_hash).toBe(recorded.desired_comparable_hash);
+		expect(recorded.drift_status).toBe("in_sync");
 	});
 });

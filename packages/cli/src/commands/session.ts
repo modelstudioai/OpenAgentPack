@@ -46,6 +46,9 @@ interface SessionCreateOpts {
 	file: string;
 	agent?: string;
 	environment?: string;
+	environmentId?: string;
+	tunnel?: string;
+	tunnelId?: string;
 	vault?: string;
 	memoryStores?: string;
 	title?: string;
@@ -67,6 +70,9 @@ export async function sessionCreateCommand(
 		agent: positionalAgent ?? options.agent,
 		provider: options.provider,
 		environment: options.environment,
+		environmentId: options.environmentId,
+		tunnel: options.tunnel,
+		tunnelId: options.tunnelId,
 		vault: options.vault,
 		memoryStores: parseMemoryStores(options.memoryStores),
 		title: options.title,
@@ -75,6 +81,7 @@ export async function sessionCreateCommand(
 	log.success(`Session created: ${chalk.bold(session.id)}`);
 	console.log(`  Agent:       ${agentName}`);
 	console.log(`  Environment: ${session.environment_id}`);
+	if (session.tunnel_id) console.log(`  Tunnel:      ${session.tunnel_id}`);
 	console.log(`  Status:      ${session.status}`);
 	if (session.vault_ids.length) console.log(`  Vaults:      ${session.vault_ids.join(", ")}`);
 	if (session.memory_store_ids.length) console.log(`  Memory:      ${session.memory_store_ids.join(", ")}`);
@@ -163,6 +170,7 @@ export async function sessionGetCommand(sessionId: string, options: SessionGetOp
 	console.log(`  ID:          ${chalk.bold(session.id)}`);
 	console.log(`  Agent:       ${session.agent_id}`);
 	console.log(`  Environment: ${session.environment_id}`);
+	if (session.tunnel_id) console.log(`  Tunnel:      ${session.tunnel_id}`);
 	console.log(`  Status:      ${session.status}`);
 	if (session.title) console.log(`  Title:       ${session.title}`);
 	if (session.vault_ids.length) console.log(`  Vaults:      ${session.vault_ids.join(", ")}`);
@@ -248,6 +256,9 @@ interface SessionRunOpts {
 	file: string;
 	agent?: string;
 	environment?: string;
+	environmentId?: string;
+	tunnel?: string;
+	tunnelId?: string;
 	vault?: string;
 	memoryStores?: string;
 	title?: string;
@@ -273,6 +284,9 @@ export async function sessionRunCommand(
 		agent: positionalAgent ?? options.agent,
 		provider: options.provider,
 		environment: options.environment,
+		environmentId: options.environmentId,
+		tunnel: options.tunnel,
+		tunnelId: options.tunnelId,
 		vault: options.vault,
 		memoryStores: parseMemoryStores(options.memoryStores),
 		title: options.title,

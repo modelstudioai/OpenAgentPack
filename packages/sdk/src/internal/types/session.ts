@@ -10,6 +10,8 @@ export interface SessionBindings {
 	agent_version?: number;
 	/** Cloud sandbox id. Every provider runs sessions inside an environment. */
 	environment_id: string;
+	/** Qoder BYOC tunnel id. Required to reach internal MCP servers from the sandbox. */
+	tunnel_id?: string;
 	vault_ids: string[];
 	memory_store_ids: string[];
 	files?: SessionFileResource[];
@@ -21,6 +23,7 @@ export interface ProviderSessionInfo {
 	id: string;
 	agent_id: string;
 	environment_id: string;
+	tunnel_id?: string;
 	status: string;
 	title?: string;
 	vault_ids: string[];

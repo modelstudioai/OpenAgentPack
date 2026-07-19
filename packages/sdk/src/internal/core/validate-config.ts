@@ -46,6 +46,7 @@ export function resolveTargetProviders(config: ProjectConfig): string[] {
 
 export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: DiagnosticCollector): void {
 	const envNames = new Set(Object.keys(config.environments ?? {}));
+	const tunnelNames = new Set(Object.keys(config.tunnels ?? {}));
 	const skillNames = new Set(Object.keys(config.skills ?? {}));
 	const vaultNames = new Set(Object.keys(config.vaults ?? {}));
 	const memoryNames = new Set(Object.keys(config.memory_stores ?? {}));
@@ -57,6 +58,9 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 				"config.agent.environment.unknown",
 				`agent.${name}: references unknown environment '${agent.environment}'`,
 			);
+		}
+		if (agent.tunnel && !tunnelNames.has(agent.tunnel)) {
+			diagnostics.error("config.agent.tunnel.unknown", `agent.${name}: references unknown tunnel '${agent.tunnel}'`);
 		}
 		for (const skill of agent.skills ?? []) {
 			if (typeof skill !== "string") continue;
@@ -89,6 +93,15 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 			}
 		}
 	}
+
+	for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+		if (deployment.tunnel && !tunnelNames.has(deployment.tunnel)) {
+			diagnostics.error(
+				"config.deployment.tunnel.unknown",
+				`deployment.${name}: references unknown tunnel '${deployment.tunnel}'`,
+			);
+		}
+	}
 }
 
 export function collectProviderCapabilities(
@@ -106,6 +119,58 @@ export function collectProviderCapabilities(
 			continue;
 		}
 		const caps = def.capabilities;
+
+		if (providerName === "qoder") {
+			// Qoder's /deployments API rejects tunnel_id (HTTP 400 "unknown field"), so
+			// a declared/inherited tunnel is dropped from the deployment payload and
+			// server-side runs execute without it. Surface that degradation loudly.
+			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+				if (deployment.provider && deployment.provider !== providerName) continue;
+				const tunnel = deployment.tunnel ?? config.agents?.[deployment.agent]?.tunnel;
+				if (tunnel) {
+					diagnostics.warning(
+						`${providerName}.deployment.tunnel.unsupported`,
+						`deployment.${name}: Qoder's deployment API does not accept tunnel_id; scheduled and triggered runs ` +
+							`execute in the deployment's environment but without the BYOC tunnel. Create sessions directly for private-network MCP access.`,
+						{ type: "deployment", name, provider: providerName },
+					);
+				}
+			}
+		}
+
+		if (providerName !== "qoder") {
+			for (const [name, env] of Object.entries(config.environments ?? {})) {
+				// External references are never sent to the provider API, so a
+				// self_hosted type on them is inert; only managed environments matter.
+				if (env.environment_id) continue;
+				if (env.config.type === "self_hosted" && (!env.provider || env.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.environment.self_hosted.unsupported`,
+						`environment.${name}: self_hosted environments are supported only by Qoder BYOC; ` +
+							`use type 'cloud' or pin this environment to the qoder provider.`,
+						{ type: "environment", name, provider: providerName },
+					);
+				}
+			}
+			for (const [name, agent] of Object.entries(config.agents ?? {})) {
+				if (agent.tunnel && (!agent.provider || agent.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.agent.tunnel.unsupported`,
+						"Tunnels are supported only by Qoder BYOC sessions.",
+						{ type: "agent", name, provider: providerName },
+					);
+				}
+			}
+			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+				if (deployment.tunnel && (!deployment.provider || deployment.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.deployment.tunnel.unsupported`,
+						"Tunnels are supported only by Qoder BYOC sessions.",
+						{ type: "deployment", name, provider: providerName },
+					);
+				}
+			}
+		}
 
 		for (const missing of findMissingBailianMcpToolConfigs(config, providerName)) {
 			diagnostics.error(

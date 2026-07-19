@@ -148,6 +148,34 @@ describe("destroy runtime", () => {
 		expect(runtime.state.listResources()).toEqual([]);
 	});
 
+	test("removes an external environment from state without deleting it remotely", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx([resource("environment", "byoc", "env_byoc")], adapter(calls));
+		runtime.config.environments = {
+			byoc: { environment_id: "env_byoc", config: { type: "self_hosted" } },
+		};
+
+		const result = await destroyPlannedProjectResources(planDestroyProjectContext(runtime));
+
+		expect(result.destroyed).toBe(1);
+		expect(result.results[0]?.reason).toBe("reference_removed");
+		expect(calls).toEqual([]);
+		expect(runtime.state.listResources()).toEqual([]);
+	});
+
+	test("removes a formerly declared external environment from state without deleting it remotely", async () => {
+		const calls: string[] = [];
+		const external = resource("environment", "byoc", "env_byoc");
+		external.externally_managed = true;
+		const runtime = await ctx([external], adapter(calls));
+
+		const result = await destroyPlannedProjectResources(planDestroyProjectContext(runtime));
+
+		expect(result.destroyed).toBe(1);
+		expect(calls).toEqual([]);
+		expect(runtime.state.listResources()).toEqual([]);
+	});
+
 	test("treats remote 404 as successful state cleanup", async () => {
 		const calls: string[] = [];
 		const runtime = await ctx(

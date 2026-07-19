@@ -231,3 +231,42 @@ describe("planner drift classification", () => {
 		expect(plan.actions[0]!.reason).toBe("Local config changed and remote drift detected");
 	});
 });
+
+describe("Qoder archived resources are treated as gone", () => {
+	function adapterWith(getImpl: (path: string) => Promise<unknown>, paged: Record<string, unknown>[] = []) {
+		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+		adapter.client = { get: getImpl, getAllPaged: async () => paged };
+		return adapter;
+	}
+
+	test("readComparableResource returns null for an archived agent", async () => {
+		const adapter = adapterWith(async () => ({
+			id: "agent_1",
+			name: "a",
+			archived_at: "2026-07-19T00:00:00Z",
+		}));
+		expect(await adapter.readComparableResource("agent", "agent_1", "a")).toBeNull();
+	});
+
+	test("findResource returns null for an archived resource, found when active", async () => {
+		const archived = adapterWith(async () => ({
+			id: "env_1",
+			name: "e",
+			archived_at: "2026-07-19T00:00:00Z",
+		}));
+		expect(await archived.findResource("environment", "e", "env_1")).toBeNull();
+
+		const active = adapterWith(async () => ({ id: "env_1", name: "e", archived_at: null }));
+		expect((await active.findResource("environment", "e", "env_1"))?.id).toBe("env_1");
+	});
+
+	test("name scan skips archived entries and matches active ones", async () => {
+		const adapter = adapterWith(async () => {
+			throw new Error("id path must not be used");
+		}, [
+			{ id: "agent_archived", name: "a", archived_at: "2026-07-19T00:00:00Z" },
+			{ id: "agent_active", name: "a", archived_at: null },
+		]);
+		expect((await adapter.findResource("agent", "a"))?.id).toBe("agent_active");
+	});
+});

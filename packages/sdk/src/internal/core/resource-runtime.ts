@@ -4,9 +4,11 @@ import { getResourceDeclaration } from "../planner/declaration.ts";
 import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { buildPlan } from "../planner/planner.ts";
 import { type RefreshResult, refreshState } from "../planner/refresh.ts";
+import { readComparableIfSupported } from "../providers/drift-support.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceAddress, ResourceState, ResourceType } from "../types/state.ts";
+import { contentHash as stableContentHash } from "../utils/hash.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
 import { readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 
@@ -122,13 +124,27 @@ export async function importResource(
 		throw new UserError(`Planned ${address.type}.${address.name} is missing a content hash.`);
 	}
 
+	// Read back the actual remote state as the drift baseline. Without it the
+	// first plan after import would compare the remote against the *desired*
+	// comparable and report a one-time phantom "Remote drift detected" — most
+	// visibly for external-reference environments OpenCMA never configured.
+	const provider = ctx.providers.get(address.provider);
+	const remote = provider ? await readComparableIfSupported(provider, address.type, remoteId, address.name) : null;
+	const remoteHash = remote ? stableContentHash(remote.comparable) : undefined;
+
 	const resource: ResourceState = {
 		address,
 		remote_id: remoteId,
-		version: options.resourceVersion,
+		externally_managed:
+			address.type === "environment" && ctx.config.environments?.[address.name]?.environment_id ? true : undefined,
+		version: options.resourceVersion ?? remote?.version,
 		content_hash: contentHash,
 		desired_hash: contentHash,
+		desired_comparable_hash: remoteHash,
 		desired_readiness_baseline: buildReadinessBaseline(getResourceDeclaration(address, ctx.config)),
+		remote_hash: remoteHash,
+		remote_snapshot: remote ? (remote.snapshot ?? remote.comparable) : undefined,
+		drift_status: remoteHash ? "in_sync" : undefined,
 	};
 	ctx.state.setResource(resource);
 	await ctx.state.save();

@@ -5,6 +5,11 @@ export type { ResourceAddress, ResourceType } from "./dto.ts";
 export interface ResourceState {
 	address: ResourceAddress;
 	remote_id: string | null;
+	/**
+	 * This resource is owned by the provider or another system and is only
+	 * referenced by this project. It must never be deleted remotely.
+	 */
+	externally_managed?: boolean;
 	version?: number;
 	/**
 	 * Backward-compatible alias for desired_hash. Kept while older state files
