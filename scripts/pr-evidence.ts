@@ -1,9 +1,18 @@
 import { existsSync } from "node:fs";
 
 const highRiskPathPatterns = [
+	// Verification and automation control plane. These changes require explicit
+	// PR evidence, but never a special commit message or history rewrite.
+	/^\.dependency-cruiser\.cjs$/,
+	/^sgconfig\.yml$/,
+	/^biome\.json$/,
+	/^tools\/architecture\//,
+	/^\.githooks\//,
+	/^\.claude\/hooks\//,
 	/^\.github\/workflows\//,
+	/^scripts\/(?:lint-changed\.sh|verify(?:\.test)?\.ts|pr-evidence(?:\.test)?\.ts|setup-githooks\.sh)$/,
 	/^scripts\/release\//,
-	/^(?:package\.json|bun\.lock)$/,
+	/(?:^|\/)package\.json$/,
 	/^packages\/sdk\/src\/internal\/(?:parser\/|types\/(?:config|session)\.ts|providers\/(?:interface|capabilities|registry|base-client)\.ts)/,
 ];
 

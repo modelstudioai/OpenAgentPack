@@ -39,7 +39,7 @@ Every PR must satisfy:
 2. At least one maintainer approval
 3. No unresolved review comments
 
-We keep the contribution path open: documentation, examples, and ordinary small changes do not need a design document or a special PR label. Changes to provider contracts, configuration/schema parsing, release/package files, or GitHub workflows have a small additional requirement: fill in the **Behavior / risk** and **Validation** sections of the PR description. This lets maintainers review the contract and its evidence before reading an implementation diff.
+We keep the contribution path open: documentation, examples, and ordinary small changes do not need a design document, a special PR label, or a commit-message marker. Changes to provider contracts, configuration/schema parsing, release/package files, GitHub workflows, or verification policy have a small additional requirement: fill in the **Behavior / risk** and **Validation** sections of the PR description. This lets maintainers review the contract and its evidence before reading an implementation diff without asking contributors to rewrite commit history. A generated `bun.lock` change by itself is handled by audit and compatibility checks.
 
 Maintainers should enable the repository settings that make the same policy effective at merge time: require the `Gate` and `Analyze TypeScript` checks, require one approving review, dismiss stale approvals, require approval of the latest push, and require resolved conversations. CODEOWNERS review and a merge queue are intentionally not required for routine contributions at the current project stage.
 
