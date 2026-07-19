@@ -49,13 +49,6 @@ export {
 	resolvePlaybookSkills,
 } from "./resolve.ts";
 
-export {
-	createPlaybookSessionRuntime,
-	pickPlaybookAgent,
-	PlaybookAgentIdentityMismatchError,
-	playbookIdentityMismatchMessage,
-} from "./session-runtime.ts";
-
 export type {
 	AgentSkillResource,
 	EnvironmentNetworking,
@@ -76,23 +69,6 @@ export type {
 	VaultCredentialStructure,
 	VaultProfile,
 } from "./types.ts";
-
-export type {
-	DeletePlaybookSessionInput,
-	PlaybookAgentAdapter,
-	PlaybookAgentPick,
-	PlaybookProviderSessionAdapter,
-	PlaybookSessionEventsAdapter,
-	PlaybookSessionFile,
-	PlaybookSessionRuntime,
-	PlaybookSessionRuntimeAdapters,
-	ProviderStartPlaybookSessionInput,
-	RemotePlaybookAgent,
-	SendPlaybookSessionInput,
-	SentProviderPlaybookMessage,
-	StartedProviderPlaybookSession,
-	StartPlaybookSessionInput,
-} from "./session-runtime.ts";
 
 const PLAYBOOK_SOURCES: Record<string, SourceAgent[]> = {
 	bailian: bailianPlaybookJson as SourceAgent[],

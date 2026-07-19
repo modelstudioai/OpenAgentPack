@@ -1,4 +1,3 @@
-import type { DeletePlaybookSessionInput, SendPlaybookSessionInput } from "@openagentpack/playbooks";
 import {
 	deleteSession,
 	getAgent,
@@ -15,6 +14,7 @@ import { DEFAULT_AGENT_ID, getSessionAgent } from "@/services/agents/catalog";
 import { withAgentRuntime } from "@/services/runtime-factory";
 import { createEventBuffer, seedCompletedBuffer } from "@/services/sessions/event-buffer";
 import { sortByUpdatedDesc, toSession } from "./dto";
+import type { DeletePlaybookSessionInput, ListPlaybookSessionsInput, SendPlaybookSessionInput } from "./runtime";
 
 export type PlaybookSessionDetail = {
 	session: Session;
@@ -25,13 +25,6 @@ export type PlaybookSessionDetail = {
 export type SessionEventsPage = {
 	events: ProviderSessionEvent[];
 	eventsNextPageToken?: string;
-};
-
-type ListPlaybookSessionsInput = {
-	playbookId?: string;
-	remoteAgentId?: string;
-	limit?: number;
-	pageToken?: string;
 };
 
 export async function listPlaybookSessions(

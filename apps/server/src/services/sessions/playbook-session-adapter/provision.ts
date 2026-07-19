@@ -1,4 +1,3 @@
-import type { RemotePlaybookAgent } from "@openagentpack/playbooks";
 import type { CloudAgent } from "@openagentpack/sdk";
 import {
 	importResource,
@@ -9,6 +8,7 @@ import {
 	writeProjectRuntime,
 } from "@openagentpack/sdk";
 import { loadAgentRuntimeInput } from "@/services/runtime-factory";
+import type { RemotePlaybookAgent } from "./runtime";
 
 /**
  * Ensure a compiled catalog agent is provisioned to its provider (has a remote_id in state).
