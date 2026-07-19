@@ -27,7 +27,13 @@ export function ensureSyncOutputWritable(outPath: string, force?: boolean): void
 	}
 }
 
-export async function syncCommand(options: { file: string; provider?: string; out?: string; force?: boolean }) {
+export async function syncCommand(options: {
+	file: string;
+	provider?: string;
+	out?: string;
+	force?: boolean;
+	skipMissingFiles?: boolean;
+}) {
 	const outPath = options.out ?? DEFAULT_SYNC_OUTPUT;
 	ensureSyncOutputWritable(outPath, options.force);
 
@@ -38,8 +44,10 @@ export async function syncCommand(options: { file: string; provider?: string; ou
 
 	const baseDir = dirname(outPath);
 
-	// Interactive file path association (before writing yaml — skipped files are removed)
-	const removedFiles = await promptFileAssociation(result.config, baseDir);
+	// File path association (before writing yaml — skipped files are removed)
+	const removedFiles = options.skipMissingFiles
+		? removeMissingFileAssociations(result.config, baseDir)
+		: await promptFileAssociation(result.config, baseDir);
 	if (removedFiles.length > 0) {
 		const files = (result.config.files ?? {}) as Record<string, unknown>;
 		for (const key of removedFiles) {
@@ -82,6 +90,19 @@ export async function syncCommand(options: { file: string; provider?: string; ou
 	if (result.secretPlaceholders?.length) {
 		await promptSecretValues(result.secretPlaceholders);
 	}
+}
+
+export function removeMissingFileAssociations(config: Record<string, unknown>, baseDir: string): string[] {
+	const files = (config.files ?? {}) as Record<string, Record<string, unknown>>;
+	const removed = Object.entries(files)
+		.filter(([, decl]) => !fileExistsSync(join(baseDir, decl.source as string)))
+		.map(([key]) => key);
+
+	if (removed.length > 0) {
+		log.info(`${removed.length} file(s) removed (skipped).`);
+	}
+
+	return removed;
 }
 
 async function syncFromConfig(
