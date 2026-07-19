@@ -18,10 +18,21 @@ describe("pull-request maintainer evidence", () => {
 Add a provider capability.
 
 ## Behavior / risk
+
 Existing provider configuration remains unchanged; the new capability is opt-in.
 
 ## Validation
+
 \`bun test packages/sdk/tests/unit/provider-conformance.test.ts\``;
 		expect(validateMaintainerEvidence(body, [".github/workflows/release.yml"])).toBeUndefined();
+	});
+
+	test("does not treat HTML comments as evidence", () => {
+		const body = `## Behavior / risk
+<!--
+
+## Validation
+<!--`;
+		expect(validateMaintainerEvidence(body, [".github/workflows/release.yml"])).toContain("## Behavior / risk");
 	});
 });

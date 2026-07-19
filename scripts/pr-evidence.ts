@@ -13,11 +13,11 @@ export function requiresMaintainerEvidence(files: readonly string[]): boolean {
 
 function sectionHasContent(body: string, heading: string): boolean {
 	const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const match = body.match(new RegExp(`^## ${escapedHeading}[ \\t]*\\r?\\n([\\s\\S]*?)(?=^## |$)`, "mi"));
+	const match = body.match(new RegExp(`^## ${escapedHeading}[ \\t]*\\r?\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, "mi"));
 	if (!match) return false;
 	return (
 		match[1]
-			.replace(/<!--[\s\S]*?-->/g, "")
+			.replace(/<!--[\s\S]*?(?:-->|$)/g, "")
 			.replace(/- \[ \] .*/g, "")
 			.trim().length > 0
 	);
