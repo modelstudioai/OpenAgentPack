@@ -145,6 +145,7 @@ program
 	.addOption(providerOption("Source provider to sync from (defaults from config when -f is set)"))
 	.option("-o, --out <path>", "Output file path", "agents.synced.yaml")
 	.option("--force", "Overwrite the output file if it already exists")
+	.option("--skip-missing-files", "Do not prompt for remote files that cannot be downloaded; omit them from output")
 	.action(withResolvedConfigFile(syncCommand));
 
 program
