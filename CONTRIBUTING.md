@@ -39,6 +39,10 @@ Every PR must satisfy:
 2. At least one maintainer approval
 3. No unresolved review comments
 
+We keep the contribution path open: documentation, examples, and ordinary small changes do not need a design document or a special PR label. Changes to provider contracts, configuration/schema parsing, release/package files, or GitHub workflows have a small additional requirement: fill in the **Behavior / risk** and **Validation** sections of the PR description. This lets maintainers review the contract and its evidence before reading an implementation diff.
+
+Maintainers should enable the repository settings that make the same policy effective at merge time: require the `Gate` and `Analyze TypeScript` checks, require one approving review, dismiss stale approvals, require approval of the latest push, and require resolved conversations. CODEOWNERS review and a merge queue are intentionally not required for routine contributions at the current project stage.
+
 ## Reporting bugs and requesting features
 
 Open an issue using the templates under [.github/ISSUE_TEMPLATE](./.github/ISSUE_TEMPLATE). For anything security-related, do **not** open a public issue — follow [SECURITY.md](./SECURITY.md) instead.

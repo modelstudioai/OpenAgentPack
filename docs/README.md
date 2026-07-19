@@ -64,6 +64,7 @@ For external contributors.
 | Doc | What's inside |
 |-----|---------------|
 | [Contributing overview](../CONTRIBUTING.md) | Dev setup, merge requirements, code style. |
+| [Maintainer review](./contributing/maintainer-review.md) | Evidence-based PR review and merge gates. |
 | [Development](./contributing/development.md) | Clone, install, run, test, package boundaries. |
 | [Provider development](./contributing/provider-development.md) | The six files a new provider must implement. |
 | [Release](./contributing/release.md) | npm publishing workflow and Trusted Publishing. |
