@@ -76,12 +76,6 @@ export type PlaybookAgentPick<TAgent extends RemotePlaybookAgent> = {
 	identityMismatch: boolean;
 };
 
-export type PlaybookReadiness =
-	| { status: "ready"; playbookId: string; remoteAgentId: string }
-	| { status: "missing"; playbookId: string; reason: "not_provisioned" }
-	| { status: "unknown"; playbookId: string; reason: "not_checked" | "check_failed" }
-	| { status: "blocked"; playbookId: string; reason: "identity_mismatch"; message: string };
-
 export interface PlaybookAgentAdapter<TAgent extends RemotePlaybookAgent = RemotePlaybookAgent> {
 	listPlaybookAgents(input: { playbookId: string; includeArchived: boolean }): Promise<TAgent[]>;
 	ensurePlaybookAgent(input: { playbookId: string; model?: string; matched?: TAgent }): Promise<TAgent>;
@@ -157,24 +151,6 @@ export function pickPlaybookAgent<TAgent extends RemotePlaybookAgent>(
 	const sorted = [...matched].sort((a, b) => epochOf(updatedAtOf(b)) - epochOf(updatedAtOf(a)));
 	const [agent, ...duplicates] = sorted;
 	return { agent, duplicates, identityMismatch: false };
-}
-
-// The single source of the pick→PlaybookReadiness mapping, so identity-drift
-// handling lives in one place.
-export function readinessFromPick<TAgent extends RemotePlaybookAgent>(
-	pick: PlaybookAgentPick<TAgent>,
-	playbookId: string,
-): PlaybookReadiness {
-	if (pick.identityMismatch) {
-		return {
-			status: "blocked",
-			playbookId,
-			reason: "identity_mismatch",
-			message: playbookIdentityMismatchMessage(playbookId),
-		};
-	}
-	if (!pick.agent) return { status: "missing", playbookId, reason: "not_provisioned" };
-	return { status: "ready", playbookId, remoteAgentId: pick.agent.id };
 }
 
 export function createPlaybookSessionRuntime<

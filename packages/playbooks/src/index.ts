@@ -54,7 +54,6 @@ export {
 	pickPlaybookAgent,
 	PlaybookAgentIdentityMismatchError,
 	playbookIdentityMismatchMessage,
-	readinessFromPick,
 } from "./session-runtime.ts";
 
 export type {
@@ -83,7 +82,6 @@ export type {
 	PlaybookAgentAdapter,
 	PlaybookAgentPick,
 	PlaybookProviderSessionAdapter,
-	PlaybookReadiness,
 	PlaybookSessionEventsAdapter,
 	PlaybookSessionFile,
 	PlaybookSessionRuntime,

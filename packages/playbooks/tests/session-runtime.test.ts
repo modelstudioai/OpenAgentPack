@@ -5,9 +5,7 @@ import {
 	PLAYBOOK_METADATA_KEY,
 	PlaybookAgentIdentityMismatchError,
 	pickPlaybookAgent,
-	playbookIdentityMismatchMessage,
 	type RemotePlaybookAgent,
-	readinessFromPick,
 } from "../src/index.ts";
 
 const APP_ID = "agents-webui";
@@ -59,43 +57,6 @@ describe("pickPlaybookAgent", () => {
 		expect(pickPlaybookAgent([archived], { playbookId: "designer", appId: APP_ID, includeArchived: true }).agent).toBe(
 			archived,
 		);
-	});
-});
-
-describe("readinessFromPick", () => {
-	test("a matched agent is ready and carries its remote id", () => {
-		const pick = pickPlaybookAgent([agent({ id: "agent_ready" })], { playbookId: "designer", appId: APP_ID });
-
-		expect(readinessFromPick(pick, "designer")).toEqual({
-			status: "ready",
-			playbookId: "designer",
-			remoteAgentId: "agent_ready",
-		});
-	});
-
-	test("no candidate is missing/not_provisioned", () => {
-		const pick = pickPlaybookAgent([], { playbookId: "designer", appId: APP_ID });
-
-		expect(readinessFromPick(pick, "designer")).toEqual({
-			status: "missing",
-			playbookId: "designer",
-			reason: "not_provisioned",
-		});
-	});
-
-	test("a same-name unstamped agent is blocked with the shared mismatch message", () => {
-		const pick = pickPlaybookAgent([agent({ metadata: { [PLAYBOOK_APP_METADATA_KEY]: APP_ID } })], {
-			playbookId: "designer",
-			appId: APP_ID,
-			expectedAgentName: "Agents/设计师助手",
-		});
-
-		expect(readinessFromPick(pick, "designer")).toEqual({
-			status: "blocked",
-			playbookId: "designer",
-			reason: "identity_mismatch",
-			message: playbookIdentityMismatchMessage("designer"),
-		});
 	});
 });
 
