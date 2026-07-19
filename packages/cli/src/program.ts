@@ -145,6 +145,7 @@ program
 	.addOption(providerOption("Source provider to sync from (defaults from config when -f is set)"))
 	.option("-o, --out <path>", "Output file path", "agents.synced.yaml")
 	.option("--force", "Overwrite the output file if it already exists")
+	.option("--skip-missing-files", "Do not prompt for remote files that cannot be downloaded; omit them from output")
 	.action(withResolvedConfigFile(syncCommand));
 
 program
@@ -193,6 +194,9 @@ sessionCmd
 	.addOption(configFileOption())
 	.option("--agent <name>", "Agent name (auto-detected when only one agent is configured)")
 	.option("--environment <name>", "Override agent's declared environment")
+	.option("--environment-id <id>", "Use an explicit remote environment id instead of the configured one")
+	.option("--tunnel <name>", "Override agent's declared tunnel")
+	.option("--tunnel-id <id>", "Use an explicit remote tunnel id instead of the configured one")
 	.option("--vault <name>", "Override agent's declared vault")
 	.option("--memory-stores <names>", "Override agent's declared memory stores (comma-separated)")
 	.option("--title <title>", "Session title")
@@ -228,6 +232,9 @@ sessionCmd
 	.addOption(configFileOption())
 	.option("--agent <name>", "Agent name (auto-detected when only one agent is configured)")
 	.option("--environment <name>", "Override agent's declared environment")
+	.option("--environment-id <id>", "Use an explicit remote environment id instead of the configured one")
+	.option("--tunnel <name>", "Override agent's declared tunnel")
+	.option("--tunnel-id <id>", "Use an explicit remote tunnel id instead of the configured one")
 	.option("--vault <name>", "Override agent's declared vault")
 	.option("--memory-stores <names>", "Override agent's declared memory stores (comma-separated)")
 	.option("--title <title>", "Session title")

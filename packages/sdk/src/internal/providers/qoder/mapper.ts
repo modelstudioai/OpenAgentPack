@@ -42,14 +42,15 @@ export function normalizeToolNameFromQoder(name: string): string {
 }
 
 export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName: string): unknown {
+	const envType = decl.config.type ?? "cloud";
+	const config: Record<string, unknown> = { type: envType };
+	if (decl.config.networking) config.networking = decl.config.networking;
+	else if (envType === "cloud") config.networking = { type: "unrestricted" };
+	if (decl.config.packages) config.packages = decl.config.packages;
 	return {
 		name,
 		description: decl.description ?? "",
-		config: {
-			type: "cloud",
-			networking: decl.config.networking ?? { type: "unrestricted" },
-			packages: decl.config.packages,
-		},
+		config,
 		metadata: injectMetadata(decl.metadata, projectName, name),
 	};
 }
@@ -242,6 +243,9 @@ export function mapDeployment(
 		initial_events: mapDeploymentInitialEvents(decl.initial_events),
 	};
 
+	// NOTE: tunnel_id is intentionally NOT sent — Qoder's /deployments API rejects
+	// it (HTTP 400 "unknown field"). Server-side deployment runs cannot carry a
+	// BYOC tunnel today; validate-config warns when a deployment declares one.
 	if (refs.vault_ids.length) body.vault_ids = refs.vault_ids;
 
 	const resources = mapDeploymentResources(decl, refs, uploadedFiles);
@@ -520,6 +524,7 @@ export function mapSession(bindings: SessionBindings): unknown {
 		environment_id: bindings.environment_id,
 	};
 
+	if (bindings.tunnel_id) body.tunnel_id = bindings.tunnel_id;
 	if (bindings.title) body.title = bindings.title;
 	if (bindings.metadata) body.metadata = bindings.metadata;
 	if (bindings.vault_ids.length) body.vault_ids = bindings.vault_ids;
@@ -541,6 +546,7 @@ export function mapDeploymentToSession(decl: DeploymentDecl, refs: ResolvedDeplo
 		environment_id: refs.environment_id,
 	};
 
+	if (refs.tunnel_id) body.tunnel_id = refs.tunnel_id;
 	if (decl.description) body.title = decl.description;
 	if (refs.vault_ids.length) body.vault_ids = refs.vault_ids;
 

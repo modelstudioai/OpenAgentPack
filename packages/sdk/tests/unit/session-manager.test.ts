@@ -11,6 +11,10 @@ function makeConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 			dev: { config: { type: "cloud" } },
 			staging: { config: { type: "cloud" } },
 		},
+		tunnels: {
+			internal: { tunnel_id: "tnl_internal" },
+			staging: { tunnel_id: "tnl_staging" },
+		},
 		vaults: {
 			secrets: { display_name: "Secrets", credentials: [] },
 			other: { display_name: "Other", credentials: [] },
@@ -24,6 +28,7 @@ function makeConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 				model: "gpt-4",
 				instructions: "You are a researcher.",
 				environment: "dev",
+				tunnel: "internal",
 				vault: "secrets",
 				memory_stores: ["docs"],
 			},
@@ -86,15 +91,64 @@ describe("buildSessionBindings", () => {
 		const state = makeState();
 		const bindings = buildSessionBindings("researcher", config, "qoder", state, {
 			environment: "staging",
+			tunnel: "staging",
 			vault: "other",
 			memoryStores: ["logs"],
 			title: "Test session",
 		});
 
 		expect(bindings.environment_id).toBe("env_staging");
+		expect(bindings.tunnel_id).toBe("tnl_staging");
 		expect(bindings.vault_ids).toEqual(["vault_o1"]);
 		expect(bindings.memory_store_ids).toEqual(["ms_logs"]);
 		expect(bindings.title).toBe("Test session");
+	});
+
+	test("inherits tunnel_id from agent declaration", () => {
+		const config = makeConfig();
+		const state = makeState();
+		const bindings = buildSessionBindings("researcher", config, "qoder", state);
+
+		expect(bindings.tunnel_id).toBe("tnl_internal");
+	});
+
+	test("explicit tunnelId binds directly, bypassing config resolution", () => {
+		const config = makeConfig();
+		const state = makeState();
+		const bindings = buildSessionBindings("researcher", config, "qoder", state, {
+			tunnelId: "tnl_remote_xyz",
+		});
+
+		expect(bindings.tunnel_id).toBe("tnl_remote_xyz");
+	});
+
+	test("throws when tunnel name not defined in config", () => {
+		const config = makeConfig();
+		const state = makeState();
+		expect(() =>
+			buildSessionBindings("researcher", config, "qoder", state, {
+				tunnel: "prod",
+			}),
+		).toThrow(/not defined in config/);
+	});
+
+	test("rejects tunnels when the session provider is not Qoder", () => {
+		const config = makeConfig();
+		const state = makeState();
+		state.setResource({
+			address: { type: "agent", name: "researcher", provider: "claude" },
+			remote_id: "agent_claude",
+			content_hash: "h",
+		});
+		state.setResource({
+			address: { type: "environment", name: "dev", provider: "claude" },
+			remote_id: "env_claude",
+			content_hash: "h",
+		});
+		expect(() => buildSessionBindings("researcher", config, "claude", state)).toThrow(/only by Qoder/);
+		expect(() => buildSessionBindings("researcher", config, "claude", state, { tunnelId: "tnl_remote_xyz" })).toThrow(
+			/only by Qoder/,
+		);
 	});
 
 	test("explicit environmentId binds directly, bypassing config/state resolution", () => {
@@ -106,6 +160,30 @@ describe("buildSessionBindings", () => {
 		});
 
 		expect(bindings.environment_id).toBe("env_remote_xyz");
+	});
+
+	test("prefers environment.environment_id over state resolution", () => {
+		const config = makeConfig({
+			environments: {
+				byoc: { environment_id: "env_byoc_xyz", config: { type: "self_hosted" } },
+			},
+			agents: {
+				byocAgent: {
+					model: "gpt-4",
+					instructions: "byoc",
+					environment: "byoc",
+				},
+			},
+		});
+		const state = makeState();
+		state.setResource({
+			address: { type: "agent", name: "byocAgent", provider: "qoder" },
+			remote_id: "agent_byoc",
+			content_hash: "h",
+		});
+
+		const bindings = buildSessionBindings("byocAgent", config, "qoder", state);
+		expect(bindings.environment_id).toBe("env_byoc_xyz");
 	});
 
 	test("agent with no vault or memory_stores produces empty arrays", () => {

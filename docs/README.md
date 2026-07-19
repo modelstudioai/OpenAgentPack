@@ -28,6 +28,7 @@ Task-oriented, with steps and verification.
 | [Configure an agent](./guides/configure-an-agent.md) | Build an `agents.yaml` from minimal to full stack. |
 | [Deploy to Bailian](./guides/deploy-to-bailian.md) | Bailian (Aliyun AgentStudio) setup and notes. |
 | [Deploy to Qoder](./guides/deploy-to-qoder.md) | Qoder-specific setup and notes. |
+| [Use BYOC environments](./guides/use-byoc-environments.md) | Connect Qoder sessions to administrator-provisioned self-hosted environments and private-network tunnels. |
 | [Deploy to Claude](./guides/deploy-to-claude.md) | Claude-specific setup and notes. |
 | [Deploy to Volcengine Ark](./guides/deploy-to-ark.md) | Volcengine Ark (Managed Agents) setup and notes. |
 | [Use skills](./guides/use-skills.md) | Author and attach reusable capability modules. |
@@ -63,6 +64,7 @@ For external contributors.
 | Doc | What's inside |
 |-----|---------------|
 | [Contributing overview](../CONTRIBUTING.md) | Dev setup, merge requirements, code style. |
+| [Maintainer review](./contributing/maintainer-review.md) | Evidence-based PR review and merge gates. |
 | [Development](./contributing/development.md) | Clone, install, run, test, package boundaries. |
 | [Provider development](./contributing/provider-development.md) | The six files a new provider must implement. |
 | [Release](./contributing/release.md) | npm publishing workflow and Trusted Publishing. |

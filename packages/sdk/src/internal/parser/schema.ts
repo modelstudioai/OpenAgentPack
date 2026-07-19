@@ -20,11 +20,21 @@ const environmentSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
 	provider: z.string().optional(),
+	/** Pre-existing provider environment id (e.g. env_00xxxx). When set, the environment is treated as an external reference and will not be created/updated/deleted by OpenCMA. */
+	environment_id: z.string().optional(),
 	config: z.object({
-		type: z.literal("cloud"),
+		type: z.enum(["cloud", "self_hosted"]),
 		networking: networkingSchema.optional(),
 		packages: packagesSchema.optional(),
 	}),
+	metadata: z.record(z.string(), z.string()).optional(),
+});
+
+const tunnelSchema = z.object({
+	name: z.string().optional(),
+	description: z.string().optional(),
+	/** Pre-existing Qoder tunnel id (e.g. tnl_00xxxx). Tunnels are allocated by Qoder BYOC admin and referenced, not created. */
+	tunnel_id: z.string(),
 	metadata: z.record(z.string(), z.string()).optional(),
 });
 
@@ -170,6 +180,7 @@ const agentSchema = z.object({
 	model: z.union([z.string(), z.record(z.string(), z.string())]),
 	instructions: z.string(),
 	environment: z.string().optional(),
+	tunnel: z.string().optional(),
 	provider: z.string().optional(),
 	tools: toolsSchema.optional(),
 	mcp_servers: z.array(mcpServerSchema).optional(),
@@ -231,6 +242,7 @@ const deploymentSchema = z.object({
 	agent: z.string(),
 	agent_version: z.number().int().optional(),
 	environment: z.string().optional(),
+	tunnel: z.string().optional(),
 	vaults: z.array(z.string()).optional(),
 	memory_stores: z.array(z.string()).optional(),
 	resources: z.array(deploymentResourceSchema).optional(),
@@ -250,6 +262,7 @@ export const projectConfigSchema = z.object({
 		})
 		.optional(),
 	environments: z.record(z.string(), environmentSchema).optional(),
+	tunnels: z.record(z.string(), tunnelSchema).optional(),
 	vaults: z.record(z.string(), vaultSchema).optional(),
 	memory_stores: z.record(z.string(), memoryStoreSchema).optional(),
 	skills: z.record(z.string(), skillSchema).optional(),

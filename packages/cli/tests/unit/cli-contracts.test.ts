@@ -113,9 +113,10 @@ vaults:
 	return configPath;
 }
 
-async function runAgents(args: string[], env: Record<string, string> = {}) {
-	const proc = Bun.spawn([process.execPath, "run", "bin/agents.ts", ...args], {
-		cwd: REPO_ROOT,
+async function runAgents(args: string[], env: Record<string, string> = {}, cwd = REPO_ROOT) {
+	const entry = cwd === REPO_ROOT ? "bin/agents.ts" : join(REPO_ROOT, "bin/agents.ts");
+	const proc = Bun.spawn([process.execPath, "run", entry, ...args], {
+		cwd,
 		stdout: "pipe",
 		stderr: "pipe",
 		env: {
@@ -430,12 +431,54 @@ test("validate reports reference errors through the core runtime", async () => {
 	expect(result.stderr).toContain("references unknown environment 'ghost'");
 });
 
+test("validate loads .env before resolving provider placeholders", async () => {
+	const dir = await makeTempDir();
+	await Bun.write(
+		join(dir, "agents.yaml"),
+		`version: "1"
+
+providers:
+  qoder:
+    api_key: \${QODER_PAT}
+
+defaults:
+  provider: qoder
+
+agents:
+  assistant:
+    model: ultimate
+    instructions: "You are helpful."
+`,
+	);
+	await Bun.write(join(dir, ".env"), "QODER_PAT=test-token\n");
+
+	const result = await runAgents(["validate", "--file", "agents.yaml"], { QODER_PAT: "" }, dir);
+
+	expect(result.exitCode).toBe(0);
+	expect(result.stderr).toContain("Configuration is valid");
+});
+
 test("models list keeps missing config guidance in the core runtime", async () => {
 	const result = await runAgents(["models", "list", "--file", "/missing/agents.yaml"]);
 
 	expect(result.exitCode).toBe(1);
 	expect(result.stdout).toBe("");
 	expect(result.stderr).toContain("File not found");
+});
+
+test("models list JSON reports providers without dynamic listing support", async () => {
+	const dir = await makeTempDir();
+	const configPath = await writeBailianVaultConfig(dir);
+
+	const result = await runAgents(["models", "list", "--file", configPath, "--provider", "bailian", "--json"]);
+
+	expect(result.exitCode).toBe(0);
+	expect(JSON.parse(result.stdout)).toEqual({
+		provider: "bailian",
+		supportsDynamicListing: false,
+		models: [],
+	});
+	expect(result.stderr).toBe("");
 });
 
 test("migrated CLI commands consume core service APIs instead of composing internals", async () => {

@@ -137,6 +137,7 @@ describe("Qoder metadata injection", () => {
 		const body = mapQoderEnv("dev", envDecl, "my-project") as Record<string, any>;
 		expect(body.metadata["agents.project"]).toBe("my-project");
 		expect(body.metadata["agents.resource"]).toBe("dev");
+		expect(body.config.networking).toEqual({ type: "unrestricted" });
 	});
 
 	test("mapAgent injects agents.project and agents.resource", () => {

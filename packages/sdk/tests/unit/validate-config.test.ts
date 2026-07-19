@@ -42,3 +42,18 @@ test("collectConfigReferences omits provider capability checks", () => {
 	// server-only MCP that this rule would wrongly flag).
 	expect(diagnostics.some((d) => d.code === "bailian.agent.mcp_toolkit_missing")).toBe(false);
 });
+
+test("validates tunnel references and limits tunnels to Qoder", () => {
+	const config: ProjectConfig = {
+		version: "1",
+		providers: { claude: {} },
+		defaults: { provider: "claude" },
+		tunnels: { byoc: { tunnel_id: "tnl_1" } },
+		agents: {
+			assistant: { model: "claude", instructions: "test", tunnel: "byoc" },
+		},
+	};
+
+	const diagnostics = validateProjectConfig(config);
+	expect(diagnostics.some((d) => d.code === "claude.agent.tunnel.unsupported")).toBe(true);
+});

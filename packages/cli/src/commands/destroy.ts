@@ -87,7 +87,9 @@ function stopResourceSpinner(spinner: ReturnType<typeof p.spinner> | undefined, 
 	}
 
 	if (result.status === "success") {
-		if (result.reason === "already_gone") {
+		if (result.reason === "reference_removed") {
+			spinner.stop(chalk.green(`✓ ${label} — local reference removed (remote left intact)`));
+		} else if (result.reason === "already_gone") {
 			spinner.stop(chalk.yellow(`⊘ ${label} — already deleted remotely, cleaned up state`));
 		} else if (result.cascaded) {
 			spinner.stop(chalk.green(`✓ ${label} — destroyed (cascaded)`));

@@ -65,6 +65,8 @@ export interface ResolvedDeploymentRefs {
 	agent_id: string;
 	agent_version?: number;
 	environment_id: string;
+	/** Qoder BYOC tunnel id. Passed through only when the deployment targets Qoder BYOC. */
+	tunnel_id?: string;
 	vault_ids: string[];
 	memory_store_ids: Record<string, string>;
 }
