@@ -9,7 +9,11 @@ export async function modelsListCommand(options: { file: string; provider?: stri
 	for (const listing of listings) {
 		const name = listing.provider;
 		if (!listing.supportsDynamicListing) {
-			if (!options.json) {
+			if (options.json) {
+				process.stdout.write(
+					`${JSON.stringify({ provider: name, supportsDynamicListing: false, models: [] }, null, 2)}\n`,
+				);
+			} else {
 				console.log(chalk.yellow(`\n  Provider '${name}' does not support dynamic model listing.`));
 				if (name === "claude") {
 					console.log(chalk.dim(`  Claude models are specified directly (e.g. claude-sonnet-4-6, claude-opus-4-6).`));
