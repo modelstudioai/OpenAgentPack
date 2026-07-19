@@ -33,7 +33,6 @@ const environmentSchema = z.object({
 const tunnelSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
-	provider: z.string().optional(),
 	/** Pre-existing Qoder tunnel id (e.g. tnl_00xxxx). Tunnels are allocated by Qoder BYOC admin and referenced, not created. */
 	tunnel_id: z.string(),
 	metadata: z.record(z.string(), z.string()).optional(),

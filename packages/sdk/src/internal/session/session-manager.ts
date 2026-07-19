@@ -131,9 +131,8 @@ function resolveTunnelId(
 		throw new UserError("Tunnels are supported only by Qoder BYOC sessions.");
 	}
 	if (options.tunnelId) return options.tunnelId;
-	if (!tunnelName) return undefined;
 
-	const tunnel = config.tunnels?.[tunnelName];
+	const tunnel = config.tunnels?.[tunnelName!];
 	if (!tunnel) {
 		throw new UserError(`Tunnel '${tunnelName}' is not defined in config. Declare it under the 'tunnels:' section.`);
 	}

@@ -39,7 +39,6 @@ export interface EnvironmentConfig {
 export interface TunnelDecl {
 	name?: string;
 	description?: string;
-	provider?: ProviderName;
 	/** Pre-existing Qoder tunnel id (e.g. tnl_00xxxx). Tunnels are allocated by Qoder BYOC admin and referenced, not created. */
 	tunnel_id: string;
 	metadata?: Record<string, string>;

@@ -158,6 +158,7 @@ describe("destroy runtime", () => {
 		const result = await destroyPlannedProjectResources(planDestroyProjectContext(runtime));
 
 		expect(result.destroyed).toBe(1);
+		expect(result.results[0]?.reason).toBe("reference_removed");
 		expect(calls).toEqual([]);
 		expect(runtime.state.listResources()).toEqual([]);
 	});

@@ -232,7 +232,8 @@ describe("Qoder mapDeployment", () => {
 		expect(body.name).toBe("daily-report");
 		expect(body.agent).toEqual({ id: "agent_123", type: "agent", version: 3 });
 		expect(body.environment_id).toBe("env_456");
-		expect(body.tunnel_id).toBe("tnl_789");
+		// Qoder's /deployments API rejects tunnel_id (HTTP 400) — never sent.
+		expect(body.tunnel_id).toBeUndefined();
 		expect(body.initial_events).toEqual([
 			{ type: "user.message", content: [{ type: "text", text: "Run the daily report" }] },
 			{ type: "system.message", content: [{ type: "text", text: "You are punctual" }] },

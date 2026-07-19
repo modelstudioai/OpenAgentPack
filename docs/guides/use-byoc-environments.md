@@ -71,9 +71,17 @@ agents session run "Check the private service status" \
 
 When `environment_id` is present, OpenCMA never creates, updates, or remotely deletes that environment. Tunnels are always references and are never managed by OpenCMA.
 
-OpenCMA records external ownership in its local state. If you later remove the environment declaration and run `agents apply`, it removes only the local state record; the administrator-managed environment remains intact. The same protection applies to `agents destroy`.
+OpenCMA records external ownership in its local state, and the record is sticky:
+
+- Remove the environment declaration entirely and run `agents apply` or `agents destroy`: only the local state record is removed; the administrator-managed environment remains intact.
+- Remove only the `environment_id` line while keeping the environment block: `plan`/`apply` fail with an `plan.environment.ownership_transition` error. Silently converting the reference into a managed resource would let OpenCMA modify — and eventually delete — a remote environment it does not own. To take over management deliberately, release the reference first with `agents state rm environment.<name>` and adopt the remote with `agents state import`.
+- Point `environment_id` at a different existing environment: the reference is re-recorded and any deployments using it are updated. If the environment was previously managed by OpenCMA under a different remote ID, `plan` warns that the old remote is no longer tracked.
 
 Deleting an agent, session, vault, or other managed resource still follows its normal lifecycle. Use the provider's administrator tooling to modify or delete BYOC environments and tunnels.
+
+## Deployments and tunnels
+
+A deployment that references the BYOC environment runs in that environment, and changing the referenced `environment_id` value updates the deployment on the next `apply`. Qoder's deployment API currently rejects `tunnel_id`, however, so a declared (or agent-inherited) tunnel is not sent with the deployment: scheduled and triggered runs execute without the tunnel, and `validate`/`plan` emits a `qoder.deployment.tunnel.unsupported` warning. Use sessions for workloads that need private-network MCP access.
 
 ## Troubleshooting
 
@@ -83,5 +91,7 @@ Deleting an agent, session, vault, or other managed resource still follows its n
 | `Tunnel '...' is not defined in config` | Add the name under `tunnels`, or pass `--tunnel-id` for a one-off session. |
 | Tunnel unsupported diagnostic | Ensure the agent or deployment targets Qoder; tunnels are not sent to other providers. |
 | Environment cannot be resolved | Verify the administrator-provided `environment_id` and the agent's `environment` reference. |
+| `plan.environment.ownership_transition` error | Restore `environment_id`, or release the reference with `agents state rm environment.<name>` before managing the environment with OpenCMA. |
+| `qoder.deployment.tunnel.unsupported` warning | Expected: Qoder deployments cannot carry a tunnel today. Use sessions for private-network MCP access. |
 
 For field definitions, see the [configuration reference](../reference/configuration.md).

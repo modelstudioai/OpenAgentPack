@@ -314,3 +314,86 @@ describe("executor external-reference environment", () => {
 		expect(state.getResource(address)?.externally_managed).toBe(true);
 	});
 });
+
+describe("executor recreate-on-vanished-remote", () => {
+	test("falls back to create when an update fails with 404", async () => {
+		const calls: string[] = [];
+		const provider = {
+			name: "bailian",
+			validate: async () => {},
+			findResource: async () => null,
+			updateEnvironment: async () => {
+				calls.push("updateEnvironment");
+				throw new ApiError(404, "Environment 'env_old' was not found.", "test");
+			},
+			createEnvironment: async () => {
+				calls.push("createEnvironment");
+				return { id: "env_new", type: "environment" };
+			},
+		} as unknown as ProviderAdapter;
+
+		const address = { type: "environment" as const, name: "my-env", provider: "bailian" };
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "update",
+					address,
+					reason: "Local config changed",
+					before: { content_hash: "h_old" },
+					after: { content_hash: "h_new" },
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({ address, remote_id: "env_old", content_hash: "h_old" });
+
+		const result = await executePlan(plan, makeCtx(provider, state));
+
+		expect(calls).toEqual(["updateEnvironment", "createEnvironment"]);
+		expect(result.results[0]?.status).toBe("success");
+		expect(state.getResource(address)?.remote_id).toBe("env_new");
+	});
+
+	test("does not retry non-404 update failures", async () => {
+		const calls: string[] = [];
+		const provider = {
+			name: "bailian",
+			validate: async () => {},
+			findResource: async () => null,
+			updateEnvironment: async () => {
+				calls.push("updateEnvironment");
+				throw new ApiError(500, "boom", "test");
+			},
+			createEnvironment: async () => {
+				calls.push("createEnvironment");
+				return { id: "env_new", type: "environment" };
+			},
+		} as unknown as ProviderAdapter;
+
+		const address = { type: "environment" as const, name: "my-env", provider: "bailian" };
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "update",
+					address,
+					reason: "Local config changed",
+					before: { content_hash: "h_old" },
+					after: { content_hash: "h_new" },
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({ address, remote_id: "env_old", content_hash: "h_old" });
+
+		const result = await executePlan(plan, makeCtx(provider, state));
+
+		expect(calls).toEqual(["updateEnvironment"]);
+		expect(result.results[0]?.status).toBe("failed");
+	});
+});

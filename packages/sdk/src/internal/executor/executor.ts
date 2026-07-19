@@ -211,7 +211,31 @@ function buildActionLevels(actions: PlannedAction[]): PlannedAction[][] {
 
 type ResourceExecAdapter = ResourceCrudAdapter & DriftReadAdapter;
 
+// The remote object can vanish after refresh planned an update (deleted
+// out-of-band, or soft-deleted in a way refresh cannot see). Failing the whole
+// apply on a 404 update is wrong — recreate the resource instead.
 async function executeAction(action: PlannedAction, provider: ResourceExecAdapter, ctx: ExecContext): Promise<boolean> {
+	try {
+		return await executeActionInner(action, provider, ctx);
+	} catch (err) {
+		if (action.action !== "update" || !ApiError.isNotFound(err)) throw err;
+		emitRuntimeFeedback(ctx.onFeedback, {
+			type: "resource_already_gone",
+			level: "warning",
+			action,
+			resource: action.address,
+			message: `update ${action.address.type}.${action.address.name} (${action.address.provider}) — not found remotely, recreating`,
+		});
+		ctx.state.removeResource(action.address);
+		return executeActionInner({ ...action, action: "create" }, provider, ctx);
+	}
+}
+
+async function executeActionInner(
+	action: PlannedAction,
+	provider: ResourceExecAdapter,
+	ctx: ExecContext,
+): Promise<boolean> {
 	const { address } = action;
 	const { type, name } = address;
 	let adopted = false;
@@ -292,6 +316,18 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 					message: `${action.action} ${action.address.type}.${action.address.name} (${action.address.provider}) — external reference, no remote mutation`,
 				});
 			} else if (isUpdate) {
+				// Defense in depth: ownership is a state-level fact. Never push the
+				// local config onto an environment recorded as externally managed —
+				// the transition back to managed requires an explicit release
+				// (`agents state rm` + `agents state import`).
+				const prior = ctx.state.getResource(address);
+				if (prior?.externally_managed) {
+					throw new UserError(
+						`environment.${name} is recorded as an external reference (${prior.remote_id ?? "unknown id"}); ` +
+							`refusing to modify it remotely. Restore 'environment_id' to keep it as a reference, or release it first ` +
+							`with 'agents state rm environment.${name}' (then 'agents state import' to adopt it as a managed resource).`,
+					);
+				}
 				result = await provider.updateEnvironment(existingId!, remoteName, decl);
 			} else {
 				try {
@@ -470,7 +506,7 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 			throw new UserError(`Unknown resource type: ${type}`);
 	}
 
-	const hash = await computeResourceHash(address, ctx.config, ctx.configPath);
+	const hash = await computeResourceHash(address, ctx.config, ctx.configPath, ctx.state);
 	const comparableHash = computeComparableDesiredHash(address, ctx.config, provider);
 
 	// After apply, read back the actual remote state to establish the drift
@@ -485,10 +521,16 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 		remoteSnapshot = remote.snapshot ?? remote.comparable;
 	}
 
+	// The externally-managed marker is sticky: it survives applies and is only
+	// cleared by removing the resource from state (`agents state rm` / destroy).
+	const priorResource = ctx.state.getResource(address);
 	ctx.state.setResource({
 		address,
 		remote_id: result.id,
-		externally_managed: type === "environment" && ctx.config.environments?.[name]?.environment_id ? true : undefined,
+		externally_managed:
+			priorResource?.externally_managed || (type === "environment" && ctx.config.environments?.[name]?.environment_id)
+				? true
+				: undefined,
 		version: result.version,
 		content_hash: hash,
 		desired_hash: hash,

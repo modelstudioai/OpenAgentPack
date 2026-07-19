@@ -84,7 +84,7 @@ environments:
 
 | Field | Type | Required | Description |
 |-------|------|:--------:|-------------|
-| `environment_id` | string | no | Existing environment ID. When present, OpenCMA never creates, updates, or deletes the remote environment. |
+| `environment_id` | string | no | Existing environment ID. When present, OpenCMA never creates, updates, or deletes the remote environment. Removing this line later is blocked as an ownership error — release first with `agents state rm` (see [Use BYOC environments](../guides/use-byoc-environments.md)). |
 | `config.type` | `"cloud"` \| `"self_hosted"` | yes | Environment type. `self_hosted` is used for Qoder BYOC. |
 | `config.networking.type` | `"unrestricted"` \| `"limited"` | no | Network policy. |
 | `config.networking.allow_mcp_servers` | boolean | no | Allow outbound MCP. |
@@ -230,7 +230,7 @@ deployments:
     agent: <string>
     agent_version: <number>           # optional
     environment: <string>             # optional
-    tunnel: <string>                  # optional; Qoder BYOC only
+    tunnel: <string>                  # optional; Qoder BYOC only (see note below)
     vaults: [ <string> ]
     memory_stores: [ <string> ]
     resources: [ DeploymentResource ]
@@ -242,6 +242,8 @@ deployments:
 ```
 
 `initial_events` is a discriminated union; `schedule.expression` must be a 5-field cron expression.
+
+> **Deployment `tunnel` caveat:** Qoder's deployment API does not accept `tunnel_id`, so the tunnel is dropped from the deployment payload and server-side runs execute without it (`validate`/`plan` emits a warning). Use sessions for private-network MCP access; see [Use BYOC environments](../guides/use-byoc-environments.md).
 
 ### Initial events
 

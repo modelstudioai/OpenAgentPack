@@ -243,7 +243,9 @@ export function mapDeployment(
 		initial_events: mapDeploymentInitialEvents(decl.initial_events),
 	};
 
-	if (refs.tunnel_id) body.tunnel_id = refs.tunnel_id;
+	// NOTE: tunnel_id is intentionally NOT sent — Qoder's /deployments API rejects
+	// it (HTTP 400 "unknown field"). Server-side deployment runs cannot carry a
+	// BYOC tunnel today; validate-config warns when a deployment declares one.
 	if (refs.vault_ids.length) body.vault_ids = refs.vault_ids;
 
 	const resources = mapDeploymentResources(decl, refs, uploadedFiles);

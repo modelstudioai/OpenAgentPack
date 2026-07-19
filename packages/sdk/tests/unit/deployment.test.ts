@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { resolveDeploymentRefs } from "../../src/internal/executor/resolver.ts";
 import { loadConfig } from "../../src/internal/parser/index.ts";
+import { computeResourceHash } from "../../src/internal/planner/hasher.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
 import type { ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
 import { QoderAdapter } from "../../src/internal/providers/qoder/adapter.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { DeploymentDecl, ProjectConfig } from "../../src/internal/types/config.ts";
-import type { StateFile } from "../../src/internal/types/state.ts";
+import type { ResourceAddress, StateFile } from "../../src/internal/types/state.ts";
+import { addressKey } from "../../src/internal/types/state.ts";
 import "../../src/internal/providers/claude/index.ts";
 import "../../src/internal/providers/qoder/index.ts";
 
@@ -260,9 +262,17 @@ describe("deployment plan / diff", () => {
 			resources: creates.map((a) => ({
 				address: a.address,
 				remote_id: `fake_${a.address.name}_${a.address.provider}`,
-				content_hash: (a.after as { content_hash?: string })?.content_hash ?? "",
+				content_hash: "",
 			})),
 		};
+		// Mirror executor semantics: the stored hash is recomputed post-apply, when
+		// reference ids (e.g. the environment's remote id) resolve from state.
+		const lookup = {
+			getResource: (addr: ResourceAddress) => state.resources.find((r) => addressKey(r.address) === addressKey(addr)),
+		};
+		for (const res of state.resources) {
+			res.content_hash = await computeResourceHash(res.address, config, undefined, lookup);
+		}
 
 		const plan2 = await buildPlan(config, state);
 		expect(plan2.actions.filter((a) => a.action !== "no-op").length).toBe(0);

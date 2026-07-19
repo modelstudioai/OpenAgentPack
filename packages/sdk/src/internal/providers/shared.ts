@@ -17,6 +17,16 @@ import { resourceNameFromMetadata } from "./sync-mapping.ts";
  * object so callers can shape it (RemoteResource vs comparable). `endpoint`
  * undefined means the type is unsupported on this provider → null.
  */
+/**
+ * Some providers soft-delete: DELETE archives the object and GET keeps returning
+ * it with `archived_at` set, while updates on it fail. For lifecycle purposes an
+ * archived resource is gone — pass this as locateRemote's `accept` so refresh and
+ * adoption never treat archived ghosts as existing.
+ */
+export function notArchived(raw: Record<string, unknown>): boolean {
+	return raw.archived_at === null || raw.archived_at === undefined;
+}
+
 export async function locateRemote(
 	client: BaseApiClient,
 	endpoint: string | undefined,

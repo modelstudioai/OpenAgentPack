@@ -11,6 +11,7 @@ export type DestroyResourceStatus = "success" | "failed" | "blocked" | "skipped"
 
 export type DestroyResourceResultReason =
 	| "destroyed"
+	| "reference_removed"
 	| "already_gone"
 	| "cascade_required"
 	| "provider_missing"
@@ -100,7 +101,7 @@ async function destroyOneResource(
 	// remote lifecycle call for it.
 	if (isExternalEnvironment(ctx, resource)) {
 		ctx.state.removeResource(resource.address);
-		return successResult(resource, "destroyed");
+		return successResult(resource, "reference_removed");
 	}
 
 	let provider: ProviderAdapter;
@@ -175,7 +176,10 @@ function isExternalEnvironment(ctx: ProjectRuntimeContext, resource: ResourceSta
 	);
 }
 
-function successResult(resource: ResourceState, reason: "destroyed" | "already_gone"): DestroyResourceResult {
+function successResult(
+	resource: ResourceState,
+	reason: "destroyed" | "reference_removed" | "already_gone",
+): DestroyResourceResult {
 	return { resource, status: "success", reason };
 }
 

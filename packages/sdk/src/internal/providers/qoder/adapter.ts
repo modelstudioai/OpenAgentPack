@@ -42,6 +42,7 @@ import {
 	buildSessionInfo,
 	exportRemoteResources,
 	locateRemote,
+	notArchived,
 	toCloudAgent,
 	toCloudEnvironment,
 	toCloudVault,
@@ -93,7 +94,7 @@ export class QoderAdapter implements ProviderAdapter {
 	};
 
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
-		const raw = await locateRemote(this.client, QoderAdapter.ENDPOINT_MAP[type], name, id);
+		const raw = await locateRemote(this.client, QoderAdapter.ENDPOINT_MAP[type], name, id, notArchived);
 		return raw ? toRemoteResource(raw) : null;
 	}
 
@@ -165,7 +166,7 @@ export class QoderAdapter implements ProviderAdapter {
 	): Promise<ComparableRemoteResource | null> {
 		if (type !== "agent" && type !== "environment") return null;
 		const endpoint = type === "agent" ? "/agents" : "/environments";
-		const raw = await locateRemote(this.client, endpoint, name, id);
+		const raw = await locateRemote(this.client, endpoint, name, id, notArchived);
 		if (!raw) return null;
 
 		const comparable = this.normalizeRemote(type, raw);
