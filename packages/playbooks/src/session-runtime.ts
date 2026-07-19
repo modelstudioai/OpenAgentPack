@@ -124,8 +124,8 @@ export type PlaybookSessionRuntimeAdapters<
 	onDuplicateAgent?: (input: { playbookId: string; winner: TAgent; duplicates: TAgent[] }) => void;
 };
 
-// Single source of the identity-mismatch copy, shared by the runtime error, the
-// readiness mapping, and Mode B's resolver throw.
+// Single source of the identity-mismatch copy, shared by the runtime error and
+// the readiness mapping.
 export function playbookIdentityMismatchMessage(playbookId: string): string {
 	return `玩法「${playbookId}」存在同应用同名 Agent，但 metadata.${PLAYBOOK_APP_METADATA_KEY}/${PLAYBOOK_METADATA_KEY} 未对上，疑似身份未盖章；请检查配置而非重复创建。`;
 }
@@ -159,8 +159,8 @@ export function pickPlaybookAgent<TAgent extends RemotePlaybookAgent>(
 	return { agent, duplicates, identityMismatch: false };
 }
 
-// The single source of the pick→PlaybookReadiness mapping, shared by the per-id runtime
-// path and Mode B's first-screen batch prime, so identity-drift handling lives in one place.
+// The single source of the pick→PlaybookReadiness mapping, so identity-drift
+// handling lives in one place.
 export function readinessFromPick<TAgent extends RemotePlaybookAgent>(
 	pick: PlaybookAgentPick<TAgent>,
 	playbookId: string,

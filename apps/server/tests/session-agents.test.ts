@@ -46,7 +46,7 @@ describe("session agent compiler", () => {
 		expect(agent?.model).toBe("glm-5.1");
 	});
 
-	test("stamps playbook metadata as the shared App identity (same key Mode B writes)", () => {
+	test("stamps playbook metadata as the shared App identity", () => {
 		const compiled = compileAgentRuntime("base", baseConfig());
 		const agent = compiled.config.agents?.[compiled.agentId];
 
@@ -64,9 +64,12 @@ describe("session agent compiler", () => {
 		const agent = compiled.config.agents?.[compiled.agentId];
 
 		expect(agent?.instructions).toContain("【角色设定】");
-		// The agent declares no environment: the base sandbox is a standalone resource bound
-		// per-session via environment_id, not owned by the agent decl.
-		expect(agent?.environment).toBeUndefined();
+		// The agent declares its environment and vault so syncAgentResources manages
+		// base resources through the plan/apply engine (state tracking + drift detection).
+		const environment = getEnvironmentProfile();
+		const vault = getVaultProfile();
+		expect(agent?.environment).toBe(environment.name);
+		expect(agent?.vault).toBe(vault?.name);
 	});
 
 	test("emits official skills when playbook template declares them", () => {
@@ -145,6 +148,7 @@ function baseConfig(provider = "bailian"): ResolvedProjectConfig {
 							secret_value: "test-secret",
 							...(cred.networking ? { networking: cred.networking } : {}),
 						})),
+						metadata: { "agents.vault": "true" },
 					},
 				}
 			: {},
@@ -153,6 +157,7 @@ function baseConfig(provider = "bailian"): ResolvedProjectConfig {
 					[environment.name]: {
 						...(environment.description ? { description: environment.description } : {}),
 						config: environment.config,
+						metadata: { "agents.base": "true" },
 					},
 				}
 			: {},

@@ -84,7 +84,7 @@ export async function deleteUserSkill(id: string): Promise<void> {
 // Warm polling: the custom-skill security scan runs 3–5 min on the production workspace, so poll
 // gently (one provider call every SCAN_POLL_INTERVAL_MS) to keep load light — warming is off the
 // user's critical path, so cadence matters more than latency. Timeouts and cadence come from the
-// shared scan-lifecycle module so they cannot drift from the SDK/Mode B copies.
+// shared scan-lifecycle module so they cannot drift.
 
 /**
  * Pre-provision a seed-declared custom skill (name + downloadable url) ahead of first click: dedupe

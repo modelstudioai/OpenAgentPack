@@ -16,18 +16,18 @@ import { withAgentRuntime } from "@/services/runtime-factory";
 import { createEventBuffer, seedCompletedBuffer } from "@/services/sessions/event-buffer";
 import { sortByUpdatedDesc, toSession } from "./dto";
 
-export type ModeAPlaybookSessionDetail = {
+export type PlaybookSessionDetail = {
 	session: Session;
 	events: ProviderSessionEvent[];
 	eventsNextPageToken?: string;
 };
 
-export type ModeASessionEventsPage = {
+export type SessionEventsPage = {
 	events: ProviderSessionEvent[];
 	eventsNextPageToken?: string;
 };
 
-type ModeAListPlaybookSessionsInput = {
+type ListPlaybookSessionsInput = {
 	playbookId?: string;
 	remoteAgentId?: string;
 	limit?: number;
@@ -35,7 +35,7 @@ type ModeAListPlaybookSessionsInput = {
 };
 
 export async function listPlaybookSessions(
-	input: ModeAListPlaybookSessionsInput,
+	input: ListPlaybookSessionsInput,
 ): Promise<{ sessions: Session[]; nextPageToken?: string }> {
 	const limit = input.limit ?? 50;
 	const page = input.pageToken?.trim() || undefined;
@@ -77,7 +77,7 @@ async function listProviderSessionEventsPage(
 	sessionId: string,
 	provider: string,
 	options: { pageToken?: string; limit?: number } = {},
-): Promise<ModeASessionEventsPage> {
+): Promise<SessionEventsPage> {
 	const limit = options.limit ?? 100;
 	const eventList = await listSessionEvents(ctx, sessionId, {
 		provider,
@@ -96,7 +96,7 @@ export async function listProviderSessionEvents(
 	agentId = DEFAULT_AGENT_ID,
 	pageToken?: string,
 	limit?: number,
-): Promise<ModeASessionEventsPage> {
+): Promise<SessionEventsPage> {
 	const catalogAgentId = getSessionAgent(agentId) ? agentId : DEFAULT_AGENT_ID;
 	return withAgentRuntime(catalogAgentId, async (ctx, compiled) => {
 		const agent = getAgent(ctx, compiled.agentId);
@@ -107,7 +107,7 @@ export async function listProviderSessionEvents(
 export async function readProviderSessionDetail(
 	sessionId: string,
 	agentId = DEFAULT_AGENT_ID,
-): Promise<ModeAPlaybookSessionDetail> {
+): Promise<PlaybookSessionDetail> {
 	const catalogAgentId = getSessionAgent(agentId) ? agentId : DEFAULT_AGENT_ID;
 	return withAgentRuntime(catalogAgentId, async (ctx, compiled) => {
 		const agent = getAgent(ctx, compiled.agentId);

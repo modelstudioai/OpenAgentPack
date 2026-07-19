@@ -4,8 +4,9 @@ import { formatApiErrorMessage } from "../api/error-message";
 import { resolveStampedResource } from "../resolve-stamped";
 
 // Identity of the shared base vault — the credential store holding the user-supplied
-// DASHSCOPE_API_KEY. Mirrors the base-environment scheme (Agents/ name prefix + a metadata
-// stamp): a vault has no `name` field, so identity rides on `display_name` + the stamp.
+// DASHSCOPE_API_KEY. Identity relies on the metadata stamp alone (not display_name) because
+// the engine and the imperative warm path may create vaults with different display_name values
+// ("Cli Secrets" vs "Agents/secrets"), but both always set the `agents.vault` stamp.
 const BASE_VAULT_NAME = "Agents/secrets";
 const BASE_VAULT_METADATA_KEY = "agents.vault";
 const BASE_VAULT_METADATA_VALUE = "true";
@@ -14,15 +15,15 @@ const BASE_VAULT_METADATA: Record<string, string> = {
 };
 
 /**
- * Two-layer lookup of the managed base vault (mirrors `findBaseEnvironment`): layer 1 nets
- * by `display_name === "Agents/secrets"`; layer 2 re-confirms our stamp `agents.vault === "true"`.
- * A display-name match WITHOUT the stamp is a foreign vault and is ignored. On duplicates,
- * the most recently updated stamped vault wins.
+ * Identity lookup of the managed base vault via the metadata stamp
+ * `agents.vault === "true"`. The stamp is set both by the engine (plan/apply)
+ * and by the legacy imperative create path, so it is the universal identity
+ * signal regardless of how the vault was provisioned. On duplicates the most
+ * recently updated stamped vault wins.
  */
 export function findBaseVault(vaults: CloudVault[]): CloudVault | undefined {
 	return resolveStampedResource(vaults, {
-		matches: (vault) =>
-			vault.display_name === BASE_VAULT_NAME && vault.metadata?.[BASE_VAULT_METADATA_KEY] === BASE_VAULT_METADATA_VALUE,
+		matches: (vault) => vault.metadata?.[BASE_VAULT_METADATA_KEY] === BASE_VAULT_METADATA_VALUE,
 		updatedAt: (vault) => vault.updated_at,
 	}).winner;
 }

@@ -26,10 +26,10 @@ import {
 	sendPlaybookSessionMessage,
 } from "./sessions";
 
-export type { ModeAPlaybookSessionDetail } from "./sessions";
+export type { PlaybookSessionDetail } from "./sessions";
 
-export function createModeAPlaybookSessionRuntime() {
-	return createPlaybookSessionRuntime<ModeAPlaybookSessionDetail, ProviderSessionEvent, Session, RemotePlaybookAgent>({
+export function createServerPlaybookSessionRuntime() {
+	return createPlaybookSessionRuntime<PlaybookSessionDetail, ProviderSessionEvent, Session, RemotePlaybookAgent>({
 		identity: {
 			appId: getPlaybookAppId(),
 			expectedAgentName: getSeedPlaybookAgentName,
@@ -95,4 +95,4 @@ export function createModeAPlaybookSessionRuntime() {
 	});
 }
 
-type ModeAPlaybookSessionDetail = import("./sessions").ModeAPlaybookSessionDetail;
+type PlaybookSessionDetail = import("./sessions").PlaybookSessionDetail;

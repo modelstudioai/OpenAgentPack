@@ -47,8 +47,7 @@ export async function listUserFiles(): Promise<ProviderFileInfo[]> {
 
 /**
  * Resolve a short-lived presigned download URL for a file (e.g. an agent-delivered artifact).
- * Throws when the resolved provider has no download endpoint (bailian/claude); the webui's Mode A
- * transport surfaces that as an error, while Mode B never calls this route.
+ * Throws when the resolved provider has no download endpoint (bailian/claude).
  */
 export async function getUserFileDownloadUrl(id: string): Promise<{ url: string; expires_at?: string }> {
 	return withAgentRuntime(DEFAULT_AGENT_ID, async (ctx, compiled) => {

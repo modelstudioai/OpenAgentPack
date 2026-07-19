@@ -1,46 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import {
-	classifyFileScan,
-	classifySkillScan,
-	SKILL_STATUS_CODE,
-	skillStatusFromCode,
-	skillStatusFromString,
-} from "@openagentpack/sdk/scan-lifecycle";
+import { classifyFileScan, classifySkillScan, skillStatusFromString } from "@openagentpack/sdk/scan-lifecycle";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Scan-lifecycle drift guard. The file/skill content-audit state machine —
-// timeouts, poll cadence, status buckets, and the numeric↔string status mapping —
-// used to live as hand-copied constants and if-chains across several surfaces
-// (SDK adapter, server warming, the ResourceCenter UI), kept aligned only by
-// "Kept in sync" comments. They now share one module (@openagentpack/sdk/scan-lifecycle).
-// This test turns the comment contracts into assertions: (1) the numeric and
-// string status mappings agree on terminal buckets — the `2 / unsafe → rejected`
-// security invariant — and (2) no consumer re-declares the shared constants, so
-// a future edit that forks one copy goes red.
+// timeouts, poll cadence, and status buckets — used to live as hand-copied
+// constants and if-chains across several surfaces (SDK adapter, server warming,
+// the ResourceCenter UI), kept aligned only by "Kept in sync" comments. They now
+// share one module (@openagentpack/sdk/scan-lifecycle). This test turns the
+// comment contracts into assertions so a future edit that forks one copy goes red.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("numeric ↔ string skill status normalization isomorphism", () => {
-	test("every console numeric code maps to the same scan bucket as its neutral string", () => {
-		for (const [name, code] of Object.entries(SKILL_STATUS_CODE)) {
-			const fromCode = skillStatusFromCode(code);
-			expect(fromCode).toBe(name as ReturnType<typeof skillStatusFromCode>);
-			// Both transports must agree on the terminal bucket for the same logical status.
-			expect(classifySkillScan(fromCode)).toBe(classifySkillScan(skillStatusFromString(name)));
-		}
-	});
-
-	test("the security-scan failure terminal (2 / unsafe / rejected) all bucket as failed", () => {
-		expect(classifySkillScan(skillStatusFromCode(SKILL_STATUS_CODE.rejected))).toBe("failed");
+describe("string skill status normalization", () => {
+	test("the security-scan failure terminal (unsafe / rejected) buckets as failed", () => {
 		expect(classifySkillScan(skillStatusFromString("unsafe"))).toBe("failed");
 		expect(classifySkillScan(skillStatusFromString("rejected"))).toBe("failed");
 	});
 
-	test("unknown codes/strings keep polling rather than reading as terminal", () => {
-		expect(skillStatusFromCode(999)).toBe("checking");
-		expect(skillStatusFromCode(undefined)).toBe("checking");
+	test("unknown strings keep polling rather than reading as terminal", () => {
 		expect(skillStatusFromString("security_scanning")).toBe("checking");
-		expect(classifySkillScan(skillStatusFromCode(999))).toBe("pending");
+		expect(classifySkillScan(skillStatusFromString("security_scanning"))).toBe("pending");
 	});
 });
 
@@ -98,7 +77,7 @@ describe("single-source constants (no consumer re-declares them)", () => {
 
 	// The raw literals that used to be physically copied. They must appear exactly
 	// once — in the shared module — and nowhere in the consumers.
-	const FORKABLE = ["360_000", "120_000", "{ checking: 0"];
+	const FORKABLE = ["360_000", "120_000"];
 
 	test("the shared module declares the constants", async () => {
 		const src = await Bun.file(sharedModule).text();

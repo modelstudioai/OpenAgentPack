@@ -24,7 +24,7 @@ export function getPlaybookAgentName(_bundle: PlaybookBundle, playbookId: string
  * Resolve the model id to create the agent with. Playbook templates author a bailian-native model,
  * so the target provider's default is substituted unless the caller overrides it for this run;
  * falls back to the template model when the provider has no registered default. Single source of
- * truth for both transports (Mode A catalog provisioning and Mode B console createAgent).
+ * truth for both the catalog provisioning and programmatic createAgent paths.
  */
 export function resolvePlaybookModel(resolved: ResolvedPlaybook, provider: string, modelOverride?: string): string {
 	return modelOverride ?? PROVIDER_DEFAULTS[provider]?.model ?? resolved.agent.model;

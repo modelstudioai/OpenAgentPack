@@ -1,5 +1,5 @@
 // Pure secret-redaction helpers shared across transports (server-side sanitizer
-// and the browser-side console-direct normalizer). Regex/URL only — no Node or zod deps,
+// and browser-side normalizers). Regex/URL only — no Node or zod deps,
 // so this module is safe to import into a browser bundle via `@openagentpack/sdk/redaction`.
 
 const REDACTED = "[redacted]";

@@ -33,6 +33,10 @@ export async function buildRuntimeConfig(): Promise<LoadedProjectConfig> {
 	// Every provider provisions a cloud sandbox environment; bailian additionally installs
 	// `bailian-cli` in it. The vault is provider-conditional: bailian holds its DASHSCOPE_API_KEY;
 	// other providers currently define no vault.
+	//
+	// Metadata stamps (`agents.base` / `agents.vault`) let the webui identify managed base
+	// resources via remote listing (findBaseEnvironment / findBaseVault), complementing the
+	// state-tracked identity the plan/apply engine provides.
 	const vaults = vault
 		? {
 				[vault.name]: {
@@ -45,6 +49,7 @@ export async function buildRuntimeConfig(): Promise<LoadedProjectConfig> {
 						secret_value: requireEnv(cred.secret_name),
 						...(cred.networking ? { networking: cred.networking } : {}),
 					})),
+					metadata: { "agents.vault": "true" },
 				},
 			}
 		: {};
@@ -52,6 +57,7 @@ export async function buildRuntimeConfig(): Promise<LoadedProjectConfig> {
 		[environment.name]: {
 			...(environment.description ? { description: environment.description } : {}),
 			config: environment.config,
+			metadata: { "agents.base": "true" },
 		},
 	};
 

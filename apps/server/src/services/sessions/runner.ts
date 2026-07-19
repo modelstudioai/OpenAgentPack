@@ -16,8 +16,8 @@ import {
 import { DEFAULT_AGENT_ID, getSessionAgent } from "@/services/agents/catalog";
 import { loadAgentRuntimeInput, withAgentRuntime } from "@/services/runtime-factory";
 import {
-	createModeAPlaybookSessionRuntime,
-	type ModeAPlaybookSessionDetail,
+	createServerPlaybookSessionRuntime,
+	type PlaybookSessionDetail,
 } from "@/services/sessions/playbook-session-adapter";
 import { listProviderSessionEvents } from "@/services/sessions/playbook-session-adapter/sessions";
 
@@ -43,9 +43,9 @@ export async function updatePlaybookAgentModel(slug: string, model: string): Pro
 import { createEventBuffer, seedCompletedBuffer } from "@/services/sessions/event-buffer";
 
 /** A session plus its raw provider events (events are mapped to the contract at the route boundary). */
-export type SessionWithEvents = ModeAPlaybookSessionDetail;
+export type SessionWithEvents = PlaybookSessionDetail;
 
-const playbookSessionRuntime = createModeAPlaybookSessionRuntime();
+const playbookSessionRuntime = createServerPlaybookSessionRuntime();
 
 export async function listSessionsForAgent(input: {
 	agentId?: string;

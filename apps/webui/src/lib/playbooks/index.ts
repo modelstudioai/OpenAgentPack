@@ -1,48 +1,34 @@
 import {
 	BASE_PLAYBOOK_ID,
-	createPlaybookSessionRuntime,
 	DEFAULT_PLAYBOOK_PROVIDER,
 	getDefaultPlaybook,
 	getEnvironmentProfile,
 	getPlaybook,
 	getPlaybookAppId,
 	getPlaybookDisplayName,
-	getSeedPlaybookAgentName,
 	getVaultProfile,
 	listPlaybookCards,
 	listPlaybooks,
 	PLAYBOOK_AGENT_NAME_PREFIX,
 	PLAYBOOK_APP_METADATA_KEY,
-	type PlaybookReadiness,
-	pickPlaybookAgent,
-	playbookIdentityMismatchMessage,
-	type RemotePlaybookAgent,
-	readinessFromPick,
 	resolveSeedPlaybookSkills,
-	type StartPlaybookSessionInput,
 } from "@openagentpack/playbooks";
 import showcaseJson from "@/data/showcase.json";
 import { resolveActivePlaybookProvider } from "@/lib/domain/config-api";
 import type { ShowcaseCard } from "@/lib/showcase-types";
 import type { RoleCard } from "./types";
 
-export type { PlaybookReadiness, RemotePlaybookAgent, StartPlaybookSessionInput };
 export {
 	BASE_PLAYBOOK_ID,
-	createPlaybookSessionRuntime,
 	DEFAULT_PLAYBOOK_PROVIDER,
 	getEnvironmentProfile,
 	getPlaybook,
 	getPlaybookAppId,
 	getPlaybookDisplayName,
-	getSeedPlaybookAgentName,
 	getVaultProfile,
 	listPlaybooks,
 	PLAYBOOK_AGENT_NAME_PREFIX,
 	PLAYBOOK_APP_METADATA_KEY,
-	pickPlaybookAgent,
-	playbookIdentityMismatchMessage,
-	readinessFromPick,
 	resolveSeedPlaybookSkills,
 };
 

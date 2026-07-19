@@ -44,8 +44,8 @@ export function deriveEnvironments(environments: CloudEnvironment[]): { rows: Re
 
 /**
  * Project-scoped vault rows: mirrors deriveEnvironments. This project provisions exactly one —
- * the managed base vault (display_name Agents/secrets + agents.vault stamp, via findBaseVault)
- * holding the DASHSCOPE_API_KEY (server-injected) — so foreign org vaults are excluded entirely.
+ * the managed base vault (agents.vault stamp, via findBaseVault) holding the DASHSCOPE_API_KEY
+ * (server-injected) — so foreign org vaults are excluded entirely.
  */
 export function deriveVaults(vaults: CloudVault[]): { rows: ResourceVaultRow[]; baseVaultId?: string } {
 	const base = findBaseVault(vaults);

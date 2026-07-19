@@ -584,8 +584,7 @@ describe("BailianAdapter e2e", () => {
 
 		// The OpenAPI skill status enum is security_scanning/active/unsafe/deleted (internal
 		// 0/1/2/100), verified against the live provider API. `unsafe` is the scan-failure terminal and must
-		// surface as the neutral `rejected` — not `checking` — so it matches Mode B (internal 2 →
-		// rejected) and the UI shows 已拒绝 instead of a stuck 扫描中.
+		// surface as the neutral `rejected` — not `checking` — so the UI shows 已拒绝 instead of a stuck 扫描中.
 		test("listSkills maps OpenAPI status enum to neutral status", async () => {
 			const { restore } = mockFetch([
 				{
