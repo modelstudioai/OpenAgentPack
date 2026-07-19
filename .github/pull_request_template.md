@@ -1,4 +1,4 @@
-## What
+## Summary
 
 <!-- One-sentence summary of the change -->
 
@@ -33,6 +33,12 @@
 - [ ] New provider follows the six-file structure, if applicable
 - [ ] No new runtime dependencies added without justification
 
+## Behavior / risk
+
+<!-- Required only when changing provider contracts, config/schema parsing, release/package files, or GitHub workflows.
+State the user-visible behavior or compatibility/security risk. “No user-visible behavior change” is valid for an internal refactor. -->
+
 ## Validation
 
-<!-- How did you verify this change works? -->
+<!-- Commands, automated test cases, or manual reproduction used to verify this change.
+For high-risk changes, this must be non-empty. -->
