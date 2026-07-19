@@ -38,12 +38,63 @@ export async function buildPlan(
 		stateIndex.set(addressKey(res.address), res);
 	}
 
+	// Remote-id lookup that is NOT mutated during the loop (stateIndex entries are
+	// deleted as they are consumed), so deployment hashing can always resolve the
+	// remote ids of managed reference inputs.
+	const remoteIdLookup = new Map<string, (typeof state.resources)[number]>();
+	for (const res of state.resources) {
+		remoteIdLookup.set(addressKey(res.address), res);
+	}
+	const hashStateLookup = { getResource: (addr: ResourceAddress) => remoteIdLookup.get(addressKey(addr)) };
+
 	// Desired resources: create or update
 	for (const address of sorted) {
 		const key = addressKey(address);
-		const desiredHash = await computeResourceHash(address, config, options.configPath);
+		const desiredHash = await computeResourceHash(address, config, options.configPath, hashStateLookup);
 		const existing = stateIndex.get(key);
 		const deps = getDependencies(address, graph);
+
+		if (address.type === "environment" && existing) {
+			const envDecl = config.environments?.[address.name];
+			// Ownership is a state-level fact: once an environment is recorded as
+			// externally managed, removing `environment_id` from the config must NOT
+			// silently convert it back into a managed resource (apply would push the
+			// local config onto a remote object OpenCMA never created, and destroy
+			// would delete it). Require an explicit release instead.
+			if (existing.externally_managed && envDecl && !envDecl.environment_id) {
+				diagnostics.error(
+					"plan.environment.ownership_transition",
+					`environment.${address.name} is recorded as an external reference (${existing.remote_id ?? "unknown id"}); ` +
+						`removing 'environment_id' would make OpenCMA modify and eventually delete a remote environment it does not own. ` +
+						`Restore 'environment_id' to keep it as a reference, or release it first with 'agents state rm environment.${address.name}' ` +
+						`(then 'agents state import' to adopt the remote as a managed resource).`,
+					address,
+				);
+				stateIndex.delete(key);
+				continue;
+			}
+			if (
+				!existing.externally_managed &&
+				existing.remote_id &&
+				envDecl?.environment_id &&
+				envDecl.environment_id !== existing.remote_id
+			) {
+				diagnostics.warning(
+					"plan.environment.ownership_orphan",
+					`environment.${address.name}: switching to external reference '${envDecl.environment_id}' orphans the previously ` +
+						`managed remote environment '${existing.remote_id}' — it will no longer be tracked or deletable by OpenCMA.`,
+					address,
+				);
+			}
+		}
+
+		// Reference-only environments are recorded, never mutated remotely — say so.
+		const isExternalEnv =
+			address.type === "environment" && Boolean(config.environments?.[address.name]?.environment_id);
+		const createReason = isExternalEnv
+			? "Record external environment reference (no remote mutation)"
+			: "Resource does not exist in state";
+		const updateSuffix = isExternalEnv ? " — external reference, no remote mutation" : "";
 
 		if (!existing) {
 			actions.push({
@@ -51,7 +102,7 @@ export async function buildPlan(
 				address,
 				driftKind: "none",
 				readinessImpact: "blocking",
-				reason: "Resource does not exist in state",
+				reason: createReason,
 				after: { content_hash: desiredHash },
 				dependencies: deps,
 			});
@@ -66,7 +117,7 @@ export async function buildPlan(
 				driftKind: "both",
 				readinessImpact: classifyReadinessImpact("update", changedPaths),
 				changedPaths,
-				reason: "Local config changed and remote drift detected",
+				reason: `Local config changed and remote drift detected${updateSuffix}`,
 				before: {
 					content_hash: existing.desired_hash ?? existing.content_hash,
 					remote_hash: existing.remote_hash,
@@ -83,7 +134,7 @@ export async function buildPlan(
 				driftKind: "local",
 				readinessImpact: classifyReadinessImpact("update", changedPaths),
 				changedPaths,
-				reason: "Local config changed",
+				reason: `Local config changed${updateSuffix}`,
 				before: { content_hash: existing.desired_hash ?? existing.content_hash },
 				after: { content_hash: desiredHash },
 				dependencies: deps,
@@ -96,7 +147,7 @@ export async function buildPlan(
 				driftKind: "remote",
 				readinessImpact: classifyReadinessImpact("update", changedPaths),
 				changedPaths,
-				reason: "Remote drift detected",
+				reason: `Remote drift detected${updateSuffix}`,
 				before: {
 					content_hash: existing.desired_hash ?? existing.content_hash,
 					remote_hash: existing.remote_hash,
@@ -130,7 +181,9 @@ export async function buildPlan(
 			address: res.address,
 			driftKind: "none",
 			readinessImpact: "blocking",
-			reason: "Resource removed from configuration",
+			reason: res.externally_managed
+				? "Remove local reference only — externally managed remote resource is left intact"
+				: "Resource removed from configuration",
 			before: { content_hash: res.desired_hash ?? res.content_hash },
 			dependencies: [],
 		});

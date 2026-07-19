@@ -22,10 +22,12 @@ export async function readComparableIfSupported(
 	id: string | null,
 	name: string,
 ): Promise<ComparableRemoteResource | null> {
-	const read = adapter.readComparableResource;
-	if (typeof read !== "function" || !supportsFullDrift(adapter, type)) return null;
+	if (!supportsFullDrift(adapter, type)) return null;
+	// Invoke as a method on the adapter — extracting it into a local first would
+	// drop the `this` binding and silently fail for class-based adapters.
+	if (typeof adapter.readComparableResource !== "function") return null;
 	try {
-		return await read(type, id, name);
+		return await adapter.readComparableResource(type, id, name);
 	} catch {
 		return null;
 	}

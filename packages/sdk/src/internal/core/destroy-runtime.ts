@@ -11,6 +11,7 @@ export type DestroyResourceStatus = "success" | "failed" | "blocked" | "skipped"
 
 export type DestroyResourceResultReason =
 	| "destroyed"
+	| "reference_removed"
 	| "already_gone"
 	| "cascade_required"
 	| "provider_missing"
@@ -95,6 +96,14 @@ async function destroyOneResource(
 	resource: ResourceState,
 	options: DestroyProjectOptions,
 ): Promise<DestroyResourceResult> {
+	// BYOC environments are provisioned and owned by QCA. `environment_id` means
+	// this project only references that environment, so destroy must never make a
+	// remote lifecycle call for it.
+	if (isExternalEnvironment(ctx, resource)) {
+		ctx.state.removeResource(resource.address);
+		return successResult(resource, "reference_removed");
+	}
+
 	let provider: ProviderAdapter;
 	try {
 		provider = getRuntimeProvider(ctx, resource.address.provider);
@@ -160,7 +169,17 @@ async function destroyOneResource(
 	}
 }
 
-function successResult(resource: ResourceState, reason: "destroyed" | "already_gone"): DestroyResourceResult {
+function isExternalEnvironment(ctx: ProjectRuntimeContext, resource: ResourceState): boolean {
+	return (
+		resource.address.type === "environment" &&
+		(resource.externally_managed || Boolean(ctx.config.environments?.[resource.address.name]?.environment_id))
+	);
+}
+
+function successResult(
+	resource: ResourceState,
+	reason: "destroyed" | "reference_removed" | "already_gone",
+): DestroyResourceResult {
 	return { resource, status: "success", reason };
 }
 

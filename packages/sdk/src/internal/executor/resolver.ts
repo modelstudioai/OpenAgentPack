@@ -93,11 +93,20 @@ export function resolveDeploymentRefs(
 			`Deployment '${deploymentName}' has no environment and agent '${dep.agent}' does not declare one`,
 		);
 	}
-	const environment_id = requireRef(state, {
-		type: "environment",
-		name: envName,
-		provider,
-	});
+	const envDecl = config.environments?.[envName];
+	if (!envDecl) {
+		throw new UserError(`Environment '${envName}' is not defined in config.`);
+	}
+	const environment_id =
+		envDecl.environment_id ??
+		requireRef(state, {
+			type: "environment",
+			name: envName,
+			provider,
+		});
+
+	const tunnelName = dep.tunnel ?? agent.tunnel;
+	const tunnel_id = tunnelName ? resolveTunnelIdFromConfig(config, tunnelName, provider) : undefined;
 
 	const vaultNames = dep.vaults ?? (agent.vault ? [agent.vault] : []);
 	const vault_ids = vaultNames.map((v) => requireRef(state, { type: "vault", name: v, provider }));
@@ -126,7 +135,19 @@ export function resolveDeploymentRefs(
 		agent_id,
 		agent_version: dep.agent_version,
 		environment_id,
+		tunnel_id,
 		vault_ids,
 		memory_store_ids,
 	};
+}
+
+function resolveTunnelIdFromConfig(config: ProjectConfig, tunnelName: string, provider: string): string {
+	if (provider !== "qoder") {
+		throw new UserError("Tunnels are supported only by Qoder BYOC sessions.");
+	}
+	const tunnel = config.tunnels?.[tunnelName];
+	if (!tunnel) {
+		throw new UserError(`Tunnel '${tunnelName}' is not defined in config. Declare it under the 'tunnels:' section.`);
+	}
+	return tunnel.tunnel_id;
 }

@@ -1,7 +1,7 @@
 import { UserError } from "../errors.ts";
 import { requireRef } from "../executor/resolver.ts";
 import type { IStateManager } from "../state/state-manager.ts";
-import type { ProjectConfig } from "../types/config.ts";
+import type { AgentDecl, ProjectConfig } from "../types/config.ts";
 import type { SessionBindings } from "../types/session.ts";
 
 export interface SessionCreateOptions {
@@ -13,6 +13,10 @@ export interface SessionCreateOptions {
 	 * Takes precedence over `environment` / the agent's declared environment.
 	 */
 	environmentId?: string;
+	/** Tunnel name referencing `tunnels.<name>` in config. */
+	tunnel?: string;
+	/** Explicit remote tunnel id. Takes precedence over `tunnel` / the agent's declared tunnel. */
+	tunnelId?: string;
 	vault?: string;
 	/**
 	 * Explicit remote vault ids. When set, they are bound directly (bypassing the
@@ -75,8 +79,11 @@ export function buildSessionBindings(
 			throw new UserError(`Agent '${agentName}' has no environment declared and --environment was not specified.`);
 		}
 		validateResourceInConfig(envName, "environment", config.environments);
-		environmentId = requireRef(state, { type: "environment", name: envName, provider });
+		const envDecl = config.environments![envName]!;
+		environmentId = envDecl.environment_id ?? requireRef(state, { type: "environment", name: envName, provider });
 	}
+
+	const tunnelId = resolveTunnelId(agent, config, options, provider);
 
 	let vaultIds: string[];
 	if (options.vaultIds) {
@@ -103,12 +110,33 @@ export function buildSessionBindings(
 		agent_id: agentId,
 		agent_version: agentState?.version,
 		environment_id: environmentId,
+		tunnel_id: tunnelId,
 		vault_ids: vaultIds,
 		memory_store_ids: memoryStoreIds,
 		files: (options.files ?? []).map((f) => ({ file_id: f.fileId, mount_path: f.mountPath })),
 		title: options.title,
 		metadata: options.metadata,
 	};
+}
+
+function resolveTunnelId(
+	agent: AgentDecl,
+	config: ProjectConfig,
+	options: SessionCreateOptions,
+	provider: string,
+): string | undefined {
+	const tunnelName = options.tunnel ?? agent.tunnel;
+	if (!options.tunnelId && !tunnelName) return undefined;
+	if (provider !== "qoder") {
+		throw new UserError("Tunnels are supported only by Qoder BYOC sessions.");
+	}
+	if (options.tunnelId) return options.tunnelId;
+
+	const tunnel = config.tunnels?.[tunnelName!];
+	if (!tunnel) {
+		throw new UserError(`Tunnel '${tunnelName}' is not defined in config. Declare it under the 'tunnels:' section.`);
+	}
+	return tunnel.tunnel_id;
 }
 
 function validateResourceInConfig(name: string, type: string, resources?: Record<string, unknown>): void {

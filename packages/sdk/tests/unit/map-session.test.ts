@@ -11,6 +11,7 @@ function fullBindings(): SessionBindings {
 		agent_id: "agent_123",
 		agent_version: 2,
 		environment_id: "env_456",
+		tunnel_id: "tnl_789",
 		vault_ids: ["vault_a", "vault_b"],
 		memory_store_ids: ["ms_1", "ms_2"],
 		title: "Research session",
@@ -33,6 +34,7 @@ describe("Qoder mapSession", () => {
 
 		expect(body.agent).toBe("agent_123");
 		expect(body.environment_id).toBe("env_456");
+		expect(body.tunnel_id).toBe("tnl_789");
 		expect(body.vault_ids).toEqual(["vault_a", "vault_b"]);
 		expect(body.resources).toEqual([
 			{ type: "memory_store", memory_store_id: "ms_1" },
@@ -41,6 +43,12 @@ describe("Qoder mapSession", () => {
 		expect(body.memory_store_ids).toBeUndefined();
 		expect(body.title).toBe("Research session");
 		expect(body.metadata).toEqual({ team: "eng" });
+	});
+
+	test("tunnel_id is omitted when not provided", () => {
+		const bindings = minimalBindings();
+		const body = mapQoderSession(bindings) as Record<string, unknown>;
+		expect(body.tunnel_id).toBeUndefined();
 	});
 
 	test("minimal bindings omit optional fields", () => {

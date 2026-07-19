@@ -39,6 +39,7 @@ export class StateManager implements IStateManager {
 			const resources: ResourceState[] = raw.map((r) => ({
 				address: r.address as ResourceState["address"],
 				remote_id: r.remote_id as string | null,
+				externally_managed: r.externally_managed === true ? true : undefined,
 				version: r.version as number | undefined,
 				content_hash: ((r.content_hash ?? r.desired_hash) as string) ?? "",
 				desired_hash: ((r.desired_hash ?? r.content_hash) as string) ?? "",
