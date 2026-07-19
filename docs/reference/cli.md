@@ -6,13 +6,13 @@ The `agents` command. This page documents every command and option defined in `p
 
 | Option | Description |
 |--------|-------------|
-| `-f, --config <path>` | Path to the config file. Defaults to `agents.yaml`. |
+| `-f, --file <path>` | Path to the config file. Defaults to `agents.yaml`. |
 | `-v, --verbose` | Increase logging verbosity. Repeat: `-vv`. |
 | `-q, --quiet` | Suppress non-error output. |
 | `--no-color` | Disable colored output. |
 | `-V, --version` | Print the CLI version. |
 
-Most commands accept `--config <path>` and `--provider <name>` to target a single provider. Run `agents <command> --help` for the definitive list.
+Provider-backed commands such as `plan`, `apply`, `models`, `session`, and `deployment` accept `--provider <name>` to target a single provider. `validate` is an offline whole-file check and does not accept a provider filter. Run `agents <command> --help` for the definitive option list.
 
 ## `agents init`
 
@@ -30,7 +30,7 @@ Launch the local web UI (fetches `@openagentpack/playground` on demand) and open
 
 ## `agents validate`
 
-Validate the configuration file offline — checks YAML shape and field validity without making API calls.
+Validate the whole configuration file offline — checks YAML shape and field validity without making API calls. This command does not accept `--provider`; use `plan --provider <name> --refresh false` when you want to inspect one provider's projected changes without contacting remote APIs.
 
 ## `agents plan`
 
@@ -121,7 +121,7 @@ Manage scheduled / triggered deployments.
 |------------|-------------|
 | `deployment list` | List deployments tracked in state. |
 | `deployment get <name>` | Show a deployment's status and resolved bindings. |
-| `deployment run <name>` | Trigger a deployment run (native on Claude, emulated as a session on Bailian/Qoder/Volcengine Ark). |
+| `deployment run <name>` | Trigger a deployment run (native on Qoder/Claude, emulated as a session on Bailian/Volcengine Ark). |
 
 ## `agents models`
 

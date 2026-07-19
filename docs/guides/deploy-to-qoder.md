@@ -1,6 +1,6 @@
 # Deploy to Qoder
 
-Qoder is a managed-agent platform with native **memory stores** but no multi-agent or server-side deployment primitive.
+Qoder is a managed-agent platform with native **memory stores** and **deployments**, but no multi-agent primitive.
 
 ## Provider configuration
 
@@ -20,11 +20,10 @@ providers:
 
 | Feature | Tier |
 |---------|:----:|
-| Environment, Vault, Skill, Agent, MCP Server, Memory Store, Session | native |
+| Environment, Vault, Skill, Agent, MCP Server, Memory Store, Deployment, Session | native |
 | Multi-Agent | unsupported |
-| Deployment | emulated |
 
-A `deployment run` on Qoder expands into a one-shot session at run time; scheduling and outcome rubrics are not enforced server-side — use external cron/CI for scheduled runs.
+A `deployment run` on Qoder creates a native Deployment Run and associated Session. Cron schedules run server-side.
 
 ## Tool naming
 

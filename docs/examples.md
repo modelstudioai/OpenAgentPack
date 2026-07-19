@@ -52,7 +52,7 @@ agents destroy
 | MCP Server | native | native | native | native |
 | Memory Store | unsupported | native | unsupported | native |
 | Multi-Agent | unsupported | unsupported | native | native |
-| Deployment | emulated | emulated | native | emulated |
+| Deployment | emulated | native | native | emulated |
 | Session | native | native | native | native |
 
 See [Provider reference](./reference/providers.md) for per-provider configuration and notes.

@@ -19,7 +19,7 @@ Because the declaration is a file, it gets everything a file gets: code review, 
 - The **agent harness** is the provider-managed layer that wraps a model into an agent: knowledge base, skills, MCP wiring, prompt/instructions, vault, deployment, multi-agent orchestration. These are the customer's portable assets.
 - The **agent infra** is the interchangeable execution substrate beneath the harness — the specific provider (Bailian, Qoder, Claude, Volcengine Ark) that runs the agent.
 
-OpenAgentPack's portability claim is that the same harness declaration can target different agent infra. Portability means the *core declaration* is portable and the per-provider **capability contract** is explicit — unsupported facets degrade gracefully (for example, an emulated `Deployment` on Bailian/Qoder/Volcengine Ark) — not that every feature is identical on every provider.
+OpenAgentPack's portability claim is that the same harness declaration can target different agent infra. Portability means the *core declaration* is portable and the per-provider **capability contract** is explicit — unsupported facets degrade gracefully (for example, an emulated `Deployment` on Bailian/Volcengine Ark) — not that every feature is identical on every provider.
 
 ## What this enables
 

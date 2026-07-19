@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mapDeploymentToSession as mapBailianDeploymentToSession } from "../../src/internal/providers/bailian/mapper.ts";
 import { mapDeployment } from "../../src/internal/providers/claude/mapper.ts";
 import type { ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
-import { mapDeploymentToSession } from "../../src/internal/providers/qoder/mapper.ts";
+import {
+	mapDeploymentToSession,
+	mapDeployment as mapQoderDeployment,
+} from "../../src/internal/providers/qoder/mapper.ts";
 import type { DeploymentDecl } from "../../src/internal/types/config.ts";
 
 function fullRefs(): ResolvedDeploymentRefs {
@@ -182,6 +185,74 @@ describe("Qoder mapDeploymentToSession", () => {
 		expect(body.vault_ids).toBeUndefined();
 		expect(body.memory_store_ids).toBeUndefined();
 		expect(body.resources).toBeUndefined();
+	});
+});
+
+describe("Qoder mapDeployment", () => {
+	test("full decl produces a native deployment body", () => {
+		const decl: DeploymentDecl = {
+			agent: "researcher",
+			agent_version: 3,
+			description: "Daily report",
+			schedule: { expression: "0 9 * * *", timezone: "Asia/Shanghai" },
+			initial_events: [
+				{ type: "user.message", content: "Run the daily report" },
+				{ type: "system.message", content: "You are punctual" },
+				{
+					type: "user.define_outcome",
+					description: "Grade",
+					rubric: "Must include charts",
+					max_iterations: 5,
+				},
+			],
+			memory_stores: ["notes"],
+			resources: [
+				{ type: "file", source: "./local.txt", mount_path: "/data/local" },
+				{
+					type: "github_repository",
+					url: "https://github.com/acme/repo",
+					checkout: { branch: "main" },
+					mount_path: "/repo",
+				},
+				{
+					type: "memory_store",
+					memory_store: "archive",
+					access: "read_only",
+					instructions: "ref only",
+				},
+			],
+		};
+
+		const uploaded = new Map([["./local.txt", "file_uploaded"]]);
+		const body = mapQoderDeployment("daily-report", decl, fullRefs(), "myproj", uploaded) as Record<string, unknown>;
+
+		expect(body.name).toBe("daily-report");
+		expect(body.agent).toEqual({ id: "agent_123", type: "agent", version: 3 });
+		expect(body.environment_id).toBe("env_456");
+		expect(body.initial_events).toEqual([
+			{ type: "user.message", content: [{ type: "text", text: "Run the daily report" }] },
+			{ type: "system.message", content: [{ type: "text", text: "You are punctual" }] },
+			{
+				type: "user.define_outcome",
+				description: "Grade",
+				rubric: { type: "text", content: "Must include charts" },
+				max_iterations: 5,
+			},
+		]);
+		expect(body.resources).toEqual([
+			{ type: "file", file_id: "file_uploaded", mount_path: "/data/local" },
+			{
+				type: "github_repository",
+				url: "https://github.com/acme/repo",
+				checkout: { type: "branch", name: "main" },
+				mount_path: "/repo",
+			},
+			{ type: "memory_store", memory_store_id: "ms_2", access: "read_only", instructions: "ref only" },
+			{ type: "memory_store", memory_store_id: "ms_1" },
+		]);
+		expect(body.schedule).toEqual({ type: "cron", expression: "0 9 * * *", timezone: "Asia/Shanghai" });
+		expect(body.vault_ids).toEqual(["vault_a"]);
+		expect(body.metadata).toEqual({ "agents.project": "myproj", "agents.resource": "daily-report" });
 	});
 });
 

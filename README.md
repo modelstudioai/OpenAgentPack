@@ -14,9 +14,9 @@
 > [!IMPORTANT]
 > OpenAgentPack is in beta. Public APIs and the `agents.yaml` schema may change before `1.0`. See the [changelog](./CHANGELOG.md).
 
-<p align="center">
-  <img src="https://img.alicdn.com/imgextra/i3/O1CN01xWDp5P1EP90HOZx9q_!!6000000000343-2-tps-1254-1254.png" width="360" alt="OpenAgentPack: one agents.yaml for multiple managed-agent providers">
-</p>
+![OpenAgentPack CLI: from agents.yaml to plan and apply](./packages/sdk/docs/agents.gif)
+
+`agents.yaml → validate → plan → apply`: bring agents back into Git, review the pending changes, then update remote resources.
 
 One `agents.yaml` defines an agent's environment, model, instructions, tools, skills, MCP servers, vaults, and credentials. Review every change in a PR, preview it with `plan`, and apply it when ready — instead of rebuilding the same agent through console clicks.
 
@@ -33,6 +33,8 @@ agents validate && agents plan
 
 [Run the 5-minute quick start](./docs/getting-started.md) · [View provider support](./docs/reference/providers.md) · [Browse runnable examples](./docs/examples.md) · [Roadmap](./ROADMAP.md)
 
+▶ [Watch the Playground demo: switch provider and run the same agent scenario](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
+
 ## Why now
 
 Agents are moving from personal tools to enterprise digital workers. But the things that make an agent valuable — its prompts, skills, knowledge files, tools, and runtime configuration — still live mainly inside cloud-provider consoles.
@@ -44,6 +46,10 @@ These are business assets. They should be managed, reviewed, handed over, reprod
 OpenAgentPack puts a declarative control plane between the agent and the cloud platform. The enterprise owns the declaration; provider adapters render it into real managed agents on Bailian, Qoder, Claude, or Volcengine Ark.
 
 The goal is to make an agent an enterprise-controlled, portable, and inheritable digital asset.
+
+<p align="center">
+  <img src="https://img.alicdn.com/imgextra/i3/O1CN01xWDp5P1EP90HOZx9q_!!6000000000343-2-tps-1254-1254.png" width="360" alt="OpenAgentPack: one agents.yaml for multiple managed-agent providers">
+</p>
 
 ### Declaration and portability: the agent as a blueprint
 
@@ -68,18 +74,6 @@ The mechanics are a single `agents.yaml`, a `validate → plan → apply` workfl
 - **Dependency-aware** — Environment → Skill → Agent are created in topological order; a failed dependency skips its dependents instead of leaving half-built state.
 - **Drift recovery** — detects when remote config has drifted from your declaration and reconciles it. The YAML is always the single source of truth.
 
-## Demo
-
-### CLI workflow
-
-![OpenAgentPack CLI workflow](./packages/sdk/docs/agents.gif)
-
-### Local Playground
-
-`agents playground` launches a local WebUI, fetches the matching `@openagentpack/playground` package on demand, and opens it in your browser. Use `--provider` to target `bailian`, `qoder`, `ark`, or `claude`.
-
-[Watch the Playground demo video](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
-
 ## Quick start
 
 ```bash
@@ -89,6 +83,10 @@ agents plan            # preview create / update / delete
 agents apply -y        # apply changes
 agents destroy         # tear down managed resources
 ```
+
+Run `agents playground` to launch the local WebUI, and use `--provider` to target `bailian`, `qoder`, `ark`, or `claude`. You can switch providers on the same declaration, run real sessions, and observe tool calls and artifacts.
+
+▶ [Watch the full Playground demo](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
 A minimal config:
 
@@ -149,7 +147,7 @@ Beta testers can install `@openagentpack/cli@beta`; see the [release guide](./do
 | MCP Server | native | native | native | native |
 | Memory Store | unsupported | native | unsupported | native |
 | Multi-Agent | unsupported | unsupported | native | native |
-| Deployment | emulated | emulated | native | emulated |
+| Deployment | emulated | native | native | emulated |
 | Session | native | native | native | native |
 
 The full capability matrix and per-provider differences live in the [Provider reference](./docs/reference/providers.md).
