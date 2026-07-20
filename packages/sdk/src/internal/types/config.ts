@@ -116,6 +116,7 @@ export interface CredentialDecl {
 export interface MemoryStoreDecl {
 	description: string;
 	provider?: ProviderName;
+	metadata?: Record<string, string>;
 	entries?: MemoryEntryDecl[];
 }
 

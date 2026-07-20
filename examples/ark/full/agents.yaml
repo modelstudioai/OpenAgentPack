@@ -52,11 +52,16 @@ skills:
     source: ./skills/summarize/
     description: "Produce concise summaries"
 
-# Ark supports native memory stores (Claude does not). A memory store persists
-# context across sessions.
+# Ark supports native memory stores. It also offers partial-success batch memory
+# creation, while updates use last-write-wins and version history is not exposed.
 memory_stores:
   project-notes:
     description: "Shared long-lived project notes"
+    metadata:
+      example: ark-full
+    entries:
+      - key: project/overview.md
+        content: "This store holds durable project context shared across sessions."
 
 agents:
   researcher:

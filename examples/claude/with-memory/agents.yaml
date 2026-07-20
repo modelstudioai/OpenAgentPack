@@ -1,0 +1,37 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+memory_stores:
+  project-memory:
+    description: "Long-lived project decisions and coding conventions"
+    metadata:
+      example: with-memory
+    entries:
+      - key: decisions/architecture.md
+        content: "Start with a modular monolith and record extraction triggers here."
+      - key: conventions/testing.md
+        content: "Public behavior requires integration coverage."
+
+agents:
+  assistant:
+    description: "Project assistant with persistent memory"
+    model: claude-sonnet-4-6
+    instructions: "Read project memory before making architectural recommendations."
+    environment: dev
+    tools:
+      builtin: [bash, text_editor]
+    memory_stores: [project-memory]
+

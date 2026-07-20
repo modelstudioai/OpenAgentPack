@@ -13,7 +13,7 @@ import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import { emitRuntimeFeedback } from "../types/runtime-feedback.ts";
 import type { ResourceAddress, ResourceType } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
-import { contentHash } from "../utils/hash.ts";
+import { contentHash, sha256 } from "../utils/hash.ts";
 import { skillNameFromFiles } from "../utils/skill-manifest.ts";
 import type { ExecContext } from "./context.ts";
 import { resolveAgentRefs, resolveChannelRefs, resolveDeploymentRefs, resolveTemplateRefs } from "./resolver.ts";
@@ -444,23 +444,51 @@ async function executeActionInner(
 			const deleteMemoryStore = provider.deleteMemoryStore?.bind(provider);
 			if (!createMemoryStore || !deleteMemoryStore) throw memoryStoreUnsupported(address.provider);
 			const decl = ctx.config.memory_stores![name]!;
-			if (isUpdate) {
-				try {
-					result = await createMemoryStore(name, decl);
-					await deleteMemoryStore(existingId!);
-				} catch {
-					await deleteMemoryStore(existingId!);
-					result = await createMemoryStore(name, decl);
+			if (!provider.updateMemoryStore || !provider.listMemories || !provider.createMemory || !provider.updateMemory) {
+				throw memoryStoreUnsupported(address.provider);
+			}
+			const reconcile = async (storeId: string): Promise<RemoteResource> => {
+				const store = await provider.updateMemoryStore!(storeId, {
+					name,
+					description: decl.description,
+					metadata: decl.metadata ?? {},
+				});
+
+				// Declarative entries are managed seeds. Update/create those paths in place,
+				// while preserving memories learned by agents at runtime.
+				const current = new Map<string, { id: string; content_sha256: string }>();
+				let cursor: string | undefined;
+				do {
+					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" });
+					for (const memory of page.data) {
+						if (memory.type === "memory") current.set(memory.path, memory);
+					}
+					cursor = page.has_more ? page.next_cursor : undefined;
+				} while (cursor);
+
+				for (const entry of decl.entries ?? []) {
+					const existing = current.get(entry.key.replace(/^\/+/, ""));
+					if (existing) {
+						if (existing.content_sha256 !== sha256(entry.content)) {
+							await provider.updateMemory!(storeId, existing.id, {
+								content: entry.content,
+								expected_content_sha256: existing.content_sha256,
+							});
+						}
+					} else {
+						await provider.createMemory!(storeId, { path: entry.key, content: entry.content });
+					}
 				}
+				return store;
+			};
+			if (isUpdate) {
+				result = await reconcile(existingId!);
 			} else {
 				try {
 					result = await createMemoryStore(name, decl);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
-						onExisting: async (existing) => {
-							await deleteMemoryStore(existing.id!);
-							return createMemoryStore(name, decl);
-						},
+						onExisting: async (existing) => reconcile(existing.id!),
 					});
 					adopted = true;
 				}

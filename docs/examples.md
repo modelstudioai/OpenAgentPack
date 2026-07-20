@@ -13,7 +13,7 @@ The [`examples/`](../examples) directory has runnable configs for every provider
 | Use an official MCP server | [`examples/bailian/with-mcp/`](../examples/bailian/with-mcp/) |
 | Use a vault | [`examples/bailian/with-vault/`](../examples/bailian/with-vault/) · [`examples/qoder/with-vault/`](../examples/qoder/with-vault/) |
 | Connect a credential-based IM Channel | [`examples/qoder/with-channel/`](../examples/qoder/with-channel/) |
-| Use memory stores | [`examples/qoder/with-memory/`](../examples/qoder/with-memory/) · [`examples/ark/full/`](../examples/ark/full/) |
+| Use memory stores | [`examples/qoder/with-memory/`](../examples/qoder/with-memory/) · [`examples/claude/with-memory/`](../examples/claude/with-memory/) · [`examples/ark/full/`](../examples/ark/full/) · [runtime lifecycle](../examples/memory/README.md) |
 | Upload local files (Files API) | [`examples/bailian/with-files/`](../examples/bailian/with-files/) · [`examples/ark/with-files/`](../examples/ark/with-files/) |
 | Coordinate multiple agents | [`examples/claude/multiagent/`](../examples/claude/multiagent/) · [`examples/ark/multiagent/`](../examples/ark/multiagent/) |
 | Deploy to multiple providers | [`examples/claude/multi-provider/`](../examples/claude/multi-provider/) · [`examples/qoder/multi-provider/`](../examples/qoder/multi-provider/) |
@@ -51,7 +51,7 @@ agents destroy
 | Skill | native | native | native | native |
 | Agent | native | native | native | native |
 | MCP Server | native | native | native | native |
-| Memory Store | unsupported | native | unsupported | native |
+| Memory Store | unsupported | native | native | native |
 | Multi-Agent | unsupported | unsupported | native | native |
 | Deployment | emulated | native | native | emulated |
 | Session | native | native | native | native |

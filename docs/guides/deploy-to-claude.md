@@ -21,9 +21,9 @@ providers:
 | Feature | Tier |
 |---------|:----:|
 | Environment, Vault, Skill, Agent, MCP Server, Multi-Agent, Deployment, Session | native |
-| Memory Store | unsupported |
+| Memory Store | native (beta) |
 
-Use a **skill** or **MCP** for context persistence where Claude has no memory store.
+Memory stores require the Claude `agent-memory-2026-07-22` beta, enabled by the adapter by default.
 
 ## Minimal agent
 

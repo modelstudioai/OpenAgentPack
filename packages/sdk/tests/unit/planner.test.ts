@@ -98,13 +98,13 @@ test("diagnoses Bailian MCP servers without matching tool config", async () => {
 });
 
 test("emits no action for a kind whose provider capability tier is unsupported", async () => {
-	// claude marks memory_store unsupported in its capability matrix; the graph must
+	// bailian marks memory_store unsupported in its capability matrix; the graph must
 	// filter it so no create action reaches the executor's throw-guarded switch.
 	const plan = await buildPlan(
 		{
 			version: "1",
-			providers: { claude: {} },
-			defaults: { provider: "claude" },
+			providers: { bailian: {} },
+			defaults: { provider: "bailian" },
 			memory_stores: {
 				notes: { description: "test store" },
 			},
@@ -115,8 +115,8 @@ test("emits no action for a kind whose provider capability tier is unsupported",
 	expect(plan.actions.some((a) => a.address.type === "memory_store")).toBe(false);
 	expect(plan.diagnostics).toContainEqual(
 		expect.objectContaining({
-			code: "claude.memory_store.unsupported",
-			resource: { type: "memory_store", name: "notes", provider: "claude" },
+			code: "bailian.memory_store.unsupported",
+			resource: { type: "memory_store", name: "notes", provider: "bailian" },
 		}),
 	);
 });
