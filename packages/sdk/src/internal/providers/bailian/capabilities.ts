@@ -5,6 +5,7 @@ export const BAILIAN_CAPABILITIES: ProviderCapabilities = {
 	vault: { tier: "native", reason: "vaults + credentials API (static_bearer MCP credentials)" },
 	skill: { tier: "native", reason: "skills API with 2-step zip upload via Files API" },
 	agent: { tier: "native", reason: "agents API with versioned updates" },
+	template: { tier: "unsupported", reason: "no Forward Template equivalent on Bailian" },
 	memory_store: {
 		tier: "unsupported",
 		reason: "no memory store primitive on Bailian",

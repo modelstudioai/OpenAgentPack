@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import JSZip from "jszip";
+import { UserError } from "../../errors.ts";
 import type {
 	AgentDecl,
 	DeploymentDecl,
@@ -362,6 +363,7 @@ export class ArkAdapter implements ProviderAdapter {
 	}
 
 	async createSession(bindings: SessionBindings): Promise<ProviderSessionInfo> {
+		if (bindings.delivery === "forward") throw new UserError("Ark does not support Forward sessions.");
 		const body = mapSession(bindings);
 		const res = (await this.client.post("/sessions", body)) as Record<string, unknown>;
 		return toSessionInfo(res);

@@ -3,6 +3,7 @@ export type ResourceKind =
 	| "vault"
 	| "skill"
 	| "agent"
+	| "template"
 	| "memory_store"
 	| "mcp_server"
 	| "multiagent"
@@ -50,6 +51,7 @@ export const REQUIRED_METHODS_BY_KIND: Partial<Record<ResourceKind, readonly str
 	vault: ["createVault", "deleteVault"],
 	skill: ["createSkill", "updateSkill", "deleteSkill"],
 	agent: ["createAgent", "updateAgent", "deleteAgent"],
+	template: ["createTemplate", "updateTemplate", "archiveTemplate"],
 	memory_store: ["createMemoryStore", "deleteMemoryStore"],
 	deployment: ["createDeployment", "updateDeployment", "deleteDeployment", "runDeployment", "getDeployment"],
 	session: ["createSession", "listSessions", "getSession", "deleteSession", "sendSessionMessage"],

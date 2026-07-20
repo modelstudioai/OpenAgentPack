@@ -275,14 +275,30 @@ export interface paths {
 										message: string;
 										resource?: {
 											/** @enum {string} */
-											type: "environment" | "vault" | "memory_store" | "skill" | "agent" | "deployment" | "file";
+											type:
+												| "environment"
+												| "vault"
+												| "memory_store"
+												| "skill"
+												| "agent"
+												| "template"
+												| "deployment"
+												| "file";
 											name: string;
 											provider: string;
 										};
 									}[];
 									missing: {
 										/** @enum {string} */
-										type: "environment" | "vault" | "memory_store" | "skill" | "agent" | "deployment" | "file";
+										type:
+											| "environment"
+											| "vault"
+											| "memory_store"
+											| "skill"
+											| "agent"
+											| "template"
+											| "deployment"
+											| "file";
 										name: string;
 										provider: string;
 									}[];
@@ -291,7 +307,15 @@ export interface paths {
 										action: "create" | "update" | "delete" | "no-op";
 										address: {
 											/** @enum {string} */
-											type: "environment" | "vault" | "memory_store" | "skill" | "agent" | "deployment" | "file";
+											type:
+												| "environment"
+												| "vault"
+												| "memory_store"
+												| "skill"
+												| "agent"
+												| "template"
+												| "deployment"
+												| "file";
 											name: string;
 											provider: string;
 										};
@@ -309,7 +333,15 @@ export interface paths {
 										};
 										dependencies: {
 											/** @enum {string} */
-											type: "environment" | "vault" | "memory_store" | "skill" | "agent" | "deployment" | "file";
+											type:
+												| "environment"
+												| "vault"
+												| "memory_store"
+												| "skill"
+												| "agent"
+												| "template"
+												| "deployment"
+												| "file";
 											name: string;
 											provider: string;
 										}[];

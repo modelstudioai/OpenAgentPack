@@ -13,6 +13,7 @@ export function getResourceDeclaration(address: ResourceAddress, config: Project
 		case "skill":
 			return config.skills?.[name] ?? null;
 		case "agent":
+		case "template":
 			return config.agents?.[name] ?? null;
 		case "file":
 			return config.files?.[name] ?? null;

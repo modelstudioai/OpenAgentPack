@@ -1,3 +1,4 @@
+import { resolveAgentMaterialization } from "../core/agent-materialization.ts";
 import { UserError } from "../errors.ts";
 import { isSupported } from "../providers/capabilities.ts";
 import { getProvider } from "../providers/registry.ts";
@@ -75,7 +76,8 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 			for (const name of Object.keys(config.agents)) {
 				const decl = config.agents[name]!;
 				if (decl.provider && decl.provider !== provider) continue;
-				const agentAddr: ResourceAddress = { type: "agent", name, provider };
+				const materialization = resolveAgentMaterialization(provider, decl);
+				const agentAddr: ResourceAddress = { type: materialization.resourceType, name, provider };
 				addNode(agentAddr);
 
 				if (decl.environment && config.environments?.[decl.environment]) {
@@ -122,7 +124,9 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 
 				if (decl.multiagent && isSupported(caps, "multiagent")) {
 					for (const subName of decl.multiagent.agents) {
-						const subAddr: ResourceAddress = { type: "agent", name: subName, provider };
+						const subDecl = config.agents[subName];
+						const subType = subDecl ? resolveAgentMaterialization(provider, subDecl).resourceType : "agent";
+						const subAddr: ResourceAddress = { type: subType, name: subName, provider };
 						addEdge(agentAddr, subAddr);
 					}
 				}
@@ -136,7 +140,9 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				const depAddr: ResourceAddress = { type: "deployment", name, provider };
 				addNode(depAddr);
 
-				const agentAddr: ResourceAddress = { type: "agent", name: decl.agent, provider };
+				const agentDecl = config.agents?.[decl.agent];
+				const agentType = agentDecl ? resolveAgentMaterialization(provider, agentDecl).resourceType : "agent";
+				const agentAddr: ResourceAddress = { type: agentType, name: decl.agent, provider };
 				if (nodes.has(addressKey(agentAddr))) addEdge(depAddr, agentAddr);
 
 				if (decl.environment) {

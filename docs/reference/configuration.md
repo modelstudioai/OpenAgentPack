@@ -7,7 +7,10 @@ The `agents.yaml` schema. Every field below is sourced from the Zod schema in `p
 ```yaml
 version: "1"
 providers:    { <name>: <provider-config> }
-defaults:     { provider: <name> | "all" }
+defaults:
+  provider: <name> | "all"
+  session:
+    qoder: { identity_id: <existing-idn-id> }
 environments: { <name>: EnvironmentDecl }
 tunnels:      { <name>: TunnelDecl }
 vaults:       { <name>: VaultDecl }
@@ -23,6 +26,7 @@ deployments:  { <name>: DeploymentDecl }
 | `version` | string | yes | Schema version. Currently `"1"`. |
 | `providers` | map | yes | One block per provider; each holds its credentials. |
 | `defaults.provider` | string | no | Default target for `plan`/`apply`. `all` targets every declared provider. |
+| `defaults.session.qoder.identity_id` | string | no | Existing Qoder Forward Identity used as the local Session default. If omitted, OpenCMA looks up the enabled Identity whose `external_id` is `__qca_admin_identity__` and sends its real `idn_...` id. Never created or managed by `apply`. |
 | `environments` | map | no | Cloud runtimes. |
 | `tunnels` | map | no | Existing Qoder BYOC tunnels referenced by sessions; OpenCMA does not manage their lifecycle. |
 | `vaults` | map | no | Credential stores. |

@@ -1,3 +1,4 @@
+import { resolveAgentMaterialization } from "../core/agent-materialization.ts";
 import { UserError } from "../errors.ts";
 import { requireRef } from "../executor/resolver.ts";
 import type { IStateManager } from "../state/state-manager.ts";
@@ -5,6 +6,8 @@ import type { AgentDecl, ProjectConfig } from "../types/config.ts";
 import type { SessionBindings } from "../types/session.ts";
 
 export interface SessionCreateOptions {
+	/** Explicit Qoder Forward Identity id. Overrides defaults.session.qoder.identity_id. */
+	identityId?: string;
 	environment?: string;
 	/**
 	 * Explicit remote environment id. When set, it is bound directly (bypassing the
@@ -63,6 +66,18 @@ export function buildSessionBindings(
 	if (!agent) {
 		const available = Object.keys(config.agents ?? {}).join(", ");
 		throw new UserError(`Agent '${agentName}' not found in config. Available agents: ${available || "(none)"}`);
+	}
+	if (resolveAgentMaterialization(provider, agent).resourceType === "template") {
+		const templateId = requireRef(state, { type: "template", name: agentName, provider });
+		const identityId = options.identityId ?? config.defaults?.session?.qoder?.identity_id;
+		return {
+			delivery: "forward",
+			template_id: templateId,
+			...(identityId ? { identity_id: identityId } : {}),
+			files: (options.files ?? []).map((file) => ({ file_id: file.fileId, mount_path: file.mountPath })),
+			title: options.title,
+			metadata: options.metadata,
+		};
 	}
 
 	const agentId = requireRef(state, { type: "agent", name: agentName, provider });

@@ -19,6 +19,7 @@ import type {
 import type { ExecutionPlan } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
+import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider, writeProjectRuntime } from "./project-runtime.ts";
 import {
@@ -483,7 +484,10 @@ export function collectAgentAddresses(config: ProjectConfig, agentName: string, 
 		throw new UserError(`Agent '${agentName}' not found in config.`);
 	}
 	const resolvedProvider = provider ?? resolveSessionProvider(agentName, config, undefined);
-	const addresses: ResourceAddress[] = [{ type: "agent", name: agentName, provider: resolvedProvider }];
+	const materialization = resolveAgentMaterialization(resolvedProvider, agent);
+	const addresses: ResourceAddress[] = [
+		{ type: materialization.resourceType, name: agentName, provider: resolvedProvider },
+	];
 
 	if (agent.environment) {
 		addresses.push({
@@ -504,7 +508,9 @@ export function collectAgentAddresses(config: ProjectConfig, agentName: string, 
 		}
 	}
 	for (const subAgent of agent.multiagent?.agents ?? []) {
-		addresses.push({ type: "agent", name: subAgent, provider: resolvedProvider });
+		const subDecl = config.agents?.[subAgent];
+		const subType = subDecl ? resolveAgentMaterialization(resolvedProvider, subDecl).resourceType : "agent";
+		addresses.push({ type: subType, name: subAgent, provider: resolvedProvider });
 	}
 
 	return addresses;

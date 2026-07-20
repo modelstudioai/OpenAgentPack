@@ -48,6 +48,7 @@ export interface DestroyProjectResult extends DestroyPlanResult {
 const destroyOrder: Record<ResourceType, number> = {
 	deployment: 0,
 	agent: 1,
+	template: 1,
 	skill: 2,
 	memory_store: 3,
 	vault: 4,
@@ -201,6 +202,10 @@ async function deleteRemoteResource(
 	switch (type) {
 		case "agent":
 			await provider.deleteAgent(id);
+			return;
+		case "template":
+			if (!provider.archiveTemplate) throw new UserError(`Provider does not support templates`);
+			await provider.archiveTemplate(id);
 			return;
 		case "skill":
 			await provider.deleteSkill(id);

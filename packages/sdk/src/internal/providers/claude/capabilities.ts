@@ -5,6 +5,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 	vault: { tier: "native", reason: "vaults API" },
 	skill: { tier: "native", reason: "skills API with files[] upload" },
 	agent: { tier: "native", reason: "managed agents API" },
+	template: { tier: "unsupported", reason: "no Forward Template equivalent on Claude" },
 	memory_store: {
 		tier: "unsupported",
 		reason: "Claude exposes Memory Stores, but the OpenAgentPack adapter has not implemented them yet",

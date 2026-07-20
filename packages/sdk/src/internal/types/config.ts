@@ -16,6 +16,12 @@ export interface ProjectConfig {
 
 export interface DefaultsConfig {
 	provider?: string;
+	session?: {
+		qoder?: {
+			/** Existing Qoder Forward Identity used only as the CLI/session runtime default. */
+			identity_id?: string;
+		};
+	};
 }
 
 // --- Environment ---
@@ -143,6 +149,12 @@ export interface AgentDecl {
 	memory_stores?: string[];
 	multiagent?: MultiagentDecl;
 	metadata?: Record<string, string>;
+	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
+	delivery?: Record<ProviderName, AgentDeliveryDecl>;
+}
+
+export interface AgentDeliveryDecl {
+	type: "managed" | "forward";
 }
 
 export type AgentSkillDecl = string | AgentSkillRefDecl;

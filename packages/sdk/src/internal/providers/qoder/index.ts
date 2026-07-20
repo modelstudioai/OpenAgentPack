@@ -9,6 +9,6 @@ registerProvider({
 	capabilities: QODER_CAPABILITIES,
 	createAdapter: (config, projectName) => {
 		const c = config as QoderConfig;
-		return new QoderAdapter(c.api_key, c.gateway, projectName);
+		return new QoderAdapter(c.api_key, c.gateway, projectName, c.forward_gateway);
 	},
 });

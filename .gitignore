@@ -22,6 +22,7 @@ packages/playground/web/
 # local environment and state
 .env
 .env.*
+/agents.yaml
 *.state.json
 agents.state.json
 agents.synced.yaml

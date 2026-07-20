@@ -83,7 +83,14 @@ export async function syncProjectResourcesWithStateBackend(
 	});
 }
 
-const IMPORTABLE_RESOURCE_TYPES = new Set<ResourceType>(["environment", "vault", "memory_store", "skill", "agent"]);
+const IMPORTABLE_RESOURCE_TYPES = new Set<ResourceType>([
+	"environment",
+	"vault",
+	"memory_store",
+	"skill",
+	"agent",
+	"template",
+]);
 
 // Adopt an existing remote resource into state: derive its content hash from the
 // plan's create action and record it. Owns which resource types may be imported.

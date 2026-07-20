@@ -719,6 +719,7 @@
 																						"memory_store",
 																						"skill",
 																						"agent",
+																						"template",
 																						"deployment",
 																						"file"
 																					]
@@ -749,6 +750,7 @@
 																				"memory_store",
 																				"skill",
 																				"agent",
+																				"template",
 																				"deployment",
 																				"file"
 																			]
@@ -783,6 +785,7 @@
 																						"memory_store",
 																						"skill",
 																						"agent",
+																						"template",
 																						"deployment",
 																						"file"
 																					]
@@ -838,6 +841,7 @@
 																							"memory_store",
 																							"skill",
 																							"agent",
+																							"template",
 																							"deployment",
 																							"file"
 																						]

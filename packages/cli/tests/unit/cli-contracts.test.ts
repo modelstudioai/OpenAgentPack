@@ -167,6 +167,13 @@ test("help does not load credentials from a malformed config.json", async () => 
 	expect(result.stderr).not.toContain("Failed to load");
 });
 
+test("session run exposes an explicit Forward identity override", async () => {
+	const result = await runAgents(["session", "run", "--help"]);
+
+	expect(result.exitCode).toBe(0);
+	expect(result.stdout).toContain("--identity-id <id>");
+});
+
 test("global --file before plan selects the config file", async () => {
 	const dir = await makeTempDir();
 	const configPath = await writeConfig(dir);

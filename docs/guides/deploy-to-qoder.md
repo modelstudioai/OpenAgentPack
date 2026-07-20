@@ -9,12 +9,14 @@ providers:
   qoder:
     api_key: ${QODER_PAT}
     gateway: "https://api.qoder.com/api/v1/cloud"   # optional; this is the default
+    forward_gateway: "https://api.qoder.com/api/v1/forward" # optional; derived from gateway by default
 ```
 
 | Field | Required | Default | Description |
 |-------|:--------:|---------|-------------|
 | `api_key` | yes | — | Qoder personal access token. Resolve from `.env` with `${QODER_PAT}`. |
 | `gateway` | no | `https://api.qoder.com/api/v1/cloud` | Qoder cloud gateway base URL. |
+| `forward_gateway` | no | derived from `gateway` | Qoder Forward gateway used for Template lifecycle requests. |
 
 ## Capabilities
 
@@ -74,6 +76,53 @@ agents:
 ## What Qoder uniquely supports
 
 - **Memory stores** — persistent context for an agent. See [`examples/qoder/with-memory/`](../../examples/qoder/with-memory/).
+- **Forward Templates** — declaratively materialize an `agents.*` declaration as a reusable Forward baseline:
+
+```yaml
+agents:
+  forward-assistant:
+    model: auto
+    instructions: You are a helpful assistant.
+    environment: byoc
+    tunnel: private-network
+    vault: mcp-credentials
+    delivery:
+      qoder:
+        type: forward
+```
+
+`agents plan/apply/destroy` then manage a Qoder Forward Template (`tmpl_...`) instead of a Managed Agent
+(`agent_...`). The default remains Managed Agent delivery when `delivery` is omitted.
+
+Identity is optional for local Forward Session testing. If omitted, OpenCMA finds the enabled Qoder Identity whose
+`external_id` is `__qca_admin_identity__`, then sends its real `idn_...` id to the Session API. To run as a specific
+user—or when the reserved Identity is unavailable—configure an existing Identity explicitly:
+
+```yaml
+defaults:
+  provider: qoder
+  session:
+    qoder:
+      identity_id: idn_xxx
+```
+
+Then use the same session command to test a Forward-delivered agent:
+
+```bash
+agents session run "Hello" --agent forward-assistant
+```
+
+The CLI resolves the applied Template and optional configured Identity, creates a Forward Session, and routes create, send,
+stream, get, and archive operations through the Forward gateway. It never creates or updates an Identity as a side effect
+of starting a Session. Use `--identity-id idn_xxx` to override the YAML default for one invocation. Managed sessions keep
+using the Cloud gateway.
+
+Production messaging delivery is a separate Forward Channel concern. An IM Channel explicitly binds a business Identity
+and Template; do not treat the CLI's local testing Identity as an end-user Identity. Qoder
+recommends QR-code authorization for Channel binding so channel credentials do not need to be stored locally.
+
+Forward-delivered agents still cannot be referenced by OpenAgentPack deployments; scheduled Managed Deployment runs
+require an Agent resource.
 
 ## Next steps
 

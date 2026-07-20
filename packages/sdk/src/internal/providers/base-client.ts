@@ -79,11 +79,11 @@ export abstract class BaseApiClient {
 		return Buffer.from(await res.arrayBuffer());
 	}
 
-	async *sse(path: string): AsyncGenerator<Record<string, unknown>> {
+	async *sse(path: string, options?: { headers?: Record<string, string> }): AsyncGenerator<Record<string, unknown>> {
 		const controller = new AbortController();
 		const res = await fetch(`${this.baseUrl}${path}`, {
 			method: "GET",
-			headers: { ...this.headers(), Accept: "text/event-stream" },
+			headers: { ...this.headers(), Accept: "text/event-stream", ...options?.headers },
 			signal: controller.signal,
 		});
 		await this.throwIfError(res);

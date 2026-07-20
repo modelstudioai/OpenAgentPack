@@ -33,12 +33,56 @@ export async function computeResourceHash(
 		if (refs) return contentHash({ decl, refs });
 	}
 
+	if (address.type === "template") {
+		const refs = resolveTemplateReferenceIds(decl as TemplateRefDecl, config, address.provider, state);
+		return contentHash({ decl, refs });
+	}
+
 	return contentHash(decl);
 }
 
 interface DeploymentRefDecl {
 	agent: string;
 	environment?: string;
+}
+
+interface TemplateRefDecl {
+	environment?: string;
+	tunnel?: string;
+	vault?: string;
+	skills?: Array<string | { type: "official" | "custom"; skill_id: string; version?: string }>;
+}
+
+function resolveTemplateReferenceIds(
+	decl: TemplateRefDecl,
+	config: ProjectConfig,
+	provider: string,
+	state?: HashStateLookup,
+): Record<string, unknown> {
+	const environment = decl.environment ? config.environments?.[decl.environment] : undefined;
+	const tunnel = decl.tunnel ? config.tunnels?.[decl.tunnel] : undefined;
+	const skillIds = (decl.skills ?? []).map((skill) => {
+		if (typeof skill === "string") {
+			return state?.getResource({ type: "skill", name: skill, provider })?.remote_id ?? skill;
+		}
+		if (skill.type === "official") return `${skill.type}:${skill.skill_id}:${skill.version ?? ""}`;
+		return (
+			state?.getResource({ type: "skill", name: skill.skill_id, provider })?.remote_id ??
+			`${skill.type}:${skill.skill_id}:${skill.version ?? ""}`
+		);
+	});
+	return {
+		environment_id:
+			environment?.environment_id ??
+			(decl.environment
+				? (state?.getResource({ type: "environment", name: decl.environment, provider })?.remote_id ?? undefined)
+				: undefined),
+		tunnel_id: tunnel?.tunnel_id,
+		vault_ids: decl.vault
+			? [state?.getResource({ type: "vault", name: decl.vault, provider })?.remote_id ?? decl.vault]
+			: [],
+		skill_ids: skillIds,
+	};
 }
 
 // A deployment's identity includes the *resolved* ids of its reference-type

@@ -5,7 +5,16 @@ export interface SessionFileResource {
 	mount_path: string;
 }
 
-export interface SessionBindings {
+interface CommonSessionBindings {
+	/** Uploaded files to mount in the session sandbox. */
+	files?: SessionFileResource[];
+	title?: string;
+	metadata?: Record<string, string>;
+}
+
+export interface ManagedSessionBindings extends CommonSessionBindings {
+	/** Omitted for backward compatibility; omitted always means managed. */
+	delivery?: "managed";
 	agent_id: string;
 	agent_version?: number;
 	/** Cloud sandbox id. Every provider runs sessions inside an environment. */
@@ -14,10 +23,17 @@ export interface SessionBindings {
 	tunnel_id?: string;
 	vault_ids: string[];
 	memory_store_ids: string[];
-	files?: SessionFileResource[];
-	title?: string;
-	metadata?: Record<string, string>;
 }
+
+export interface ForwardSessionBindings extends CommonSessionBindings {
+	delivery: "forward";
+	/** Qoder Forward Template selected from the applied Agent materialization. */
+	template_id: string;
+	/** Existing business Identity supplied by the session caller; omitted uses the provider's default Identity. */
+	identity_id?: string;
+}
+
+export type SessionBindings = ManagedSessionBindings | ForwardSessionBindings;
 
 export interface ProviderSessionInfo {
 	id: string;
