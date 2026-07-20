@@ -122,6 +122,10 @@ function installPackage(directory: string, name: string, version: string): void 
 	);
 }
 
+export function normalizeLineEndings(value: string): string {
+	return value.replace(/\r\n/g, "\n");
+}
+
 function assertInstalledPackage(directory: string, name: string, version: string): void {
 	const packageDirectory = join(directory, "node_modules", ...name.split("/"));
 	const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8")) as { version?: string };
@@ -129,7 +133,8 @@ function assertInstalledPackage(directory: string, name: string, version: string
 		throw new Error(`${name} version mismatch: expected ${version}, received ${manifest.version ?? "missing"}`);
 	}
 	const installedLicense = readFileSync(join(packageDirectory, "LICENSE"), "utf8");
-	if (installedLicense !== readFileSync(join(root, "LICENSE"), "utf8")) {
+	const repositoryLicense = readFileSync(join(root, "LICENSE"), "utf8");
+	if (normalizeLineEndings(installedLicense) !== normalizeLineEndings(repositoryLicense)) {
 		throw new Error(`${name} is missing the repository license`);
 	}
 	if (name === "@openagentpack/sdk") readFileSync(join(packageDirectory, "NOTICE"), "utf8");

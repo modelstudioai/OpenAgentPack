@@ -4,7 +4,19 @@ import {
 	formatTimestamp,
 	isTerminalSessionStatus,
 	shouldRenderLiveEvent,
+	shouldStreamSession,
 } from "../../src/commands/session.ts";
+
+describe("session transport selection", () => {
+	test("uses polling by default for every provider", () => {
+		expect(shouldStreamSession({})).toBe(false);
+		expect(shouldStreamSession({ noStream: true })).toBe(false);
+	});
+
+	test("uses SSE only when explicitly requested", () => {
+		expect(shouldStreamSession({ stream: true })).toBe(true);
+	});
+});
 
 describe("session live rendering", () => {
 	test("suppresses user-message echoes", () => {

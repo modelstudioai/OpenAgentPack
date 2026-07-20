@@ -62,7 +62,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.channel == 'beta'
         run: >-
           bun run scripts/release/snapshot.ts apply
-          --run-id "${{ github.run_id }}"
           --sha "${{ github.sha }}"
 
       - name: Validate channel, branch, and package versions

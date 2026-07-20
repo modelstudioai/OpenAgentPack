@@ -106,12 +106,12 @@ Manage runtime agent sessions.
 | `session create [agent-name]` | Create a new session. |
 | `session list` | List sessions from the provider. |
 | `session get <session-id>` | Get details of a session. |
-| `session run <prompt-or-agent> [prompt]` | Create a session, send a message, and stream the response. |
-| `session send <session-id> <message>` | Send a message to an existing session and stream the response. |
+| `session run <prompt-or-agent> [prompt]` | Create a session, send a message, and poll until the response completes. |
+| `session send <session-id> <message>` | Send a message to an existing session and poll until the response completes. |
 | `session events <session-id>` | List event history for a session. |
 | `session delete <session-id>` | Delete a session. |
 
-`session create` / `session run` accept `--agent`, `--identity-id`, `--environment`, `--vault`, `--memory-stores`, `--title`, and `--provider`. `--identity-id` selects an existing Qoder Forward Identity and overrides `defaults.session.qoder.identity_id`; when neither is provided, OpenCMA resolves the Identity whose `external_id` is `__qca_admin_identity__`. OpenCMA never creates or updates an Identity. `session run` and `session send` accept `--json` (JSONL output) and `--no-stream` (polling instead of SSE). `session list` accepts `--agent` and `--all`; `session events` accepts `--limit`, `--all`, `--json`.
+`session create` / `session run` accept `--agent`, `--identity-id`, `--environment`, `--vault`, `--memory-stores`, `--title`, and `--provider`. `--identity-id` selects an existing Qoder Forward Identity and overrides `defaults.session.qoder.identity_id`; when neither is provided, OpenCMA resolves the Identity whose `external_id` is `__qca_admin_identity__`. OpenCMA never creates or updates an Identity. `session run` and `session send` use polling by default and accept `--stream` to opt into SSE streaming, plus `--json` for JSON output. `session list` accepts `--agent` and `--all`; `session events` accepts `--limit`, `--all`, `--json`.
 
 ## `agents deployment`
 
