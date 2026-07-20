@@ -6,6 +6,7 @@ import {
 	PlaybookAgentIdentityMismatchError,
 	pickPlaybookAgent,
 	type RemotePlaybookAgent,
+	readinessFromPick,
 } from "./runtime";
 import type { PlaybookSessionDetail } from "./sessions";
 
@@ -74,6 +75,28 @@ describe("pickPlaybookAgent", () => {
 		expect(pickPlaybookAgent([archived], { playbookId: "designer", appId: APP_ID, includeArchived: true }).agent).toBe(
 			archived,
 		);
+	});
+});
+
+describe("readinessFromPick", () => {
+	test("maps agent picks to playbook readiness states", () => {
+		expect(readinessFromPick({ agent: agent(), duplicates: [], identityMismatch: false }, "designer")).toEqual({
+			status: "ready",
+			playbookId: "designer",
+			remoteAgentId: "agent_1",
+		});
+
+		expect(readinessFromPick({ agent: undefined, duplicates: [], identityMismatch: false }, "designer")).toEqual({
+			status: "missing",
+			playbookId: "designer",
+			reason: "not_provisioned",
+		});
+
+		expect(readinessFromPick({ agent: undefined, duplicates: [], identityMismatch: true }, "designer")).toMatchObject({
+			status: "blocked",
+			playbookId: "designer",
+			reason: "identity_mismatch",
+		});
 	});
 });
 
