@@ -1,5 +1,16 @@
 # @openagentpack/playground
 
+## 0.2.0
+
+### Minor Changes
+
+- fd1cf3b: Add BYOC runtime, session, vault, and Qoder deployment capabilities, including native deployments, tunnels, and forward templates.
+
+### Patch Changes
+
+- Updated dependencies [fd1cf3b]
+  - @openagentpack/sdk@0.2.0
+
 ## 0.1.1
 
 ### Patch Changes
