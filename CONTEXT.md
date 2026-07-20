@@ -21,11 +21,17 @@ The forward-looking risk OpenAgentPack is a bet against: as agents move from "ca
 **Capability contract**:
 The explicit, per-provider capability matrix OpenAgentPack publishes (native / emulated / unsupported per resource kind). Portability means the *core declaration* is portable plus this contract is explicit and unsupported facets degrade gracefully (e.g. a provider emulating a non-native MCP transport or memory backend) — not that every feature is identical on every provider. Capability tiers are point-in-time: a resource emulated on a provider today may turn native as that provider catches up; only the matrix cell changes, not the resource's declared status.
 
+**Agent Delivery**:
+The per-provider choice of how an Agent Harness is exposed for use. `managed` delivery runs sessions directly from a provider-managed Agent; `forward` delivery exposes a reusable Template that requires a business Identity when starting a Session. Delivery belongs to the Agent declaration because it changes that Agent's provider-side form; it is not a Provider connection default.
+
+**Identity**:
+A provider-visible business principal on whose behalf a Forward Session runs. An Identity is independent of Templates: one Identity may use several Templates, and one Template may serve several Identities. Session creation consumes an existing Identity selected by the caller; it does not create or own Identities.
+
 ## Resources and workflow
 
 OpenAgentPack treats agents as **infrastructure as code**. A single `agents.yaml` declares the desired state and is the single source of truth. A Terraform-style workflow reconciles the real provider to match it: `validate → plan → apply → destroy`.
 
-Declared resources: `environment`, `vault`, `memory_store`, `skill`, `file`, `agent`, `deployment`. `mcp_server` and `multiagent` are expressed through an agent; `session` is a runtime conversation started from a managed agent, not a declared resource. `deployment` declares scheduled/triggered runs of an agent; while every provider is expected to converge on native support, some currently expose it only via emulation — `plan` surfaces the tier and any behavioral differences.
+Declared resources: `environment`, `vault`, `memory_store`, `skill`, `file`, `agent`, `deployment`. `mcp_server` and `multiagent` are expressed through an agent; `session` is a runtime conversation started from an applied Agent declaration, not a declared resource. Managed delivery starts it from a provider-managed Agent; Forward delivery starts it from a Template plus a caller-selected Identity. `deployment` declares scheduled/triggered runs of an agent; while every provider is expected to converge on native support, some currently expose it only via emulation — `plan` surfaces the tier and any behavioral differences.
 
 At any moment there are three descriptions: **config** (the YAML, desired state), **state** (a local state file mapping declared resources to remote IDs with content hashes), and **remote** (what actually exists on the provider). `plan` computes the diff; `apply` makes remote match config and updates state; content-hash diffing makes runs incremental; failed dependencies skip their dependents rather than leaving half-built state.
 

@@ -10,11 +10,11 @@ import type {
 	VaultDecl,
 } from "../../types/config.ts";
 import type { SessionEventType } from "../../types/dto.ts";
-import type { SessionBindings } from "../../types/session.ts";
+import type { ManagedSessionBindings } from "../../types/session.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
-import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
+import type { ResolvedAgentRefs, ResolvedDeploymentRefs, ResolvedTemplateRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder, slug } from "../sync-mapping.ts";
 
 // Qoder's API expects builtin tool names in PascalCase. The configuration layer
@@ -411,6 +411,84 @@ export function mapAgent(
 	return body;
 }
 
+/** Compile one logical Agent declaration into Qoder's Forward Template baseline. */
+export function mapForwardTemplate(
+	name: string,
+	decl: AgentDecl,
+	refs: ResolvedTemplateRefs,
+	projectName?: string,
+): unknown {
+	let model: string;
+	if (typeof decl.model === "string") {
+		model = decl.model;
+	} else {
+		const qoderModel: ModelSpec | undefined = decl.model.qoder;
+		if (!qoderModel) throw new UserError(`No Qoder model specified for template '${name}'`);
+		model = typeof qoderModel === "string" ? qoderModel : qoderModel.id;
+	}
+
+	const body: Record<string, unknown> = {
+		name,
+		description: decl.description ?? "",
+		model,
+		system: decl.instructions,
+		environment_id: refs.environment_id,
+		vault_ids: refs.vault_ids,
+	};
+	if (refs.tunnel_id) body.tunnel_id = refs.tunnel_id;
+	if (projectName) body.metadata = injectMetadata(decl.metadata, projectName, name);
+	else body.metadata = decl.metadata ?? {};
+
+	if (decl.tools) {
+		const permissions = decl.tools.permissions ?? {};
+		body.tools = [
+			{
+				type: "agent_toolset_20260401",
+				configs: decl.tools.builtin.map((tool) => {
+					const normalized = normalizeToolNameForQoder(tool);
+					const policy = permissions[tool] ?? permissions[tool.toLowerCase()] ?? permissions[normalized];
+					return {
+						name: normalized,
+						enabled: true,
+						...(policy ? { permission_policy: { type: policy === "ask" ? "always_ask" : "always_allow" } } : {}),
+					};
+				}),
+			},
+		];
+	} else {
+		body.tools = [{ type: "agent_toolset_20260401" }];
+	}
+
+	body.mcp_servers = (decl.mcp_servers ?? []).map((server) => {
+		if (server.type === "official" || !server.url) {
+			throw new UserError(`Qoder MCP server '${server.name}' requires a url`);
+		}
+		return { name: server.name, type: "http", url: server.url };
+	});
+	if (decl.mcp_servers?.length) {
+		const tools = body.tools as unknown[];
+		for (const server of decl.mcp_servers) {
+			const toolkit = decl.tools?.mcp?.find((item) => item.mcp_server_name === server.name);
+			if (toolkit) {
+				tools.push({
+					type: "mcp_toolset",
+					mcp_server_name: server.name,
+					configs: toolkit.configs,
+				});
+			}
+		}
+	}
+
+	body.skills = refs.skill_ids.map((skill) => ({
+		type: skill.type === "official" ? "qoder" : skill.type,
+		skill_id: skill.skill_id,
+		...(skill.version ? { version: skill.version } : {}),
+		enabled: true,
+	}));
+
+	return body;
+}
+
 export function mapSendMessage(text: string): unknown {
 	return {
 		events: [{ type: "user.message", content: [{ type: "text", text }] }],
@@ -422,9 +500,12 @@ const QODER_EVENT_MAP: Record<string, SessionEventType> = {
 	"user.message": "message",
 	"agent.tool_use": "tool_use",
 	"agent.tool_result": "tool_result",
+	"agent.mcp_tool_use": "tool_use",
+	"agent.mcp_tool_result": "tool_result",
 	"agent.thinking": "thinking",
 	"session.status_idle": "status",
 	"session.status_running": "status",
+	"session.status_terminated": "status",
 	"session.thread_status_idle": "status",
 	"session.error": "error",
 };
@@ -518,7 +599,7 @@ function extractErrorMessage(raw: Record<string, unknown>): string {
 	return "";
 }
 
-export function mapSession(bindings: SessionBindings): unknown {
+export function mapSession(bindings: ManagedSessionBindings): unknown {
 	const body: Record<string, unknown> = {
 		agent: bindings.agent_id,
 		environment_id: bindings.environment_id,

@@ -4,7 +4,7 @@ import {
 	resolveTargetProviders,
 } from "../core/validate-config.ts";
 import { DiagnosticCollector } from "../diagnostics/diagnostics.ts";
-import { buildDependencyGraph, topologicalSort } from "../graph/dependency.ts";
+import { buildDependencyGraph, type DependencyGraph, topologicalSort } from "../graph/dependency.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { ResourceAddress, StateFile } from "../types/state.ts";
@@ -176,6 +176,7 @@ export async function buildPlan(
 	// Remaining in state but not in config: delete (reverse order)
 	const toDelete = Array.from(stateIndex.values()).reverse();
 	for (const res of toDelete) {
+		const replacement = deliveryReplacementAddress(res.address, graph);
 		actions.push({
 			action: "delete",
 			address: res.address,
@@ -185,11 +186,19 @@ export async function buildPlan(
 				? "Remove local reference only — externally managed remote resource is left intact"
 				: "Resource removed from configuration",
 			before: { content_hash: res.desired_hash ?? res.content_hash },
-			dependencies: [],
+			dependencies: replacement ? [replacement] : [],
 		});
 	}
 
 	return { actions, diagnostics: diagnostics.getAll() };
+}
+
+/** Keep the old delivery resource alive when creating its new materialization fails. */
+function deliveryReplacementAddress(address: ResourceAddress, graph: DependencyGraph): ResourceAddress | undefined {
+	if (address.type !== "agent" && address.type !== "template") return undefined;
+	const replacementType = address.type === "agent" ? "template" : "agent";
+	const candidate: ResourceAddress = { ...address, type: replacementType };
+	return graph.nodes.has(addressKey(candidate)) ? candidate : undefined;
 }
 
 function collectChangedPaths(

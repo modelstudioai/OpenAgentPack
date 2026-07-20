@@ -74,11 +74,15 @@ export async function refreshState(
 					? provider.normalizeDesiredResource(res.address.type, res.address.name, decl)
 					: null;
 				const desiredComparableHash = desiredComparable === null ? undefined : contentHash(desiredComparable);
-				const baselineHash = res.desired_comparable_hash ?? desiredComparableHash;
+				// Resources created before full drift support have no comparable baseline.
+				// Adopt the first complete remote snapshot so subsequent refreshes can
+				// detect out-of-band changes without reporting a false migration drift.
+				const baselineHash = res.desired_comparable_hash ?? desiredComparableHash ?? remoteHash;
 				const driftStatus = baselineHash && remoteHash !== baselineHash ? "drifted" : "in_sync";
+				const comparisonBaseline = res.remote_snapshot ?? desiredComparable;
 				const driftPaths =
-					driftStatus === "drifted" && desiredComparable !== null
-						? diffChangedPaths(desiredComparable, remote.comparable)
+					driftStatus === "drifted" && comparisonBaseline != null
+						? diffChangedPaths(comparisonBaseline, remote.comparable)
 						: [];
 
 				state.setResource({
@@ -86,7 +90,7 @@ export async function refreshState(
 					version: remote.version ?? res.version,
 					remote_id: remote.id,
 					desired_hash: res.desired_hash ?? res.content_hash,
-					desired_comparable_hash: res.desired_comparable_hash ?? desiredComparableHash,
+					desired_comparable_hash: baselineHash,
 					remote_hash: remoteHash,
 					remote_snapshot: remote.snapshot ?? remote.comparable,
 					drift_paths: driftPaths,

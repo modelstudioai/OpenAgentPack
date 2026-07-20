@@ -45,6 +45,7 @@ export function formatDuration(startIso: string, endIso?: string): string {
 interface SessionCreateOpts {
 	file: string;
 	agent?: string;
+	identityId?: string;
 	environment?: string;
 	environmentId?: string;
 	tunnel?: string;
@@ -68,6 +69,7 @@ export async function sessionCreateCommand(
 	const ctx = await buildCliRuntime(options.file);
 	const run = await createSessionForAgent(ctx, {
 		agent: positionalAgent ?? options.agent,
+		identityId: options.identityId,
 		provider: options.provider,
 		environment: options.environment,
 		environmentId: options.environmentId,
@@ -255,6 +257,7 @@ function renderCollectedEvents(result: CollectedSessionEvents, json: boolean): v
 interface SessionRunOpts {
 	file: string;
 	agent?: string;
+	identityId?: string;
 	environment?: string;
 	environmentId?: string;
 	tunnel?: string;
@@ -282,6 +285,7 @@ export async function sessionRunCommand(
 
 	const runOptions = {
 		agent: positionalAgent ?? options.agent,
+		identityId: options.identityId,
 		provider: options.provider,
 		environment: options.environment,
 		environmentId: options.environmentId,

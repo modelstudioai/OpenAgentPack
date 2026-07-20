@@ -8,7 +8,7 @@ import type {
 	ModelSpec,
 	VaultDecl,
 } from "../../types/config.ts";
-import type { SessionBindings } from "../../types/session.ts";
+import type { ManagedSessionBindings } from "../../types/session.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
@@ -296,7 +296,7 @@ export function mapAgent(
 	return body;
 }
 
-export function mapSession(bindings: SessionBindings): unknown {
+export function mapSession(bindings: ManagedSessionBindings): unknown {
 	const body: Record<string, unknown> = {
 		agent: bindings.agent_id,
 		environment_id: bindings.environment_id,

@@ -16,7 +16,7 @@ import { addressKey } from "../types/state.ts";
 import { contentHash } from "../utils/hash.ts";
 import { skillNameFromFiles } from "../utils/skill-manifest.ts";
 import type { ExecContext } from "./context.ts";
-import { resolveAgentRefs, resolveDeploymentRefs } from "./resolver.ts";
+import { resolveAgentRefs, resolveDeploymentRefs, resolveTemplateRefs } from "./resolver.ts";
 import { resolveSkillFiles } from "./skill-resolver.ts";
 
 export interface ActionResult {
@@ -270,6 +270,11 @@ async function executeActionInner(
 					case "agent":
 						await provider.deleteAgent(id);
 						break;
+					case "template":
+						if (!provider.archiveTemplate)
+							throw new UserError(`Provider '${address.provider}' does not support templates`);
+						await provider.archiveTemplate(id);
+						break;
 					case "memory_store":
 						if (!provider.deleteMemoryStore) throw memoryStoreUnsupported(address.provider);
 						await provider.deleteMemoryStore(id);
@@ -458,6 +463,29 @@ async function executeActionInner(
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						onExisting: (existing) => provider.updateAgent(existing.id!, remoteName, decl, refs),
+					});
+					adopted = true;
+				}
+			}
+			break;
+		}
+		case "template": {
+			const createTemplate = provider.createTemplate?.bind(provider);
+			const updateTemplate = provider.updateTemplate?.bind(provider);
+			if (!createTemplate || !updateTemplate) {
+				throw new UserError(`Provider '${address.provider}' does not support templates`);
+			}
+			const decl = ctx.config.agents![name]!;
+			const remoteName = decl.name ?? name;
+			const refs = resolveTemplateRefs(name, ctx.config, address.provider, ctx.state);
+			if (isUpdate) {
+				result = await updateTemplate(existingId!, remoteName, decl, refs);
+			} else {
+				try {
+					result = await createTemplate(remoteName, decl, refs);
+				} catch (err) {
+					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						onExisting: (existing) => updateTemplate(existing.id!, remoteName, decl, refs),
 					});
 					adopted = true;
 				}

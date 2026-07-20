@@ -83,6 +83,7 @@ const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required
 	qoder: {
 		api_key: { env: ["QODER_PAT", "QODER_API_KEY"], required: true },
 		gateway: { env: ["QODER_GATEWAY"], required: false },
+		forward_gateway: { env: ["QODER_FORWARD_GATEWAY"], required: false },
 	},
 	claude: {
 		api_key: { env: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"], required: true },

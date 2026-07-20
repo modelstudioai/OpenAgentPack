@@ -8,7 +8,7 @@ import type {
 	ModelSpec,
 } from "../../types/config.ts";
 import type { SessionEventType } from "../../types/dto.ts";
-import type { SessionBindings } from "../../types/session.ts";
+import type { ManagedSessionBindings } from "../../types/session.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
@@ -414,7 +414,7 @@ function extractErrorMessage(raw: Record<string, unknown>): string {
 	return "";
 }
 
-export function mapSession(bindings: SessionBindings): unknown {
+export function mapSession(bindings: ManagedSessionBindings): unknown {
 	const body: Record<string, unknown> = {
 		agent: bindings.agent_version
 			? {

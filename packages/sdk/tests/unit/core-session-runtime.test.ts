@@ -129,6 +129,45 @@ function ctx(provider: ProviderAdapter): ProjectRuntimeContext {
 }
 
 describe("core session runtime", () => {
+	test("starts a Forward session with the caller's explicit Identity", async () => {
+		const forwardConfig = config();
+		forwardConfig.agents!.assistant!.delivery = { qoder: { type: "forward" } };
+		const forwardState = StateManager.initialize("/tmp/core-forward-session-runtime-state.json");
+		forwardState.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_1",
+			content_hash: "h",
+		});
+		let receivedBindings: Record<string, unknown> | undefined;
+		const provider = {
+			...adapter("qoder", [], true),
+			createSession: async (bindings: Record<string, unknown>) => {
+				receivedBindings = bindings;
+				return session("sess_forward");
+			},
+		};
+		const runtime: ProjectRuntimeContext = {
+			configPath: "/tmp/agents.yaml",
+			statePath: "/tmp/agents.state.json",
+			projectName: "test",
+			config: { ...forwardConfig, _resolved: true },
+			state: forwardState,
+			providers: new Map([["qoder", provider as ProviderAdapter]]),
+		};
+
+		const run = await startSessionRun(runtime, "do work", {
+			agent: "assistant",
+			identityId: "idn_runtime_user",
+		});
+
+		expect(run.session.id).toBe("sess_forward");
+		expect(receivedBindings).toMatchObject({
+			delivery: "forward",
+			template_id: "tmpl_1",
+			identity_id: "idn_runtime_user",
+		});
+	});
+
 	test("startRun creates a new session and streams events (resume adapter)", async () => {
 		const calls: string[] = [];
 		const provider = adapter("qoder", calls, true);

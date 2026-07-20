@@ -6,6 +6,7 @@ export const ResourceTypeSchema = z.enum([
 	"memory_store",
 	"skill",
 	"agent",
+	"template",
 	"deployment",
 	"file",
 ]);

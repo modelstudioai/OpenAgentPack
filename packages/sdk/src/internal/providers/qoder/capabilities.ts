@@ -5,6 +5,7 @@ export const QODER_CAPABILITIES: ProviderCapabilities = {
 	vault: { tier: "native", reason: "vaults + MCP credentials" },
 	skill: { tier: "native", reason: "skills API with zip upload" },
 	agent: { tier: "native", reason: "agents API" },
+	template: { tier: "native", reason: "Forward Templates API" },
 	memory_store: { tier: "native", reason: "memory_stores API" },
 	mcp_server: { tier: "native", reason: "mcp_servers field on agent" },
 	multiagent: {

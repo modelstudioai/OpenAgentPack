@@ -71,7 +71,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 		await this.client.get("/agents?limit=1");
 	}
 
-	private static readonly ENDPOINT_MAP: Record<ResourceType, string> = {
+	private static readonly ENDPOINT_MAP: Partial<Record<ResourceType, string>> = {
 		environment: "/environments",
 		agent: "/agents",
 		vault: "/vaults",
@@ -336,6 +336,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 	}
 
 	async createSession(bindings: SessionBindings): Promise<ProviderSessionInfo> {
+		if (bindings.delivery === "forward") throw new UserError("Claude does not support Forward sessions.");
 		const body = mapSession(bindings);
 		const res = (await this.client.post("/sessions", body)) as Record<string, unknown>;
 		return toSessionInfo(res);

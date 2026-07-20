@@ -18,6 +18,7 @@ import type {
 	RemoteResource,
 	ResolvedAgentRefs,
 	ResolvedDeploymentRefs,
+	ResolvedTemplateRefs,
 } from "./interface.ts";
 
 /**
@@ -45,6 +46,10 @@ export interface ResourceCrudAdapter {
 	createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	updateAgent(id: string, name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	deleteAgent(id: string): Promise<void>;
+
+	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
+	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
+	archiveTemplate?(id: string): Promise<void>;
 
 	// Optional: only providers whose capability matrix marks `memory_store` supported
 	// implement these. The registry validates the matrix↔method match; unsupported

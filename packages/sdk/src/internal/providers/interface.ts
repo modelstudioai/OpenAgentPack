@@ -61,6 +61,13 @@ export interface ResolvedAgentRefs {
 	multiagent_agent_ids?: string[];
 }
 
+export interface ResolvedTemplateRefs extends ResolvedAgentRefs {
+	environment_id: string;
+	/** Qoder BYOC private-network route used by Forward Templates. */
+	tunnel_id?: string;
+	vault_ids: string[];
+}
+
 export interface ResolvedDeploymentRefs {
 	agent_id: string;
 	agent_version?: number;
@@ -149,6 +156,11 @@ export interface ProviderAdapter {
 	createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	updateAgent(id: string, name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	deleteAgent(id: string): Promise<void>;
+
+	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
+	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
+	/** Remove the template from desired state. Qoder implements this as a soft archive. */
+	archiveTemplate?(id: string): Promise<void>;
 
 	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
 	deleteMemoryStore?(id: string): Promise<void>;

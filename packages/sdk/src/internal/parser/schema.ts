@@ -174,6 +174,10 @@ const agentSkillRefSchema = z
 		version: s.version,
 	}));
 
+const agentDeliverySchema = z.object({
+	type: z.enum(["managed", "forward"]),
+});
+
 const agentSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
@@ -189,6 +193,7 @@ const agentSchema = z.object({
 	memory_stores: z.array(z.string()).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
+	delivery: z.record(z.string(), agentDeliverySchema).optional(),
 });
 
 const deploymentFileResourceSchema = z.object({
@@ -259,6 +264,15 @@ export const projectConfigSchema = z.object({
 	defaults: z
 		.object({
 			provider: z.string().optional(),
+			session: z
+				.object({
+					qoder: z
+						.object({
+							identity_id: z.string().min(1).optional(),
+						})
+						.optional(),
+				})
+				.optional(),
 		})
 		.optional(),
 	environments: z.record(z.string(), environmentSchema).optional(),

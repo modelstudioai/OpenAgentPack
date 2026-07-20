@@ -17,6 +17,10 @@ export class QoderClient extends BaseApiClient {
 		this.apiKey = config.apiKey;
 	}
 
+	protected override isConflict(status: number): boolean {
+		return status === 409;
+	}
+
 	protected headers(): Record<string, string> {
 		return {
 			"Content-Type": "application/json",

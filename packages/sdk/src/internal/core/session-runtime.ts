@@ -12,6 +12,7 @@ import type {
 } from "../types/session-event.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import { preparePromptForProvider } from "../utils/sandbox-mount.ts";
+import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider } from "./project-runtime.ts";
 
@@ -140,6 +141,7 @@ export async function createSessionForAgent(
 ): Promise<CreatedSessionRun> {
 	const { agentName, provider, adapter } = resolveSessionRuntime(ctx, options);
 	const bindings = buildSessionBindings(agentName, ctx.config, provider, ctx.state, {
+		identityId: options.identityId,
 		environment: options.environment,
 		environmentId: options.environmentId,
 		tunnel: options.tunnel,
@@ -162,6 +164,7 @@ export async function startSessionRun(
 ): Promise<StreamingSessionRun> {
 	const { agentName, provider, adapter } = resolveSessionRuntime(ctx, options);
 	const bindings = buildSessionBindings(agentName, ctx.config, provider, ctx.state, {
+		identityId: options.identityId,
 		environment: options.environment,
 		environmentId: options.environmentId,
 		tunnel: options.tunnel,
@@ -309,13 +312,17 @@ export async function listSessionsForProject(
 		const resolved = resolveSessionRuntime(ctx, options);
 		provider = resolved.provider;
 		agentName = resolved.agentName;
+		const agentDecl = ctx.config.agents?.[resolved.agentName];
+		const resourceType = agentDecl ? resolveAgentMaterialization(provider, agentDecl).resourceType : "agent";
 		const state = ctx.state.getResource({
-			type: "agent",
+			type: resourceType,
 			name: resolved.agentName,
 			provider,
 		});
 		if (!state?.remote_id) {
-			throw new UserError(`Agent '${resolved.agentName}' not found in state. Run \`agents apply\` first.`);
+			throw new UserError(
+				`${resourceType === "template" ? "Template" : "Agent"} '${resolved.agentName}' not found in state. Run \`agents apply\` first.`,
+			);
 		}
 		agentId = state.remote_id;
 	} else if (options.provider) {
@@ -519,7 +526,11 @@ function resolveDirectAdapter(ctx: ProjectRuntimeContext, overrideProvider?: str
 function buildAgentNameByRemoteId(ctx: ProjectRuntimeContext, provider: string): Map<string, string> {
 	const names = new Map<string, string>();
 	for (const resource of ctx.state.listResources()) {
-		if (resource.address.type === "agent" && resource.address.provider === provider && resource.remote_id) {
+		if (
+			(resource.address.type === "agent" || resource.address.type === "template") &&
+			resource.address.provider === provider &&
+			resource.remote_id
+		) {
 			names.set(resource.remote_id, resource.address.name);
 		}
 	}

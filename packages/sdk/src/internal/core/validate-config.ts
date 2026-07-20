@@ -120,6 +120,41 @@ export function collectProviderCapabilities(
 		}
 		const caps = def.capabilities;
 
+		for (const [name, agent] of Object.entries(config.agents ?? {})) {
+			if (agent.provider && agent.provider !== providerName) continue;
+			const delivery = agent.delivery?.[providerName]?.type ?? "managed";
+			if (delivery === "forward" && !isSupported(caps, "template")) {
+				diagnostics.error(
+					`${providerName}.agent.delivery.forward.unsupported`,
+					`agent.${name}: provider '${providerName}' does not support delivery type 'forward'. Supported delivery types: managed.`,
+					{ type: "agent", name, provider: providerName },
+				);
+			}
+			if (delivery === "forward" && providerName === "qoder") {
+				if (!agent.environment) {
+					diagnostics.error(
+						"qoder.template.environment.required",
+						`agent.${name}: Qoder Forward delivery requires an environment.`,
+						{ type: "template", name, provider: providerName },
+					);
+				}
+				if (agent.memory_stores?.length) {
+					diagnostics.error(
+						"qoder.template.memory_store.unsupported",
+						`agent.${name}: memory_stores are not yet supported by Qoder Forward Template delivery.`,
+						{ type: "template", name, provider: providerName },
+					);
+				}
+				if (agent.multiagent) {
+					diagnostics.error(
+						"qoder.template.multiagent.unsupported",
+						`agent.${name}: multiagent is not yet supported by Qoder Forward Template delivery.`,
+						{ type: "template", name, provider: providerName },
+					);
+				}
+			}
+		}
+
 		if (providerName === "qoder") {
 			// Qoder's /deployments API rejects tunnel_id (HTTP 400 "unknown field"), so
 			// a declared/inherited tunnel is dropped from the deployment payload and
@@ -127,6 +162,14 @@ export function collectProviderCapabilities(
 			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
 				if (deployment.provider && deployment.provider !== providerName) continue;
 				const tunnel = deployment.tunnel ?? config.agents?.[deployment.agent]?.tunnel;
+				const referencedAgent = config.agents?.[deployment.agent];
+				if (referencedAgent?.delivery?.qoder?.type === "forward") {
+					diagnostics.error(
+						"qoder.deployment.forward_template.unsupported",
+						`deployment.${name}: managed deployments cannot reference Forward-delivered agent '${deployment.agent}'.`,
+						{ type: "deployment", name, provider: providerName },
+					);
+				}
 				if (tunnel) {
 					diagnostics.warning(
 						`${providerName}.deployment.tunnel.unsupported`,

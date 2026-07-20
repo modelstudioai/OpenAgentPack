@@ -1,5 +1,5 @@
 import { UserError } from "../errors.ts";
-import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../providers/interface.ts";
+import type { ResolvedAgentRefs, ResolvedDeploymentRefs, ResolvedTemplateRefs } from "../providers/interface.ts";
 import type { IStateManager } from "../state/state-manager.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { ResourceAddress } from "../types/state.ts";
@@ -65,6 +65,30 @@ export function resolveAgentRefs(
 	}
 
 	return refs;
+}
+
+export function resolveTemplateRefs(
+	agentName: string,
+	config: ProjectConfig,
+	provider: string,
+	state: IStateManager,
+): ResolvedTemplateRefs {
+	const agent = config.agents?.[agentName];
+	if (!agent) throw new UserError(`Agent '${agentName}' not found in config`);
+	if (!agent.environment) {
+		throw new UserError(`Forward template '${agentName}' must declare an environment.`);
+	}
+	const environment = config.environments?.[agent.environment];
+	if (!environment) throw new UserError(`Environment '${agent.environment}' is not defined in config.`);
+
+	const agentRefs = resolveAgentRefs(agentName, config, provider, state);
+	return {
+		...agentRefs,
+		environment_id:
+			environment.environment_id ?? requireRef(state, { type: "environment", name: agent.environment, provider }),
+		...(agent.tunnel ? { tunnel_id: resolveTunnelIdFromConfig(config, agent.tunnel, provider) } : {}),
+		vault_ids: agent.vault ? [requireRef(state, { type: "vault", name: agent.vault, provider })] : [],
+	};
 }
 
 export function resolveDeploymentRefs(

@@ -12,13 +12,14 @@ A **session** is a runtime conversation started from a managed agent. Sessions a
 agents session run "Summarize the repo structure" --agent assistant
 ```
 
-`session run` creates a session, sends the prompt, and streams the response. When only one agent is configured, `--agent` is auto-detected.
+`session run` creates a session, sends the prompt, and streams the response. When only one agent is configured, `--agent` is auto-detected. For a Qoder agent with `delivery.qoder.type: forward`, Identity is optional: without one OpenCMA looks up the enabled Identity whose `external_id` is `__qca_admin_identity__` and sends its real `idn_...` id. Configure `defaults.session.qoder.identity_id` or pass `--identity-id` to select an existing business Identity. OpenCMA never creates or updates Identity resources implicitly.
 
 Options:
 
 | Option | Description |
 |--------|-------------|
 | `--agent <name>` | Agent to run (auto-detected with one agent). |
+| `--identity-id <id>` | Override the configured Qoder Forward Identity for this Session. |
 | `--environment <name>` | Override the agent's declared environment. |
 | `--vault <name>` | Override the agent's declared vault. |
 | `--memory-stores <names>` | Override the agent's declared memory stores (comma-separated). |
@@ -45,7 +46,7 @@ agents session delete <session-id>
 
 ## What a session binds
 
-A session binds an agent + an environment + vaults + memory stores + files into one runnable unit. The bindings are resolved from the agent declaration and the state file; `session create` lets you override `--environment`, `--vault`, and `--memory-stores` at run time.
+A Managed Session binds an Agent + environment + vaults + memory stores + files. A Qoder Forward Session binds a Template + Identity; the Template already owns its environment, tunnel, vault, and MCP configuration. `session create` lets callers override the relevant runtime bindings.
 
 ## Programmatic usage
 

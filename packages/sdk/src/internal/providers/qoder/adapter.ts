@@ -12,7 +12,13 @@ import type {
 } from "../../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../../types/dto.ts";
 import type { ProviderFileInfo } from "../../types/file.ts";
-import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../../types/session.ts";
+import type {
+	ForwardSessionBindings,
+	ProviderSessionInfo,
+	SessionBindings,
+	SessionFilter,
+	SessionListResult,
+} from "../../types/session.ts";
 import type {
 	EventListOptions,
 	EventStreamOptions,
@@ -36,6 +42,7 @@ import type {
 	RemoteResource,
 	ResolvedAgentRefs,
 	ResolvedDeploymentRefs,
+	ResolvedTemplateRefs,
 } from "../interface.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
@@ -58,6 +65,7 @@ import {
 	mapCredential,
 	mapDeployment,
 	mapEnvironment,
+	mapForwardTemplate,
 	mapMemoryStore,
 	mapSendMessage,
 	mapSession,
@@ -68,14 +76,29 @@ import {
 	vaultToDecl,
 } from "./mapper.ts";
 
+function deriveForwardGateway(cloudGateway?: string): string {
+	if (!cloudGateway) return "https://api.qoder.com/api/v1/forward";
+	const trimmed = cloudGateway.replace(/\/$/, "");
+	return trimmed.endsWith("/cloud") ? `${trimmed.slice(0, -"/cloud".length)}/forward` : `${trimmed}/forward`;
+}
+
+const QODER_DEFAULT_IDENTITY_EXTERNAL_ID = "__qca_admin_identity__";
+
 export class QoderAdapter implements ProviderAdapter {
 	readonly name = "qoder" as const;
 	readonly eventResume = true;
 	private client: QoderClient;
+	private forwardClient: QoderClient;
 	private projectName: string;
+	private forwardSessionIds = new Set<string>();
+	private defaultForwardIdentityId?: string;
 
-	constructor(apiKey: string, gateway?: string, projectName?: string) {
+	constructor(apiKey: string, gateway?: string, projectName?: string, forwardGateway?: string) {
 		this.client = new QoderClient({ apiKey, gateway });
+		this.forwardClient = new QoderClient({
+			apiKey,
+			gateway: forwardGateway ?? deriveForwardGateway(gateway),
+		});
 		this.projectName = projectName ?? "";
 	}
 
@@ -94,6 +117,10 @@ export class QoderAdapter implements ProviderAdapter {
 	};
 
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
+		if (type === "template") {
+			const raw = await locateRemote(this.forwardClient, "/templates", name, id, (item) => item.status !== "archived");
+			return raw ? toRemoteResource(raw) : null;
+		}
 		const raw = await locateRemote(this.client, QoderAdapter.ENDPOINT_MAP[type], name, id, notArchived);
 		return raw ? toRemoteResource(raw) : null;
 	}
@@ -154,7 +181,7 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	getDriftSupport(type: ResourceType): DriftSupport {
-		if (type === "agent" || type === "environment") return "full";
+		if (type === "agent" || type === "environment" || type === "template") return "full";
 		if (type === "deployment") return "unsupported";
 		return QoderAdapter.ENDPOINT_MAP[type] ? "existence" : "unsupported";
 	}
@@ -164,9 +191,16 @@ export class QoderAdapter implements ProviderAdapter {
 		id: string | null,
 		name: string,
 	): Promise<ComparableRemoteResource | null> {
-		if (type !== "agent" && type !== "environment") return null;
-		const endpoint = type === "agent" ? "/agents" : "/environments";
-		const raw = await locateRemote(this.client, endpoint, name, id, notArchived);
+		if (type !== "agent" && type !== "environment" && type !== "template") return null;
+		const isTemplate = type === "template";
+		const endpoint = type === "agent" ? "/agents" : type === "environment" ? "/environments" : "/templates";
+		const raw = await locateRemote(
+			isTemplate ? this.forwardClient : this.client,
+			endpoint,
+			name,
+			id,
+			isTemplate ? (item) => item.status !== "archived" : notArchived,
+		);
 		if (!raw) return null;
 
 		const comparable = this.normalizeRemote(type, raw);
@@ -192,6 +226,7 @@ export class QoderAdapter implements ProviderAdapter {
 				mapAgent(name, decl as AgentDecl, { skill_ids: [] }, undefined, this.projectName) as Record<string, unknown>,
 			);
 		}
+		if (type === "template") return null;
 		return null;
 	}
 
@@ -205,6 +240,26 @@ export class QoderAdapter implements ProviderAdapter {
 					networking: config.networking,
 					packages: config.packages,
 				},
+				metadata: stripAgentsMetadata(raw.metadata),
+			});
+		}
+		if (type === "template") {
+			return compactDeep({
+				name: raw.name,
+				description: raw.description,
+				model: raw.model,
+				system: raw.system,
+				tools: raw.tools,
+				mcp_servers: raw.mcp_servers,
+				skills: raw.skills,
+				multiagent: raw.multiagent,
+				environment_id: raw.environment_id,
+				tunnel_id: raw.tunnel_id,
+				vault_ids: Array.isArray(raw.vault_ids)
+					? raw.vault_ids
+					: Object.keys((raw.vaults ?? {}) as Record<string, unknown>),
+				files: raw.files,
+				environment_variables: raw.environment_variables,
 				metadata: stripAgentsMetadata(raw.metadata),
 			});
 		}
@@ -337,6 +392,35 @@ export class QoderAdapter implements ProviderAdapter {
 		await this.client.delete(`/agents/${id}`);
 	}
 
+	async createTemplate(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
+		await this.registerForwardVaults(refs.vault_ids);
+		const body = mapForwardTemplate(name, decl, refs, this.projectName);
+		const res = (await this.forwardClient.post("/templates", body)) as Record<string, unknown>;
+		return toRemoteResource(res);
+	}
+
+	async updateTemplate(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
+		await this.registerForwardVaults(refs.vault_ids);
+		const body = mapForwardTemplate(name, decl, refs, this.projectName) as Record<string, unknown>;
+		// Forward updates are merge-style; null explicitly clears a previously inherited BYOC tunnel.
+		if (!refs.tunnel_id) body.tunnel_id = null;
+		const res = (await this.forwardClient.post(`/templates/${id}`, body)) as Record<string, unknown>;
+		return toRemoteResource(res);
+	}
+
+	async archiveTemplate(id: string): Promise<void> {
+		await this.forwardClient.post(`/templates/${id}/archive`, {});
+	}
+
+	private async registerForwardVaults(vaultIds: string[]): Promise<void> {
+		for (const id of vaultIds) {
+			await this.forwardClient.post("/resources/registry", {
+				type: "vault",
+				resource: { id },
+			});
+		}
+	}
+
 	async createMemoryStore(name: string, decl: MemoryStoreDecl): Promise<RemoteResource> {
 		const body = mapMemoryStore(name, decl);
 		const res = (await this.client.post("/memory_stores", body)) as Record<string, unknown>;
@@ -440,12 +524,82 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async createSession(bindings: SessionBindings): Promise<ProviderSessionInfo> {
+		if (bindings.delivery === "forward") {
+			const identityId = bindings.identity_id ?? (await this.resolveDefaultForwardIdentityId());
+			const body: Record<string, unknown> = {
+				identity_id: identityId,
+				template_id: bindings.template_id,
+				incremental_streaming_enabled: false,
+			};
+			if (bindings.title) body.title = bindings.title;
+			if (bindings.metadata) body.metadata = bindings.metadata;
+			if (bindings.files?.length) {
+				body.resources = bindings.files.map((file) => ({
+					type: "file",
+					file_id: file.file_id,
+					mount_path: file.mount_path,
+				}));
+			}
+			const res = (await this.forwardClient.post("/sessions", body)) as Record<string, unknown>;
+			const info = toForwardSessionInfo(res, bindings);
+			this.forwardSessionIds.add(info.id);
+			return info;
+		}
 		const body = mapSession(bindings);
 		const res = (await this.client.post("/sessions", body)) as Record<string, unknown>;
 		return toSessionInfo(res);
 	}
 
+	private async resolveDefaultForwardIdentityId(): Promise<string> {
+		if (this.defaultForwardIdentityId) return this.defaultForwardIdentityId;
+
+		let afterId: string | undefined;
+		do {
+			const params = new URLSearchParams({ limit: "100" });
+			if (afterId) params.set("after_id", afterId);
+			const res = (await this.forwardClient.get(`/identities?${params}`)) as Record<string, unknown>;
+			const identities = (res.data ?? []) as Record<string, unknown>[];
+			const match = identities.find(
+				(identity) =>
+					identity.external_id === QODER_DEFAULT_IDENTITY_EXTERNAL_ID &&
+					identity.enabled !== false &&
+					identity.archived !== true,
+			);
+			if (typeof match?.id === "string") {
+				this.defaultForwardIdentityId = match.id;
+				return match.id;
+			}
+
+			const hasMore = (res.has_more as boolean | undefined) ?? false;
+			const nextId = hasMore ? ((res.last_id as string | null | undefined) ?? undefined) : undefined;
+			if (!nextId || nextId === afterId) break;
+			afterId = nextId;
+		} while (afterId);
+
+		throw new UserError(
+			`Qoder default Forward Identity '${QODER_DEFAULT_IDENTITY_EXTERNAL_ID}' was not found. ` +
+				`Ask Qoder to provision it, set defaults.session.qoder.identity_id, or pass --identity-id.`,
+		);
+	}
+
 	async listSessions(filter?: SessionFilter): Promise<SessionListResult> {
+		if (filter?.agent_id?.startsWith("tmpl_")) {
+			const params = new URLSearchParams({ template_id: filter.agent_id });
+			if (filter.limit) params.set("limit", String(filter.limit));
+			if (filter.page) params.set("after_id", filter.page);
+			const res = (await this.forwardClient.get(`/sessions?${params}`)) as Record<string, unknown>;
+			const data = (res.data ?? []) as Record<string, unknown>[];
+			const hasMore = (res.has_more as boolean | undefined) ?? false;
+			const nextPage = hasMore ? ((res.last_id as string | null | undefined) ?? undefined) : undefined;
+			for (const item of data) {
+				if (typeof item.id === "string") this.forwardSessionIds.add(item.id);
+			}
+			return {
+				sessions: data.map((item) => toForwardSessionInfo(item)),
+				has_more: hasMore,
+				next_page: nextPage,
+			};
+		}
 		const params = new URLSearchParams();
 		if (filter?.agent_id) params.set("agent_id", filter.agent_id);
 		if (filter?.limit) params.set("limit", String(filter.limit));
@@ -461,21 +615,52 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async getSession(id: string): Promise<ProviderSessionInfo> {
-		const res = (await this.client.get(`/sessions/${id}`)) as Record<string, unknown>;
-		return toSessionInfo(res);
+		if (this.forwardSessionIds.has(id)) return this.getForwardSession(id);
+		try {
+			const res = (await this.client.get(`/sessions/${id}`)) as Record<string, unknown>;
+			return toSessionInfo(res);
+		} catch (error) {
+			if (!ApiError.isNotFound(error)) throw error;
+			return this.getForwardSession(id);
+		}
 	}
 
 	async deleteSession(id: string): Promise<void> {
-		await this.client.delete(`/sessions/${id}`);
+		if (this.forwardSessionIds.has(id)) {
+			await this.forwardClient.post(`/sessions/${id}/archive`, {});
+			return;
+		}
+		try {
+			await this.client.delete(`/sessions/${id}`);
+		} catch (error) {
+			if (!ApiError.isNotFound(error)) throw error;
+			await this.forwardClient.post(`/sessions/${id}/archive`, {});
+			this.forwardSessionIds.add(id);
+		}
 	}
 
 	async sendSessionMessage(sessionId: string, message: string): Promise<string | undefined> {
 		const body = mapSendMessage(message);
-		const res = (await this.client.post(`/sessions/${sessionId}/events`, body)) as Record<string, unknown>;
-		return extractCreatedEventId(res);
+		if (this.forwardSessionIds.has(sessionId)) {
+			const res = (await this.forwardClient.post(`/sessions/${sessionId}/events`, body)) as Record<string, unknown>;
+			return extractCreatedEventId(res);
+		}
+		try {
+			const res = (await this.client.post(`/sessions/${sessionId}/events`, body)) as Record<string, unknown>;
+			return extractCreatedEventId(res);
+		} catch (error) {
+			if (!ApiError.isNotFound(error)) throw error;
+			const res = (await this.forwardClient.post(`/sessions/${sessionId}/events`, body)) as Record<string, unknown>;
+			this.forwardSessionIds.add(sessionId);
+			return extractCreatedEventId(res);
+		}
 	}
 
 	async *streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+		if (this.forwardSessionIds.has(sessionId)) {
+			yield* this.streamForwardSessionEvents(sessionId, options);
+			return;
+		}
 		// Client-side fallback: skip events locally without passing after_id to
 		// the server. This avoids a conflict where the server honours after_id
 		// (omitting that event from the stream) and the client never finds the
@@ -485,24 +670,76 @@ export class QoderAdapter implements ProviderAdapter {
 		let skipping = !!options?.after_id;
 		const afterId = options?.after_id;
 
-		for await (const raw of this.client.sse(path)) {
-			if (skipping) {
-				const eventId = raw.id as string | undefined;
-				if (eventId === afterId) {
-					// Found our marker event; stop skipping from next event onward.
-					skipping = false;
+		try {
+			for await (const raw of this.client.sse(path)) {
+				if (skipping) {
+					const eventId = raw.id as string | undefined;
+					if (eventId === afterId) {
+						// Found our marker event; stop skipping from next event onward.
+						skipping = false;
+					}
+					continue;
 				}
-				continue;
+				yield toSessionEvent(raw);
 			}
-			yield toSessionEvent(raw);
+		} catch (error) {
+			if (!ApiError.isNotFound(error)) throw error;
+			this.forwardSessionIds.add(sessionId);
+			yield* this.streamForwardSessionEvents(sessionId, options);
 		}
 	}
 
 	async listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList> {
+		if (this.forwardSessionIds.has(sessionId)) return this.listForwardSessionEvents(sessionId, options);
 		// Qoder additionally accepts the Agents-style `after_id` resume marker, so it is
 		// forwarded (claude/bailian reject it); shared page-cursor handling lives in
 		// listSessionEventsPaged.
-		return listSessionEventsPaged(this.client, sessionId, options, toSessionEvent, { forwardAfterId: true });
+		try {
+			return await listSessionEventsPaged(this.client, sessionId, options, toSessionEvent, { forwardAfterId: true });
+		} catch (error) {
+			if (!ApiError.isNotFound(error)) throw error;
+			this.forwardSessionIds.add(sessionId);
+			return this.listForwardSessionEvents(sessionId, options);
+		}
+	}
+
+	private async getForwardSession(id: string): Promise<ProviderSessionInfo> {
+		const res = (await this.forwardClient.get(`/sessions/${id}`)) as Record<string, unknown>;
+		this.forwardSessionIds.add(id);
+		return toForwardSessionInfo(res);
+	}
+
+	private async *streamForwardSessionEvents(
+		sessionId: string,
+		options?: EventStreamOptions,
+	): AsyncIterable<ProviderSessionEvent> {
+		const headers = options?.after_id ? { "Last-Event-ID": options.after_id } : undefined;
+		for await (const raw of this.forwardClient.sse(`/sessions/${sessionId}/events/stream`, { headers })) {
+			yield toSessionEvent(raw);
+		}
+	}
+
+	private async listForwardSessionEvents(
+		sessionId: string,
+		options?: EventListOptions,
+	): Promise<ProviderSessionEventList> {
+		const params = new URLSearchParams();
+		if (options?.limit) params.set("limit", String(options.limit));
+		if (options?.order) params.set("order", options.order);
+		const afterId = options?.after_id ?? options?.page_token ?? options?.page;
+		if (afterId) params.set("after_id", afterId);
+		const query = params.toString();
+		const res = (await this.forwardClient.get(`/sessions/${sessionId}/events${query ? `?${query}` : ""}`)) as Record<
+			string,
+			unknown
+		>;
+		const data = (res.data ?? []) as Record<string, unknown>[];
+		const hasMore = (res.has_more as boolean | undefined) ?? false;
+		return {
+			events: data.map(toSessionEvent),
+			has_more: hasMore,
+			next_page: hasMore ? ((res.last_id as string | null | undefined) ?? undefined) : undefined,
+		};
 	}
 
 	async listModels(): Promise<ModelInfo[]> {
@@ -545,6 +782,28 @@ export class QoderAdapter implements ProviderAdapter {
 
 export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo {
 	return buildSessionInfo(res, (r) => (r.memory_store_ids as string[]) ?? []);
+}
+
+function toForwardSessionInfo(res: Record<string, unknown>, bindings?: ForwardSessionBindings): ProviderSessionInfo {
+	const template = (res.template ?? {}) as Record<string, unknown>;
+	const templateId =
+		(res.template_id as string | undefined) ?? (template.id as string | undefined) ?? bindings?.template_id ?? "";
+	const environmentId =
+		(res.environment_id as string | undefined) ?? (template.environment_id as string | undefined) ?? "";
+	return {
+		id: res.id as string,
+		agent_id: templateId,
+		environment_id: environmentId,
+		tunnel_id: (res.tunnel_id as string | undefined) ?? (template.tunnel_id as string | undefined),
+		status: (res.status as string | undefined) ?? "unknown",
+		title: res.title as string | undefined,
+		vault_ids: (res.vault_ids as string[] | undefined) ?? [],
+		memory_store_ids: (res.memory_store_ids as string[] | undefined) ?? [],
+		created_at: (res.created_at as string | undefined) ?? new Date(0).toISOString(),
+		updated_at:
+			(res.updated_at as string | undefined) ?? (res.created_at as string | undefined) ?? new Date(0).toISOString(),
+		attributes: res,
+	};
 }
 
 function normalizeModel(value: unknown): unknown {

@@ -626,6 +626,7 @@ export class BailianAdapter implements ProviderAdapter {
 	// --- Session ---
 
 	async createSession(bindings: SessionBindings): Promise<ProviderSessionInfo> {
+		if (bindings.delivery === "forward") throw new UserError("Bailian does not support Forward sessions.");
 		const body = mapSession(bindings);
 		const res = (await this.client.post("/sessions", body)) as Record<string, unknown>;
 		return toSessionInfo(res);
