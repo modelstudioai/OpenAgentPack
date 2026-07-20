@@ -22,7 +22,7 @@ providers:
 
 | Feature | Tier |
 |---------|:----:|
-| Environment, Vault, Skill, Agent, MCP Server, Memory Store, Deployment, Session | native |
+| Environment, Vault, Skill, Agent, MCP Server, Memory Store, Deployment, Session, Identity, Channel | native |
 | Multi-Agent | unsupported |
 
 A `deployment run` on Qoder creates a native Deployment Run and associated Session. Cron schedules run server-side.
@@ -94,16 +94,18 @@ agents:
 `agents plan/apply/destroy` then manage a Qoder Forward Template (`tmpl_...`) instead of a Managed Agent
 (`agent_...`). The default remains Managed Agent delivery when `delivery` is omitted.
 
-Identity is optional for local Forward Session testing. If omitted, OpenCMA finds the enabled Qoder Identity whose
-`external_id` is `__qca_admin_identity__`, then sends its real `idn_...` id to the Session API. To run as a specific
-user—or when the reserved Identity is unavailable—configure an existing Identity explicitly:
+Forward Identity represents an end user in the integrating product. Declare it once by its stable business id and select
+it as the project default:
 
 ```yaml
 defaults:
   provider: qoder
-  session:
-    qoder:
-      identity_id: idn_xxx
+  identity: chen
+
+identities:
+  chen:
+    external_id: user_456
+    name: Chen
 ```
 
 Then use the same session command to test a Forward-delivered agent:
@@ -112,14 +114,25 @@ Then use the same session command to test a Forward-delivered agent:
 agents session run "Hello" --agent forward-assistant
 ```
 
-The CLI resolves the applied Template and optional configured Identity, creates a Forward Session, and routes create, send,
-stream, get, and archive operations through the Forward gateway. It never creates or updates an Identity as a side effect
-of starting a Session. Use `--identity-id idn_xxx` to override the YAML default for one invocation. Managed sessions keep
-using the Cloud gateway.
+`agents apply` manages the declared Identity. The CLI resolves `defaults.identity` through state, creates a Forward
+Session, and routes create, send, stream, get, and archive operations through the Forward gateway. Use
+`--identity-id idn_xxx` only as a runtime escape hatch. Managed sessions keep using the Cloud gateway.
 
-Production messaging delivery is a separate Forward Channel concern. An IM Channel explicitly binds a business Identity
-and Template; do not treat the CLI's local testing Identity as an end-user Identity. Qoder
-recommends QR-code authorization for Channel binding so channel credentials do not need to be stored locally.
+Credential-based messaging Channels are declarative too:
+
+```yaml
+channels:
+  support-dingtalk:
+    agent: forward-assistant
+    type: dingtalk
+    credentials:
+      client_id: ${DINGTALK_CLIENT_ID}
+      client_secret: ${DINGTALK_CLIENT_SECRET}
+```
+
+The Channel inherits `defaults.identity`; the Qoder adapter resolves both remote ids and maps the generic declaration to
+the Forward Channel request. Feishu uses `app_id`/`app_secret`, and WeCom uses `bot_id`/`secret`. Personal WeChat is QR-only
+and is not supported by credential-based apply.
 
 Forward-delivered agents still cannot be referenced by OpenAgentPack deployments; scheduled Managed Deployment runs
 require an Agent resource.

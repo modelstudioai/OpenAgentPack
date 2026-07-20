@@ -14,4 +14,6 @@ export const ARK_CAPABILITIES: ProviderCapabilities = {
 		reason: "no deployment primitive on Ark; expanded into a session at run time",
 	},
 	session: { tier: "native", reason: "sessions API" },
+	identity: { tier: "unsupported", reason: "no mapped Identity primitive on Ark" },
+	channel: { tier: "unsupported", reason: "no mapped messaging Channel primitive on Ark" },
 };

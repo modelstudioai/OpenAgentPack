@@ -38,7 +38,32 @@ export async function computeResourceHash(
 		return contentHash({ decl, refs });
 	}
 
+	if (address.type === "channel") {
+		const refs = resolveChannelReferenceIds(
+			decl as { agent: string; identity?: string },
+			config,
+			address.provider,
+			state,
+		);
+		return contentHash({ decl, refs });
+	}
+
 	return contentHash(decl);
+}
+
+function resolveChannelReferenceIds(
+	decl: { agent: string; identity?: string },
+	config: ProjectConfig,
+	provider: string,
+	state?: HashStateLookup,
+): Record<string, string | null | undefined> {
+	const agent = config.agents?.[decl.agent];
+	const agentType = agent?.delivery?.[provider]?.type === "forward" ? "template" : "agent";
+	const identity = decl.identity ?? config.defaults?.identity;
+	return {
+		agent_id: state?.getResource({ type: agentType, name: decl.agent, provider })?.remote_id,
+		identity_id: identity ? state?.getResource({ type: "identity", name: identity, provider })?.remote_id : undefined,
+	};
 }
 
 interface DeploymentRefDecl {

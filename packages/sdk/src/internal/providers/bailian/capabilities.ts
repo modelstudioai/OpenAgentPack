@@ -23,4 +23,6 @@ export const BAILIAN_CAPABILITIES: ProviderCapabilities = {
 			"scheduling and outcome rubrics are not enforced server-side — use external cron/CI for always-on or scheduled runs",
 	},
 	session: { tier: "native", reason: "sessions API" },
+	identity: { tier: "unsupported", reason: "no mapped Identity primitive on Bailian" },
+	channel: { tier: "unsupported", reason: "no mapped messaging Channel primitive on Bailian" },
 };

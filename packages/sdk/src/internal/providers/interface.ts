@@ -1,7 +1,9 @@
 import type {
 	AgentDecl,
+	ChannelDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
+	IdentityDecl,
 	MemoryStoreDecl,
 	SkillDecl,
 	VaultDecl,
@@ -76,6 +78,11 @@ export interface ResolvedDeploymentRefs {
 	tunnel_id?: string;
 	vault_ids: string[];
 	memory_store_ids: Record<string, string>;
+}
+
+export interface ResolvedChannelRefs {
+	identity_id: string;
+	agent_id: string;
 }
 
 export interface DeploymentContext {
@@ -161,6 +168,14 @@ export interface ProviderAdapter {
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	/** Remove the template from desired state. Qoder implements this as a soft archive. */
 	archiveTemplate?(id: string): Promise<void>;
+
+	createIdentity?(name: string, decl: IdentityDecl): Promise<RemoteResource>;
+	updateIdentity?(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource>;
+	deleteIdentity?(id: string): Promise<void>;
+
+	createChannel?(name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource>;
+	updateChannel?(id: string, name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource>;
+	deleteChannel?(id: string): Promise<void>;
 
 	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
 	deleteMemoryStore?(id: string): Promise<void>;

@@ -329,66 +329,16 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		]);
 	});
 
-	test("resolves Qoder's system Identity external_id to its real id and caches it", async () => {
-		const calls: Array<{ method: string; path: string; body?: Record<string, unknown> }> = [];
+	test("requires the core runtime to resolve an explicit Identity", async () => {
 		const adapter = new QoderAdapter("pt-test") as any;
 		adapter.forwardClient = {
-			get: async (path: string) => {
-				calls.push({ method: "GET", path });
-				if (path === "/identities?limit=100") {
-					return {
-						data: [{ id: "idn_other", external_id: "other" }],
-						has_more: true,
-						last_id: "idn_other",
-					};
-				}
-				if (path === "/identities?limit=100&after_id=idn_other") {
-					return {
-						data: [{ id: "idn_admin", external_id: "__qca_admin_identity__", enabled: true }],
-						has_more: false,
-					};
-				}
-				throw new Error(`unexpected GET ${path}`);
-			},
-			post: async (path: string, body: Record<string, unknown>) => {
-				expect(path).toBe("/sessions");
-				calls.push({ method: "POST", path, body });
-				return {
-					id: `sess_default_identity_${calls.length}`,
-					status: "idle",
-					template: { id: "tmpl_1" },
-					identity_id: "idn_admin",
-					created_at: "2026-01-01T00:00:00Z",
-				};
-			},
-		};
-
-		await adapter.createSession({ delivery: "forward", template_id: "tmpl_1" });
-		await adapter.createSession({ delivery: "forward", template_id: "tmpl_1" });
-
-		expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
-			"GET /identities?limit=100",
-			"GET /identities?limit=100&after_id=idn_other",
-			"POST /sessions",
-			"POST /sessions",
-		]);
-		expect(calls.filter((call) => call.method === "POST").map((call) => call.body?.identity_id)).toEqual([
-			"idn_admin",
-			"idn_admin",
-		]);
-	});
-
-	test("fails clearly when Qoder's system Identity is not provisioned", async () => {
-		const adapter = new QoderAdapter("pt-test") as any;
-		adapter.forwardClient = {
-			get: async () => ({ data: [], has_more: false }),
 			post: async () => {
 				throw new Error("session must not be created");
 			},
 		};
 
 		await expect(adapter.createSession({ delivery: "forward", template_id: "tmpl_1" })).rejects.toThrow(
-			/__qca_admin_identity__.*--identity-id/,
+			/explicit resolved identity_id/,
 		);
 	});
 });
@@ -414,14 +364,17 @@ describe("Forward delivery validation and runtime isolation", () => {
 
 	test("builds Forward session bindings from the explicit YAML identity default", () => {
 		const config = forwardConfig();
-		config.defaults = {
-			provider: "qoder",
-			session: { qoder: { identity_id: "idn_zhang" } },
-		} as ProjectConfig["defaults"];
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
 		const state = StateManager.initialize(tmpPath("forward-session"));
 		state.setResource({
 			address: { type: "template", name: "assistant", provider: "qoder" },
 			remote_id: "tmpl_1",
+			content_hash: "h",
+		});
+		state.setResource({
+			address: { type: "identity", name: "zhang", provider: "qoder" },
+			remote_id: "idn_zhang",
 			content_hash: "h",
 		});
 		expect(buildSessionBindings("assistant", config, "qoder", state)).toMatchObject({
@@ -433,14 +386,17 @@ describe("Forward delivery validation and runtime isolation", () => {
 
 	test("uses different caller Identities with the same applied Template", () => {
 		const config = forwardConfig();
-		config.defaults = {
-			provider: "qoder",
-			session: { qoder: { identity_id: "idn_zhang" } },
-		};
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
 		const state = StateManager.initialize(tmpPath("forward-multi-user"));
 		state.setResource({
 			address: { type: "template", name: "assistant", provider: "qoder" },
 			remote_id: "tmpl_shared",
+			content_hash: "h",
+		});
+		state.setResource({
+			address: { type: "identity", name: "zhang", provider: "qoder" },
+			remote_id: "idn_zhang",
 			content_hash: "h",
 		});
 
@@ -451,7 +407,7 @@ describe("Forward delivery validation and runtime isolation", () => {
 		expect(li).toMatchObject({ template_id: "tmpl_shared", identity_id: "idn_li" });
 	});
 
-	test("allows Qoder to use its default Identity when none is configured", () => {
+	test("rejects Forward sessions when no declared Identity is configured", () => {
 		const config = forwardConfig();
 		const state = StateManager.initialize(tmpPath("forward-missing-identity"));
 		state.setResource({
@@ -460,12 +416,6 @@ describe("Forward delivery validation and runtime isolation", () => {
 			content_hash: "h",
 		});
 
-		expect(buildSessionBindings("assistant", config, "qoder", state)).toEqual({
-			delivery: "forward",
-			template_id: "tmpl_1",
-			files: [],
-			title: undefined,
-			metadata: undefined,
-		});
+		expect(() => buildSessionBindings("assistant", config, "qoder", state)).toThrow(/defaults.identity/);
 	});
 });

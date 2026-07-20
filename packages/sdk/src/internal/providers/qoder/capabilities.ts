@@ -18,4 +18,6 @@ export const QODER_CAPABILITIES: ProviderCapabilities = {
 		reason: "deployments API with scheduled and manual runs",
 	},
 	session: { tier: "native", reason: "sessions API" },
+	identity: { tier: "native", reason: "Forward Identities API" },
+	channel: { tier: "native", reason: "Forward Channels API" },
 };

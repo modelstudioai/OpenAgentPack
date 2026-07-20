@@ -4,8 +4,10 @@ import JSZip from "jszip";
 import { UserError } from "../../errors.ts";
 import type {
 	AgentDecl,
+	ChannelDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
+	IdentityDecl,
 	MemoryStoreDecl,
 	SkillDecl,
 	VaultDecl,
@@ -41,6 +43,7 @@ import type {
 	ProviderAdapter,
 	RemoteResource,
 	ResolvedAgentRefs,
+	ResolvedChannelRefs,
 	ResolvedDeploymentRefs,
 	ResolvedTemplateRefs,
 } from "../interface.ts";
@@ -82,8 +85,6 @@ function deriveForwardGateway(cloudGateway?: string): string {
 	return trimmed.endsWith("/cloud") ? `${trimmed.slice(0, -"/cloud".length)}/forward` : `${trimmed}/forward`;
 }
 
-const QODER_DEFAULT_IDENTITY_EXTERNAL_ID = "__qca_admin_identity__";
-
 export class QoderAdapter implements ProviderAdapter {
 	readonly name = "qoder" as const;
 	readonly eventResume = true;
@@ -91,7 +92,6 @@ export class QoderAdapter implements ProviderAdapter {
 	private forwardClient: QoderClient;
 	private projectName: string;
 	private forwardSessionIds = new Set<string>();
-	private defaultForwardIdentityId?: string;
 
 	constructor(apiKey: string, gateway?: string, projectName?: string, forwardGateway?: string) {
 		this.client = new QoderClient({ apiKey, gateway });
@@ -119,6 +119,23 @@ export class QoderAdapter implements ProviderAdapter {
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
 		if (type === "template") {
 			const raw = await locateRemote(this.forwardClient, "/templates", name, id, (item) => item.status !== "archived");
+			return raw ? toRemoteResource(raw) : null;
+		}
+		if (type === "identity") {
+			try {
+				if (id) return toRemoteResource((await this.forwardClient.get(`/identities/${id}`)) as Record<string, unknown>);
+				const res = (await this.forwardClient.get(`/identities?external_id=${encodeURIComponent(name)}&limit=100`)) as {
+					data?: Record<string, unknown>[];
+				};
+				const raw = (res.data ?? []).find((item) => item.external_id === name);
+				return raw ? toRemoteResource(raw) : null;
+			} catch (err) {
+				if (ApiError.isNotFound(err)) return null;
+				throw err;
+			}
+		}
+		if (type === "channel") {
+			const raw = await locateRemote(this.forwardClient, "/channels", name, id, () => true);
 			return raw ? toRemoteResource(raw) : null;
 		}
 		const raw = await locateRemote(this.client, QoderAdapter.ENDPOINT_MAP[type], name, id, notArchived);
@@ -181,7 +198,8 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	getDriftSupport(type: ResourceType): DriftSupport {
-		if (type === "agent" || type === "environment" || type === "template") return "full";
+		if (type === "agent" || type === "environment" || type === "template" || type === "identity" || type === "channel")
+			return "full";
 		if (type === "deployment") return "unsupported";
 		return QoderAdapter.ENDPOINT_MAP[type] ? "existence" : "unsupported";
 	}
@@ -191,7 +209,17 @@ export class QoderAdapter implements ProviderAdapter {
 		id: string | null,
 		name: string,
 	): Promise<ComparableRemoteResource | null> {
-		if (type !== "agent" && type !== "environment" && type !== "template") return null;
+		if (type !== "agent" && type !== "environment" && type !== "template" && type !== "identity" && type !== "channel")
+			return null;
+		if (type === "identity" || type === "channel") {
+			const remote = await this.findResource(type, name, id);
+			if (!remote?.id) return null;
+			const raw = (await this.forwardClient.get(
+				`/${type === "identity" ? "identities" : "channels"}/${remote.id}`,
+			)) as Record<string, unknown>;
+			const comparable = this.normalizeRemote(type, raw);
+			return { id: remote.id, type, comparable, snapshot: comparable };
+		}
 		const isTemplate = type === "template";
 		const endpoint = type === "agent" ? "/agents" : type === "environment" ? "/environments" : "/templates";
 		const raw = await locateRemote(
@@ -227,6 +255,16 @@ export class QoderAdapter implements ProviderAdapter {
 			);
 		}
 		if (type === "template") return null;
+		if (type === "identity") {
+			const identity = decl as IdentityDecl;
+			if (identity.identity_id) return null;
+			return this.normalizeRemote(type, {
+				external_id: identity.external_id,
+				name: identity.name ?? name,
+				enabled: identity.enabled ?? true,
+				metadata: identity.metadata ?? {},
+			});
+		}
 		return null;
 	}
 
@@ -261,6 +299,27 @@ export class QoderAdapter implements ProviderAdapter {
 				files: raw.files,
 				environment_variables: raw.environment_variables,
 				metadata: stripAgentsMetadata(raw.metadata),
+			});
+		}
+		if (type === "identity") {
+			return compactDeep({
+				external_id: raw.external_id,
+				name: raw.name,
+				enabled: raw.enabled,
+				metadata: raw.metadata ?? {},
+			});
+		}
+		if (type === "channel") {
+			const channelConfig = (raw.channel_config ?? {}) as Record<string, unknown>;
+			return compactDeep({
+				identity_id: raw.identity_id,
+				template_id: raw.template_id,
+				channel_type: raw.channel_type,
+				name: raw.name,
+				enabled: raw.enabled,
+				channel_config: {
+					response_options: channelConfig.response_options ?? {},
+				},
 			});
 		}
 
@@ -412,6 +471,81 @@ export class QoderAdapter implements ProviderAdapter {
 		await this.forwardClient.post(`/templates/${id}/archive`, {});
 	}
 
+	async createIdentity(name: string, decl: IdentityDecl): Promise<RemoteResource> {
+		if (decl.identity_id) return { id: decl.identity_id, type: "identity" };
+		const res = (await this.forwardClient.post("/identities", {
+			external_id: decl.external_id,
+			name: decl.name ?? name,
+			enabled: decl.enabled ?? true,
+			metadata: decl.metadata ?? {},
+		})) as Record<string, unknown>;
+		return toRemoteResource(res);
+	}
+
+	async updateIdentity(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource> {
+		if (decl.identity_id) return { id: decl.identity_id, type: "identity" };
+		const current = (await this.forwardClient.get(`/identities/${id}`)) as Record<string, unknown>;
+		const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
+		const desiredMetadata = decl.metadata ?? {};
+		const metadata: Record<string, string> = { ...desiredMetadata };
+		for (const key of Object.keys(currentMetadata)) {
+			if (!(key in desiredMetadata)) metadata[key] = "";
+		}
+		const res = (await this.forwardClient.post(`/identities/${id}`, {
+			external_id: decl.external_id,
+			name: decl.name ?? name,
+			enabled: decl.enabled ?? true,
+			metadata,
+		})) as Record<string, unknown>;
+		return toRemoteResource(res);
+	}
+
+	async deleteIdentity(id: string): Promise<void> {
+		await this.forwardClient.delete(`/identities/${id}`);
+	}
+
+	async createChannel(name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource> {
+		const res = (await this.forwardClient.post("/channels", this.mapChannel(name, decl, refs))) as Record<
+			string,
+			unknown
+		>;
+		return toRemoteResource(res);
+	}
+
+	async updateChannel(id: string, name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource> {
+		const current = (await this.forwardClient.get(`/channels/${id}`)) as Record<string, unknown>;
+		if (current.channel_type !== decl.type) {
+			await this.deleteChannel(id);
+			return this.createChannel(name, decl, refs);
+		}
+		const body = this.mapChannel(name, decl, refs);
+		delete body.channel_type;
+		const res = (await this.forwardClient.post(`/channels/${id}`, body)) as Record<string, unknown>;
+		return toRemoteResource(res);
+	}
+
+	async deleteChannel(id: string): Promise<void> {
+		await this.forwardClient.delete(`/channels/${id}`);
+	}
+
+	private mapChannel(name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Record<string, unknown> {
+		return {
+			identity_id: refs.identity_id,
+			template_id: refs.agent_id,
+			channel_type: decl.type,
+			name: decl.name ?? name,
+			enabled: decl.enabled ?? true,
+			channel_config: {
+				credentials: decl.credentials,
+				response_options: {
+					include_tool_calls: false,
+					include_thinking: false,
+					...(decl.options ?? {}),
+				},
+			},
+		};
+	}
+
 	private async registerForwardVaults(vaultIds: string[]): Promise<void> {
 		for (const id of vaultIds) {
 			await this.forwardClient.post("/resources/registry", {
@@ -525,9 +659,11 @@ export class QoderAdapter implements ProviderAdapter {
 
 	async createSession(bindings: SessionBindings): Promise<ProviderSessionInfo> {
 		if (bindings.delivery === "forward") {
-			const identityId = bindings.identity_id ?? (await this.resolveDefaultForwardIdentityId());
+			if (!bindings.identity_id) {
+				throw new UserError("Qoder Forward sessions require an explicit resolved identity_id.");
+			}
 			const body: Record<string, unknown> = {
-				identity_id: identityId,
+				identity_id: bindings.identity_id,
 				template_id: bindings.template_id,
 				incremental_streaming_enabled: false,
 			};
@@ -548,38 +684,6 @@ export class QoderAdapter implements ProviderAdapter {
 		const body = mapSession(bindings);
 		const res = (await this.client.post("/sessions", body)) as Record<string, unknown>;
 		return toSessionInfo(res);
-	}
-
-	private async resolveDefaultForwardIdentityId(): Promise<string> {
-		if (this.defaultForwardIdentityId) return this.defaultForwardIdentityId;
-
-		let afterId: string | undefined;
-		do {
-			const params = new URLSearchParams({ limit: "100" });
-			if (afterId) params.set("after_id", afterId);
-			const res = (await this.forwardClient.get(`/identities?${params}`)) as Record<string, unknown>;
-			const identities = (res.data ?? []) as Record<string, unknown>[];
-			const match = identities.find(
-				(identity) =>
-					identity.external_id === QODER_DEFAULT_IDENTITY_EXTERNAL_ID &&
-					identity.enabled !== false &&
-					identity.archived !== true,
-			);
-			if (typeof match?.id === "string") {
-				this.defaultForwardIdentityId = match.id;
-				return match.id;
-			}
-
-			const hasMore = (res.has_more as boolean | undefined) ?? false;
-			const nextId = hasMore ? ((res.last_id as string | null | undefined) ?? undefined) : undefined;
-			if (!nextId || nextId === afterId) break;
-			afterId = nextId;
-		} while (afterId);
-
-		throw new UserError(
-			`Qoder default Forward Identity '${QODER_DEFAULT_IDENTITY_EXTERNAL_ID}' was not found. ` +
-				`Ask Qoder to provision it, set defaults.session.qoder.identity_id, or pass --identity-id.`,
-		);
 	}
 
 	async listSessions(filter?: SessionFilter): Promise<SessionListResult> {

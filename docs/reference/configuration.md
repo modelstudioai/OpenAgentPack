@@ -9,15 +9,16 @@ version: "1"
 providers:    { <name>: <provider-config> }
 defaults:
   provider: <name> | "all"
-  session:
-    qoder: { identity_id: <existing-idn-id> }
+  identity: <identity-name>
 environments: { <name>: EnvironmentDecl }
 tunnels:      { <name>: TunnelDecl }
 vaults:       { <name>: VaultDecl }
 memory_stores:{ <name>: MemoryStoreDecl }
 skills:       { <name>: SkillDecl }
 files:        { <name>: FileDecl }
+identities:   { <name>: IdentityDecl }
 agents:       { <name>: AgentDecl }
+channels:     { <name>: ChannelDecl }
 deployments:  { <name>: DeploymentDecl }
 ```
 
@@ -26,17 +27,66 @@ deployments:  { <name>: DeploymentDecl }
 | `version` | string | yes | Schema version. Currently `"1"`. |
 | `providers` | map | yes | One block per provider; each holds its credentials. |
 | `defaults.provider` | string | no | Default target for `plan`/`apply`. `all` targets every declared provider. |
-| `defaults.session.qoder.identity_id` | string | no | Existing Qoder Forward Identity used as the local Session default. If omitted, OpenCMA looks up the enabled Identity whose `external_id` is `__qca_admin_identity__` and sends its real `idn_...` id. Never created or managed by `apply`. |
+| `defaults.identity` | string | no | Logical name of the default declared Identity used by identity-aware resources and Forward Sessions. |
 | `environments` | map | no | Cloud runtimes. |
 | `tunnels` | map | no | Existing Qoder BYOC tunnels referenced by sessions; OpenCMA does not manage their lifecycle. |
 | `vaults` | map | no | Credential stores. |
 | `memory_stores` | map | no | Persistent agent context (Qoder, Volcengine Ark). |
 | `skills` | map | no | Reusable capability modules. |
 | `files` | map | no | Local files uploaded to the Files API (Bailian, Volcengine Ark). |
+| `identities` | map | no | Stable end-user identities. Provider support is capability-gated. |
 | `agents` | map | no | The core managed-agent resources. |
+| `channels` | map | no | External messaging channels bound to an Identity and Agent. Provider support is capability-gated. |
 | `deployments` | map | no | Repeatable run units. |
 
 Secrets use `${VAR_NAME}` and resolve from `.env` (walking up to the project root). `agents init` appends `agents.state.json` and `.env` to `.gitignore`.
+
+## Identity
+
+Managed identities use the integrating product's stable end-user id:
+
+```yaml
+identities:
+  chen:
+    provider: qoder
+    external_id: user_456
+    name: Chen
+    enabled: true
+    metadata:
+      department: engineering
+```
+
+`agents apply` creates or updates the remote Identity and stores its provider id in state. To reference an Identity managed outside this project, use the mutually exclusive external-reference form:
+
+```yaml
+identities:
+  chen:
+    provider: qoder
+    identity_id: idn_019eabc123
+```
+
+External references are verified and recorded but never updated or deleted.
+
+## Channel
+
+```yaml
+channels:
+  support-dingtalk:
+    provider: qoder                 # optional; inherits defaults.provider
+    agent: support-agent
+    identity: chen                  # optional; inherits defaults.identity
+    type: dingtalk
+    name: Support DingTalk          # optional; defaults to the YAML key
+    enabled: true                   # optional; defaults to true
+    credentials:
+      client_id: ${DINGTALK_CLIENT_ID}
+      client_secret: ${DINGTALK_CLIENT_SECRET}
+    options:
+      include_tool_calls: false
+      include_thinking: false
+```
+
+The declaration intentionally uses logical `agent` and `identity` references. Provider adapters resolve remote ids and map `type`, `credentials`, and `options` to provider wire fields. Qoder Channels require the referenced Agent to use Forward delivery. Credential-based Qoder support currently covers DingTalk, Feishu, and WeCom; personal WeChat remains QR-only.
 
 ## Provider configuration
 

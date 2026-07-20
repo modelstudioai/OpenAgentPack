@@ -6,7 +6,7 @@ import type { AgentDecl, ProjectConfig } from "../types/config.ts";
 import type { SessionBindings } from "../types/session.ts";
 
 export interface SessionCreateOptions {
-	/** Explicit Qoder Forward Identity id. Overrides defaults.session.qoder.identity_id. */
+	/** Explicit provider Identity id. Overrides the declared defaults.identity reference. */
 	identityId?: string;
 	environment?: string;
 	/**
@@ -69,11 +69,19 @@ export function buildSessionBindings(
 	}
 	if (resolveAgentMaterialization(provider, agent).resourceType === "template") {
 		const templateId = requireRef(state, { type: "template", name: agentName, provider });
-		const identityId = options.identityId ?? config.defaults?.session?.qoder?.identity_id;
+		const defaultIdentity = config.defaults?.identity;
+		const identityId =
+			options.identityId ??
+			(defaultIdentity ? requireRef(state, { type: "identity", name: defaultIdentity, provider }) : undefined);
+		if (!identityId) {
+			throw new UserError(
+				`Forward session for '${agentName}' requires an Identity. Configure defaults.identity or pass --identity-id.`,
+			);
+		}
 		return {
 			delivery: "forward",
 			template_id: templateId,
-			...(identityId ? { identity_id: identityId } : {}),
+			identity_id: identityId,
 			files: (options.files ?? []).map((file) => ({ file_id: file.fileId, mount_path: file.mountPath })),
 			title: options.title,
 			metadata: options.metadata,

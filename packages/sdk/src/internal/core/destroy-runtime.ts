@@ -47,13 +47,15 @@ export interface DestroyProjectResult extends DestroyPlanResult {
 
 const destroyOrder: Record<ResourceType, number> = {
 	deployment: 0,
+	channel: 0,
 	agent: 1,
 	template: 1,
-	skill: 2,
-	memory_store: 3,
-	vault: 4,
-	file: 5,
-	environment: 6,
+	identity: 2,
+	skill: 3,
+	memory_store: 4,
+	vault: 5,
+	file: 6,
+	environment: 7,
 };
 
 export function planDestroyProjectContext(ctx: ProjectRuntimeContext): DestroyPlanResult {
@@ -100,7 +102,7 @@ async function destroyOneResource(
 	// BYOC environments are provisioned and owned by QCA. `environment_id` means
 	// this project only references that environment, so destroy must never make a
 	// remote lifecycle call for it.
-	if (isExternalEnvironment(ctx, resource)) {
+	if (isExternalReference(ctx, resource)) {
 		ctx.state.removeResource(resource.address);
 		return successResult(resource, "reference_removed");
 	}
@@ -170,11 +172,15 @@ async function destroyOneResource(
 	}
 }
 
-function isExternalEnvironment(ctx: ProjectRuntimeContext, resource: ResourceState): boolean {
-	return (
-		resource.address.type === "environment" &&
-		(resource.externally_managed || Boolean(ctx.config.environments?.[resource.address.name]?.environment_id))
-	);
+function isExternalReference(ctx: ProjectRuntimeContext, resource: ResourceState): boolean {
+	if (resource.externally_managed) return true;
+	if (resource.address.type === "environment") {
+		return Boolean(ctx.config.environments?.[resource.address.name]?.environment_id);
+	}
+	if (resource.address.type === "identity") {
+		return Boolean(ctx.config.identities?.[resource.address.name]?.identity_id);
+	}
+	return false;
 }
 
 function successResult(
@@ -224,6 +230,17 @@ async function deleteRemoteResource(
 			return;
 		case "deployment":
 			await provider.deleteDeployment(id);
+			return;
+		case "identity":
+			if (!provider.deleteIdentity) throw new UserError(`Provider does not support identities`);
+			await provider.deleteIdentity(id);
+			return;
+		case "channel":
+			if (!provider.deleteChannel) throw new UserError(`Provider does not support channels`);
+			await provider.deleteChannel(id);
+			return;
+		case "file":
+			await provider.deleteFile(id);
 			return;
 	}
 }

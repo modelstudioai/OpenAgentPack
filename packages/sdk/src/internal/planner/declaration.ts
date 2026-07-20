@@ -17,6 +17,10 @@ export function getResourceDeclaration(address: ResourceAddress, config: Project
 			return config.agents?.[name] ?? null;
 		case "file":
 			return config.files?.[name] ?? null;
+		case "identity":
+			return config.identities?.[name] ?? null;
+		case "channel":
+			return config.channels?.[name] ?? null;
 		case "deployment":
 			return config.deployments?.[name] ?? null;
 		default:

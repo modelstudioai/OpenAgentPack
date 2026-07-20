@@ -16,7 +16,7 @@ import { addressKey } from "../types/state.ts";
 import { contentHash } from "../utils/hash.ts";
 import { skillNameFromFiles } from "../utils/skill-manifest.ts";
 import type { ExecContext } from "./context.ts";
-import { resolveAgentRefs, resolveDeploymentRefs, resolveTemplateRefs } from "./resolver.ts";
+import { resolveAgentRefs, resolveChannelRefs, resolveDeploymentRefs, resolveTemplateRefs } from "./resolver.ts";
 import { resolveSkillFiles } from "./skill-resolver.ts";
 
 export interface ActionResult {
@@ -65,10 +65,13 @@ export async function executePlan(
 	// environment. This upgrades state written before the marker existed, so a
 	// later removal from config still cannot delete the provider-owned resource.
 	for (const action of plan.actions) {
-		if (action.address.type !== "environment") continue;
-		const decl = ctx.config.environments?.[action.address.name];
+		if (action.address.type !== "environment" && action.address.type !== "identity") continue;
 		const existing = ctx.state.getResource(action.address);
-		if (decl?.environment_id && existing && !existing.externally_managed) {
+		const externalId =
+			action.address.type === "environment"
+				? ctx.config.environments?.[action.address.name]?.environment_id
+				: ctx.config.identities?.[action.address.name]?.identity_id;
+		if (externalId && existing && !existing.externally_managed) {
 			ctx.state.setResource({ ...existing, externally_managed: true });
 			stateUpdated = true;
 		}
@@ -247,9 +250,12 @@ async function executeActionInner(
 
 		// External-reference environments are owned outside OpenCMA; deleting them
 		// here would only remove the local state entry.
-		if (type === "environment") {
-			const decl = ctx.config.environments?.[name];
-			if (existing.externally_managed || decl?.environment_id) {
+		if (type === "environment" || type === "identity") {
+			const externalReference =
+				type === "environment"
+					? ctx.config.environments?.[name]?.environment_id
+					: ctx.config.identities?.[name]?.identity_id;
+			if (existing.externally_managed || externalReference) {
 				ctx.state.removeResource(address);
 				return false;
 			}
@@ -284,6 +290,16 @@ async function executeActionInner(
 						break;
 					case "file":
 						await provider.deleteFile(id);
+						break;
+					case "identity":
+						if (!provider.deleteIdentity)
+							throw new UserError(`Provider '${address.provider}' does not support identities`);
+						await provider.deleteIdentity(id);
+						break;
+					case "channel":
+						if (!provider.deleteChannel)
+							throw new UserError(`Provider '${address.provider}' does not support channels`);
+						await provider.deleteChannel(id);
 						break;
 				}
 			} catch (err) {
@@ -492,6 +508,63 @@ async function executeActionInner(
 			}
 			break;
 		}
+		case "identity": {
+			const createIdentity = provider.createIdentity?.bind(provider);
+			const updateIdentity = provider.updateIdentity?.bind(provider);
+			if (!createIdentity || !updateIdentity) {
+				throw new UserError(`Provider '${address.provider}' does not support identities`);
+			}
+			const decl = ctx.config.identities![name]!;
+			if (decl.identity_id) {
+				const remote = await provider.findResource("identity", name, decl.identity_id);
+				if (!remote?.id) {
+					throw new UserError(
+						`External identity.${name} '${decl.identity_id}' was not found on provider '${address.provider}'.`,
+					);
+				}
+				result = remote;
+				break;
+			}
+			if (isUpdate) {
+				if (ctx.state.getResource(address)?.externally_managed) {
+					throw new UserError(`identity.${name} is recorded as an external reference; refusing to modify it remotely.`);
+				}
+				result = await updateIdentity(existingId!, name, decl);
+			} else {
+				try {
+					result = await createIdentity(name, decl);
+				} catch (err) {
+					if (!(err instanceof ConflictError)) throw err;
+					const existing = await provider.findResource("identity", decl.external_id!);
+					if (!existing?.id) throw err;
+					result = await updateIdentity(existing.id, name, decl);
+					adopted = true;
+				}
+			}
+			break;
+		}
+		case "channel": {
+			const createChannel = provider.createChannel?.bind(provider);
+			const updateChannel = provider.updateChannel?.bind(provider);
+			if (!createChannel || !updateChannel) {
+				throw new UserError(`Provider '${address.provider}' does not support channels`);
+			}
+			const decl = ctx.config.channels![name]!;
+			const refs = resolveChannelRefs(name, ctx.config, address.provider, ctx.state);
+			if (isUpdate) {
+				result = await updateChannel(existingId!, name, decl, refs);
+			} else {
+				try {
+					result = await createChannel(name, decl, refs);
+				} catch (err) {
+					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						onExisting: (existing) => updateChannel(existing.id!, name, decl, refs),
+					});
+					adopted = true;
+				}
+			}
+			break;
+		}
 		case "deployment": {
 			const decl = ctx.config.deployments![name]!;
 			const refs = resolveDeploymentRefs(name, ctx.config, address.provider, ctx.state);
@@ -556,7 +629,9 @@ async function executeActionInner(
 		address,
 		remote_id: result.id,
 		externally_managed:
-			priorResource?.externally_managed || (type === "environment" && ctx.config.environments?.[name]?.environment_id)
+			priorResource?.externally_managed ||
+			(type === "environment" && ctx.config.environments?.[name]?.environment_id) ||
+			(type === "identity" && ctx.config.identities?.[name]?.identity_id)
 				? true
 				: undefined,
 		version: result.version,

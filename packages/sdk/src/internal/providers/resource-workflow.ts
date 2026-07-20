@@ -1,7 +1,9 @@
 import type {
 	AgentDecl,
+	ChannelDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
+	IdentityDecl,
 	MemoryStoreDecl,
 	SkillDecl,
 	VaultDecl,
@@ -17,6 +19,7 @@ import type {
 	DriftSupport,
 	RemoteResource,
 	ResolvedAgentRefs,
+	ResolvedChannelRefs,
 	ResolvedDeploymentRefs,
 	ResolvedTemplateRefs,
 } from "./interface.ts";
@@ -50,6 +53,14 @@ export interface ResourceCrudAdapter {
 	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	archiveTemplate?(id: string): Promise<void>;
+
+	createIdentity?(name: string, decl: IdentityDecl): Promise<RemoteResource>;
+	updateIdentity?(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource>;
+	deleteIdentity?(id: string): Promise<void>;
+
+	createChannel?(name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource>;
+	updateChannel?(id: string, name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource>;
+	deleteChannel?(id: string): Promise<void>;
 
 	// Optional: only providers whose capability matrix marks `memory_store` supported
 	// implement these. The registry validates the matrix↔method match; unsupported

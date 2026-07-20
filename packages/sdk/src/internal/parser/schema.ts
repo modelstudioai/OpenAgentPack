@@ -95,6 +95,26 @@ const fileSchema = z.object({
 	provider: z.string().optional(),
 });
 
+const managedIdentitySchema = z.object({
+	provider: z.string().optional(),
+	external_id: z.string().trim().min(1),
+	name: z.string().trim().min(1).optional(),
+	enabled: z.boolean().optional(),
+	metadata: z.record(z.string(), z.string()).optional(),
+	identity_id: z.never().optional(),
+});
+
+const externalIdentitySchema = z.object({
+	provider: z.string().optional(),
+	identity_id: z.string().trim().min(1),
+	external_id: z.never().optional(),
+	name: z.never().optional(),
+	enabled: z.never().optional(),
+	metadata: z.never().optional(),
+});
+
+const identitySchema = z.union([managedIdentitySchema, externalIdentitySchema]);
+
 const urlMcpServerSchema = z
 	.object({
 		name: z.string(),
@@ -196,6 +216,17 @@ const agentSchema = z.object({
 	delivery: z.record(z.string(), agentDeliverySchema).optional(),
 });
 
+const channelSchema = z.object({
+	provider: z.string().optional(),
+	agent: z.string().min(1),
+	identity: z.string().min(1).optional(),
+	type: z.string().min(1),
+	name: z.string().trim().min(1).optional(),
+	enabled: z.boolean().optional(),
+	credentials: z.record(z.string(), coerceString).optional(),
+	options: z.record(z.string(), z.unknown()).optional(),
+});
+
 const deploymentFileResourceSchema = z.object({
 	type: z.literal("file"),
 	file_id: z.string().optional(),
@@ -264,15 +295,7 @@ export const projectConfigSchema = z.object({
 	defaults: z
 		.object({
 			provider: z.string().optional(),
-			session: z
-				.object({
-					qoder: z
-						.object({
-							identity_id: z.string().min(1).optional(),
-						})
-						.optional(),
-				})
-				.optional(),
+			identity: z.string().min(1).optional(),
 		})
 		.optional(),
 	environments: z.record(z.string(), environmentSchema).optional(),
@@ -281,7 +304,9 @@ export const projectConfigSchema = z.object({
 	memory_stores: z.record(z.string(), memoryStoreSchema).optional(),
 	skills: z.record(z.string(), skillSchema).optional(),
 	files: z.record(z.string(), fileSchema).optional(),
+	identities: z.record(z.string(), identitySchema).optional(),
 	agents: z.record(z.string(), agentSchema).optional(),
+	channels: z.record(z.string(), channelSchema).optional(),
 	deployments: z.record(z.string(), deploymentSchema).optional(),
 });
 

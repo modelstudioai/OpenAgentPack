@@ -72,6 +72,14 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 			}
 		}
 
+		if (config.identities && isSupported(caps, "identity")) {
+			for (const name of Object.keys(config.identities)) {
+				const decl = config.identities[name]!;
+				if (decl.provider && decl.provider !== provider) continue;
+				addNode({ type: "identity", name, provider });
+			}
+		}
+
 		if (config.agents) {
 			for (const name of Object.keys(config.agents)) {
 				const decl = config.agents[name]!;
@@ -171,6 +179,26 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 							if (nodes.has(addressKey(msAddr))) addEdge(depAddr, msAddr);
 						}
 					}
+				}
+			}
+		}
+
+		if (config.channels && isSupported(caps, "channel")) {
+			for (const name of Object.keys(config.channels)) {
+				const decl = config.channels[name]!;
+				if (decl.provider && decl.provider !== provider) continue;
+				const channelAddr: ResourceAddress = { type: "channel", name, provider };
+				addNode(channelAddr);
+
+				const agentDecl = config.agents?.[decl.agent];
+				const agentType = agentDecl ? resolveAgentMaterialization(provider, agentDecl).resourceType : "agent";
+				const agentAddr: ResourceAddress = { type: agentType, name: decl.agent, provider };
+				if (nodes.has(addressKey(agentAddr))) addEdge(channelAddr, agentAddr);
+
+				const identityName = decl.identity ?? config.defaults?.identity;
+				if (identityName) {
+					const identityAddr: ResourceAddress = { type: "identity", name: identityName, provider };
+					if (nodes.has(addressKey(identityAddr))) addEdge(channelAddr, identityAddr);
 				}
 			}
 		}
