@@ -50,11 +50,19 @@ jobs:
             git merge --no-edit origin/main
           else
             git checkout -b "${branch}" origin/main
-            bunx changeset pre enter beta
           fi
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Enter prerelease mode for a new beta series
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          branch="release/${VERSION}-beta"
+          if ! git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+            bun run changeset -- pre enter beta
+          fi
 
       - name: Calculate next beta version
         run: bun run release:version
