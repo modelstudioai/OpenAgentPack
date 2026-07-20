@@ -721,7 +721,9 @@
 																						"agent",
 																						"template",
 																						"deployment",
-																						"file"
+																						"file",
+																						"identity",
+																						"channel"
 																					]
 																				},
 																				"name": {
@@ -752,7 +754,9 @@
 																				"agent",
 																				"template",
 																				"deployment",
-																				"file"
+																				"file",
+																				"identity",
+																				"channel"
 																			]
 																		},
 																		"name": {
@@ -787,7 +791,9 @@
 																						"agent",
 																						"template",
 																						"deployment",
-																						"file"
+																						"file",
+																						"identity",
+																						"channel"
 																					]
 																				},
 																				"name": {
@@ -843,7 +849,9 @@
 																							"agent",
 																							"template",
 																							"deployment",
-																							"file"
+																							"file",
+																							"identity",
+																							"channel"
 																						]
 																					},
 																					"name": {
