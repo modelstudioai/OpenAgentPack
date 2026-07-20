@@ -3,6 +3,7 @@ import {
 	DEFAULT_PLAYBOOK_PROVIDER,
 	getDefaultPlaybook,
 	getPlaybook,
+	getVaultProfile,
 	type PlaybookTemplate,
 	type ResolvedPlaybook,
 	resolvePlaybookModel,
@@ -80,9 +81,10 @@ export function compileAgentRuntime(
 	const config = cloneConfig(baseConfig);
 	const resolved = resolveSeedPlaybook(effectiveId, provider);
 	const runtimeAgentId = resolved.agent.name;
-	const built = buildAgentDecl(undefined, toAgentBuildInput(resolved, provider, modelOverride));
-	// The agent declares neither environment nor vault: base resources are provisioned eagerly
-	// and bound per-session via explicit environment_id + vault_ids.
+	const built = buildAgentDecl(undefined, toAgentBuildInput(resolved, provider, baseConfig, modelOverride));
+	// The agent declares environment and vault so syncAgentResources manages them
+	// through the plan/apply engine — giving base resources state tracking, drift
+	// detection, and the same content-hash identity as agent/skill resources.
 
 	config.agents = {
 		...(config.agents ?? {}),
@@ -154,12 +156,45 @@ export function computeAgentConfigHash(config: ResolvedProjectConfig, agentId: s
 	return createHash("sha256").update(stableStringify({ agentId, config })).digest("hex").slice(0, 16);
 }
 
-function toAgentBuildInput(resolved: ResolvedPlaybook, provider: string, modelOverride?: string): AgentBuildInput {
+function toAgentBuildInput(
+	resolved: ResolvedPlaybook,
+	provider: string,
+	baseConfig: ResolvedProjectConfig,
+	modelOverride?: string,
+): AgentBuildInput {
 	const model = resolvePlaybookModel(resolved, provider, modelOverride);
+	// Resolve environment and vault names from the assembled config so the compiled
+	// agent declares them. This lets syncAgentResources manage base resources
+	// through the plan/apply engine, giving them state tracking and drift detection.
+	// Invariant: buildRuntimeConfig produces exactly one environment (and at most one
+	// vault for providers that need credentials). If this assumption breaks, the agent
+	// would silently bind the wrong resource — fail fast instead.
+	const envKeys = Object.keys(baseConfig.environments ?? {});
+	if (envKeys.length !== 1) {
+		throw new Error(
+			`Expected exactly 1 environment in runtime config, got ${envKeys.length}. ` +
+				`The agent compile path assumes a single base environment per provider.`,
+		);
+	}
+	const environmentName = envKeys[0]!;
+	const vaultProfile = getVaultProfile(provider);
+	let vaultName: string | undefined;
+	if (vaultProfile) {
+		const vaultKeys = Object.keys(baseConfig.vaults ?? {});
+		if (vaultKeys.length !== 1) {
+			throw new Error(
+				`Expected exactly 1 vault in runtime config for provider '${provider}', got ${vaultKeys.length}. ` +
+					`The agent compile path assumes a single base vault per provider.`,
+			);
+		}
+		vaultName = vaultKeys[0]!;
+	}
 	return {
 		description: resolved.agent.description,
 		model,
 		instructions: resolved.agent.system,
+		environment: environmentName,
+		vault: vaultName,
 		provider,
 		builtinTools: resolved.agent.builtinTools,
 		skills: resolved.agent.skills.map((skill) =>

@@ -68,8 +68,8 @@ vaultsRoute.openapi(createVaultRoute, async (c) => {
 	const secretValue = key ?? (primarySecret ? requireEnv(primarySecret) : "");
 	const vault = await withAgentRuntime(DEFAULT_AGENT_ID, (ctx) =>
 		createCloudVault(ctx, name, {
-			// display_name carries the base-vault identity (Agents/secrets) — a vault has no
-			// separate `name` field, so findBaseVault nets it by display_name + the stamp.
+			// display_name is used as the vault's human-readable label on the provider.
+			// findBaseVault identifies the managed vault by its metadata stamp (agents.vault).
 			display_name: name,
 			metadata,
 			credentials: structure.credentials.map((cred) => ({

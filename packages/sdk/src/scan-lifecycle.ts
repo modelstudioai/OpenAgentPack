@@ -13,7 +13,7 @@ export type ScanPhase = "pending" | "ready" | "failed";
 // clear 5 min with margin. File audit clears faster (~15s–2min observed).
 export const SCAN_SKILL_TIMEOUT_MS = 360_000;
 export const SCAN_FILE_TIMEOUT_MS = 120_000;
-// Warming / console poll cadence: one provider call every 8s keeps load light. Warming is off the
+// Warm poll cadence: one provider call every 8s keeps load light. Warming is off the
 // user's critical path, so cadence matters more than latency.
 export const SCAN_POLL_INTERVAL_MS = 8000;
 
@@ -26,25 +26,9 @@ export interface ScanBackoff {
 export const SKILL_SCAN_BACKOFF: ScanBackoff = { initial: 2000, factor: 2, max: 8000 };
 export const FILE_SCAN_BACKOFF: ScanBackoff = { initial: 1000, factor: 1.5, max: 4000 };
 
-// Numeric ISkill(Version).status (console/provider internal) → neutral string. The wire enum is
-// 0 checking / 1 active / 2 rejected / 100 deleted.
-export const SKILL_STATUS_CODE = { checking: 0, active: 1, rejected: 2, deleted: 100 } as const;
-const CODE_TO_SKILL_STATUS: Record<number, SkillScanStatus> = {
-	0: "checking",
-	1: "active",
-	2: "rejected",
-	100: "deleted",
-};
-
-/** Numeric console skill status → neutral SkillScanStatus (unknown codes read as still-checking). */
-export function skillStatusFromCode(code: number | undefined): SkillScanStatus {
-	return (code != null ? CODE_TO_SKILL_STATUS[code] : undefined) ?? "checking";
-}
-
 // OpenAPI skill status string → neutral SkillScanStatus. Crucially `unsafe` is the security-scan
 // FAILURE terminal and must map to `rejected`, NOT `checking` — otherwise a failed skill displays
-// as still-scanning forever. (Numeric 2 maps to the same `rejected` bucket via skillStatusFromCode,
-// keeping both transports' status display in sync — now by shared code, not a comment contract.)
+// as still-scanning forever.
 export function skillStatusFromString(raw: unknown): SkillScanStatus {
 	switch (String(raw ?? "").toLowerCase()) {
 		case "active":
@@ -92,8 +76,7 @@ export interface PollUntilOptions<T> {
 
 /**
  * Generic content-scan poll loop: poll → resolve on "ready", throw onFailed on "failed", throw
- * onTimeout once the deadline passes, otherwise sleep and retry. Supersedes the four hand-rolled
- * copies (SDK file/skill waits, server warm loops, Mode B waitForActive).
+ * onTimeout once the deadline passes, otherwise sleep and retry.
  */
 export async function pollUntil<T>(opts: PollUntilOptions<T>): Promise<T> {
 	const start = Date.now();

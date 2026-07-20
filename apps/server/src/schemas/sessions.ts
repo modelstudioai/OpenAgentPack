@@ -38,7 +38,7 @@ export const SessionDeleteResponseSchema = z
 	})
 	.openapi("SessionDeleteResponse");
 
-// Mode A REST request ergonomics (server-owned input, not the shared DTO).
+// REST request ergonomics (server-owned input, not the shared DTO).
 export const SessionsQuerySchema = z.object({
 	// Non-numeric values resolve to `undefined` so the handler clamps to a
 	// default instead of the request being rejected with a 400.
@@ -71,8 +71,7 @@ export const SessionParamsSchema = z.object({
 export const CreateSessionBodySchema = z.object({
 	agentId: z.string(),
 	prompt: z.string().min(1),
-	// Required: a session must be pinned to a cloud environment (sandbox). Both transports
-	// enforce this so Mode A (REST/OpenAPI) and Mode B (console) reject env-less creates.
+	// Required: a session must be pinned to a cloud environment (sandbox).
 	environmentId: z.string().min(1),
 	// Optional: cloud vault ids to bind a user-supplied credential so the sandbox receives it.
 	// Top-level binding shape matches the console createSession.

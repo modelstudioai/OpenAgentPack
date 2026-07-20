@@ -3,8 +3,19 @@ import { requiresMaintainerEvidence, validateMaintainerEvidence } from "./pr-evi
 
 describe("pull-request maintainer evidence", () => {
 	test("does not add a merge barrier for ordinary contribution paths", () => {
-		expect(requiresMaintainerEvidence(["README.md", "packages/cli/src/program.ts"])).toBe(false);
+		expect(requiresMaintainerEvidence(["README.md", "packages/cli/src/program.ts", "bun.lock"])).toBe(false);
 		expect(validateMaintainerEvidence("", ["README.md"])).toBeUndefined();
+	});
+
+	test("uses PR evidence instead of commit-message markers for control-plane changes", () => {
+		const files = [".github/workflows/ci.yml", "scripts/verify.ts"];
+		expect(requiresMaintainerEvidence(files)).toBe(true);
+		expect(validateMaintainerEvidence("## Summary\nAdjust CI", files)).toContain("## Behavior / risk");
+	});
+
+	test("treats package manifests, but not the generated lockfile alone, as high risk", () => {
+		expect(requiresMaintainerEvidence(["packages/sdk/package.json"])).toBe(true);
+		expect(requiresMaintainerEvidence(["bun.lock"])).toBe(false);
 	});
 
 	test("asks for behavior and validation evidence on high-risk paths", () => {

@@ -1,22 +1,15 @@
-import {
-	createPlaybookSessionRuntime,
-	getPlaybookAppId,
-	getSeedPlaybookAgentName,
-	PLAYBOOK_AGENT_NAME_PREFIX,
-	type RemotePlaybookAgent,
-} from "@openagentpack/playbooks";
+import { getPlaybookAppId, getSeedPlaybookAgentName, PLAYBOOK_AGENT_NAME_PREFIX } from "@openagentpack/playbooks";
 import {
 	type CloudAgent,
 	listCloudAgents,
-	type ProviderSessionEvent,
 	readProjectRuntime,
 	resolveSessionProvider,
-	type Session,
 	startSessionRun,
 } from "@openagentpack/sdk";
 import { loadAgentRuntimeInput, withAgentRuntime } from "@/services/runtime-factory";
 import { agentMetadataOf } from "./dto";
 import { ensureAgentApplied } from "./provision";
+import { createPlaybookSessionRuntime, type RemotePlaybookAgent } from "./runtime";
 import {
 	attachLiveStream,
 	deletePlaybookSession,
@@ -26,10 +19,10 @@ import {
 	sendPlaybookSessionMessage,
 } from "./sessions";
 
-export type { ModeAPlaybookSessionDetail } from "./sessions";
+export type { PlaybookSessionDetail } from "./sessions";
 
-export function createModeAPlaybookSessionRuntime() {
-	return createPlaybookSessionRuntime<ModeAPlaybookSessionDetail, ProviderSessionEvent, Session, RemotePlaybookAgent>({
+export function createServerPlaybookSessionRuntime() {
+	return createPlaybookSessionRuntime({
 		identity: {
 			appId: getPlaybookAppId(),
 			expectedAgentName: getSeedPlaybookAgentName,
@@ -87,12 +80,10 @@ export function createModeAPlaybookSessionRuntime() {
 		onDuplicateAgent({ playbookId, winner, duplicates }) {
 			const all = [winner, ...duplicates];
 			console.warn(
-				`玩法「${playbookId}」匹配到 ${all.length} 个 active playbook Agent(${all
+				`\u73A9\u6CD5\u300C${playbookId}\u300D\u5339\u914D\u5230 ${all.length} \u4E2A active playbook Agent(${all
 					.map((agent) => agent.id)
-					.join(", ")});取最近更新的 ${winner.id}。`,
+					.join(", ")})\uFF1B\u53D6\u6700\u8FD1\u66F4\u65B0\u7684 ${winner.id}\u3002`,
 			);
 		},
 	});
 }
-
-type ModeAPlaybookSessionDetail = import("./sessions").ModeAPlaybookSessionDetail;

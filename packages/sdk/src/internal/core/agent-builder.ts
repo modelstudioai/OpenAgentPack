@@ -24,6 +24,7 @@ export interface AgentBuildInput {
 	model?: AgentDecl["model"];
 	instructions?: string;
 	environment?: string;
+	vault?: string;
 	provider?: string;
 	builtinTools?: string[];
 	skills?: AgentSkillBuildInput[];
@@ -82,6 +83,7 @@ export function buildAgentDecl(base: AgentDecl | undefined, input: AgentBuildInp
 		model,
 		instructions: input.instructions ?? base?.instructions ?? "",
 		...(input.environment ? { environment: input.environment } : {}),
+		...(input.vault ? { vault: input.vault } : {}),
 		provider: input.provider ?? base?.provider,
 		tools: {
 			...(base?.tools ?? { builtin: [] }),

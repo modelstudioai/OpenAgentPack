@@ -10,9 +10,8 @@ export const CloudVaultsResponseSchema = z.object({
 export const CreateVaultBodySchema = z.object({
 	name: z.string().min(1),
 	metadata: z.record(z.string(), z.string()).optional(),
-	// The DASHSCOPE_API_KEY stored as the vault's credential secret value. Optional: Mode B
-	// supplies the user's key; Mode A (local) omits it and the server injects it from its own
-	// DASHSCOPE_API_KEY env. (Mode B never reaches this REST route — it goes via console RPC.)
+	// The DASHSCOPE_API_KEY stored as the vault's credential secret value. Optional:
+	// when omitted the server injects it from its own DASHSCOPE_API_KEY env.
 	key: z.string().min(1).optional(),
 });
 

@@ -3,7 +3,7 @@
 	"version": "0.0.1",
 	"private": true,
 	"license": "Apache-2.0",
-	"description": "OpenAgentPack shared playbook protocol, seed catalog, and runtime resolver",
+	"description": "OpenAgentPack shared playbook protocol, seed catalog, and resolvers",
 	"type": "module",
 	"exports": {
 		".": {

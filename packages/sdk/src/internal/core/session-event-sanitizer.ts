@@ -1,6 +1,6 @@
 // Pure ProviderSessionEvent → contract SessionEvent sanitizer. Type-only imports keep this
 // module free of any Node/runtime dependency, so it is safe to bundle into a browser via the
-// `@openagentpack/sdk/session-events` subpath (consumed by the webui Mode B console-direct transport).
+// `@openagentpack/sdk/session-events` subpath.
 
 import { redactSensitiveText } from "../../redaction.ts";
 import type { SessionContentBlock, SessionEvent } from "../types/dto.ts";
@@ -24,8 +24,8 @@ export function sanitizeSessionEvent(
 	// contract event, preserving the original Agents `type` via `raw_type` so no detail
 	// is dropped. Transport concerns added here: secret redaction + truncation,
 	// surfaced as `metadata.redacted` / `metadata.truncated` flags (the contract event
-	// has no dedicated fields for them, and Mode B trusts the base, so they live in the
-	// open metadata bag where the presentation layer can read them uniformly).
+	// has no dedicated fields for them, so they live in the open metadata bag where the
+	// presentation layer can read them uniformly).
 	const isToolEvent = event.type === "tool_result" || event.type === "tool_use";
 	const textLimit = isToolEvent ? TOOL_TEXT_LIMIT : DEFAULT_TEXT_LIMIT;
 	const primarySource = event.content ?? (event.type === "tool_use" ? event.tool_input : undefined);

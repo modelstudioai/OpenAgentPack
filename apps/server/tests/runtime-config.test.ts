@@ -12,9 +12,10 @@ describe("WebUI state scope", () => {
 		expect(deriveWebUiStateScope()).toEqual({ projectId: RUNTIME_PROJECT_NAME });
 	});
 
-	test("default state path preserves the historical on-disk location", () => {
-		const cwd = "/repo";
-		expect(resolveStatePath({}, cwd)).toBe(resolve(cwd, "examples/bailian/bailian-cli/agents.state.json"));
+	test("default state path points to ~/.agents/playground.state.json", () => {
+		const { homedir } = require("node:os");
+		const { join } = require("node:path");
+		expect(resolveStatePath({}, "/repo")).toBe(join(homedir(), ".agents", "playground.state.json"));
 	});
 
 	test("AGENTS_STATE_PATH overrides the default", () => {

@@ -1,21 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { PLAYBOOK_APP_METADATA_KEY, PLAYBOOK_METADATA_KEY } from "@openagentpack/playbooks";
+import type { ProviderSessionEvent, Session } from "@openagentpack/sdk";
 import {
 	createPlaybookSessionRuntime,
-	PLAYBOOK_APP_METADATA_KEY,
-	PLAYBOOK_METADATA_KEY,
 	PlaybookAgentIdentityMismatchError,
 	pickPlaybookAgent,
-	playbookIdentityMismatchMessage,
 	type RemotePlaybookAgent,
-	readinessFromPick,
-} from "../src/index.ts";
+} from "./runtime";
+import type { PlaybookSessionDetail } from "./sessions";
 
 const APP_ID = "agents-webui";
 
 function agent(overrides: Partial<RemotePlaybookAgent> = {}): RemotePlaybookAgent {
 	return {
 		id: "agent_1",
-		name: "Agents/设计师助手",
+		name: "Agents/\u8BBE\u8BA1\u5E08\u52A9\u624B",
 		metadata: {
 			[PLAYBOOK_APP_METADATA_KEY]: APP_ID,
 			[PLAYBOOK_METADATA_KEY]: "designer",
@@ -23,6 +22,22 @@ function agent(overrides: Partial<RemotePlaybookAgent> = {}): RemotePlaybookAgen
 		updatedAt: "2026-06-20T00:00:00.000Z",
 		...overrides,
 	};
+}
+
+function fakeEvent(raw_type = "created"): ProviderSessionEvent {
+	return { type: "status", raw_type, raw: {} };
+}
+
+function fakeSession(id: string, agentId?: string): Session {
+	return {
+		session_id: id,
+		status: "running",
+		agent: agentId ? { agent_id: agentId } : undefined,
+	};
+}
+
+function fakeDetail(sessionId: string, agentId?: string): PlaybookSessionDetail {
+	return { session: fakeSession(sessionId, agentId), events: [] };
 }
 
 describe("pickPlaybookAgent", () => {
@@ -45,7 +60,7 @@ describe("pickPlaybookAgent", () => {
 					metadata: { [PLAYBOOK_APP_METADATA_KEY]: APP_ID },
 				}),
 			],
-			{ playbookId: "designer", appId: APP_ID, expectedAgentName: "Agents/设计师助手" },
+			{ playbookId: "designer", appId: APP_ID, expectedAgentName: "Agents/\u8BBE\u8BA1\u5E08\u52A9\u624B" },
 		);
 
 		expect(pick.agent).toBeUndefined();
@@ -62,51 +77,14 @@ describe("pickPlaybookAgent", () => {
 	});
 });
 
-describe("readinessFromPick", () => {
-	test("a matched agent is ready and carries its remote id", () => {
-		const pick = pickPlaybookAgent([agent({ id: "agent_ready" })], { playbookId: "designer", appId: APP_ID });
-
-		expect(readinessFromPick(pick, "designer")).toEqual({
-			status: "ready",
-			playbookId: "designer",
-			remoteAgentId: "agent_ready",
-		});
-	});
-
-	test("no candidate is missing/not_provisioned", () => {
-		const pick = pickPlaybookAgent([], { playbookId: "designer", appId: APP_ID });
-
-		expect(readinessFromPick(pick, "designer")).toEqual({
-			status: "missing",
-			playbookId: "designer",
-			reason: "not_provisioned",
-		});
-	});
-
-	test("a same-name unstamped agent is blocked with the shared mismatch message", () => {
-		const pick = pickPlaybookAgent([agent({ metadata: { [PLAYBOOK_APP_METADATA_KEY]: APP_ID } })], {
-			playbookId: "designer",
-			appId: APP_ID,
-			expectedAgentName: "Agents/设计师助手",
-		});
-
-		expect(readinessFromPick(pick, "designer")).toEqual({
-			status: "blocked",
-			playbookId: "designer",
-			reason: "identity_mismatch",
-			message: playbookIdentityMismatchMessage("designer"),
-		});
-	});
-});
-
 describe("createPlaybookSessionRuntime", () => {
 	test("start ensures the selected agent, starts the provider session, attaches events, then returns detail", async () => {
 		const calls: string[] = [];
 		const liveEvents = (async function* () {
-			yield { type: "created" };
+			yield fakeEvent();
 		})();
 		const runtime = createPlaybookSessionRuntime({
-			identity: { appId: APP_ID, expectedAgentName: () => "Agents/设计师助手" },
+			identity: { appId: APP_ID, expectedAgentName: () => "Agents/\u8BBE\u8BA1\u5E08\u52A9\u624B" },
 			agents: {
 				async listPlaybookAgents() {
 					calls.push("agents.list");
@@ -133,7 +111,7 @@ describe("createPlaybookSessionRuntime", () => {
 				},
 				async getDetail(input) {
 					calls.push(`sessions.detail:${input.sessionId}:${input.remoteAgentId}`);
-					return { sessionId: input.sessionId, agentId: input.remoteAgentId };
+					return fakeDetail(input.sessionId, input.remoteAgentId);
 				},
 			},
 			events: {
@@ -153,7 +131,8 @@ describe("createPlaybookSessionRuntime", () => {
 			model: "glm-5.1",
 		});
 
-		expect(detail).toEqual({ sessionId: "sess_1", agentId: "agent_existing" });
+		expect(detail.session.session_id).toBe("sess_1");
+		expect(detail.session.agent?.agent_id).toBe("agent_existing");
 		expect(calls).toEqual([
 			"agents.list",
 			"agents.ensure:agent_existing:glm-5.1",
@@ -165,7 +144,7 @@ describe("createPlaybookSessionRuntime", () => {
 
 	test("start throws before ensuring when identity is blocked", async () => {
 		const runtime = createPlaybookSessionRuntime({
-			identity: { appId: APP_ID, expectedAgentName: () => "Agents/设计师助手" },
+			identity: { appId: APP_ID, expectedAgentName: () => "Agents/\u8BBE\u8BA1\u5E08\u52A9\u624B" },
 			agents: {
 				async listPlaybookAgents() {
 					return [agent({ metadata: { [PLAYBOOK_APP_METADATA_KEY]: APP_ID } })];
@@ -201,7 +180,7 @@ describe("createPlaybookSessionRuntime", () => {
 	test("send appends a message, attaches events, then returns detail", async () => {
 		const calls: string[] = [];
 		const liveEvents = (async function* () {
-			yield { type: "message" };
+			yield fakeEvent("message");
 		})();
 		const runtime = createPlaybookSessionRuntime({
 			identity: { appId: APP_ID },
@@ -229,7 +208,7 @@ describe("createPlaybookSessionRuntime", () => {
 				},
 				async getDetail(input) {
 					calls.push(`sessions.detail:${input.sessionId}:${input.playbookId}`);
-					return { sessionId: input.sessionId, playbookId: input.playbookId };
+					return fakeDetail(input.sessionId);
 				},
 			},
 			events: {
@@ -244,7 +223,7 @@ describe("createPlaybookSessionRuntime", () => {
 
 		const detail = await runtime.send({ playbookId: "designer", sessionId: "sess_1", message: "continue" });
 
-		expect(detail).toEqual({ sessionId: "sess_1", playbookId: "designer" });
+		expect(detail.session.session_id).toBe("sess_1");
 		expect(calls).toEqual([
 			"sessions.send:sess_1:designer:continue",
 			"events.attach:sess_1",
@@ -267,7 +246,7 @@ describe("createPlaybookSessionRuntime", () => {
 			sessions: {
 				async list(input) {
 					calls.push(`sessions.list:${input.playbookId}:${input.remoteAgentId}:${input.limit}:${input.pageToken}`);
-					return { sessions: [{ id: "sess_1" }], nextPageToken: "next" };
+					return { sessions: [fakeSession("sess_1")], nextPageToken: "next" };
 				},
 				async start() {
 					throw new Error("should not start");
@@ -291,7 +270,8 @@ describe("createPlaybookSessionRuntime", () => {
 			pageToken: "page_1",
 		});
 
-		expect(listed).toEqual({ sessions: [{ id: "sess_1" }], nextPageToken: "next" });
+		expect(listed.sessions[0]?.session_id).toBe("sess_1");
+		expect(listed.nextPageToken).toBe("next");
 		expect(calls).toEqual(["sessions.list:designer:agent_1:10:page_1"]);
 	});
 
@@ -322,14 +302,14 @@ describe("createPlaybookSessionRuntime", () => {
 				},
 				async getDetail(input) {
 					calls.push(`sessions.detail:${input.sessionId}:${input.playbookId}`);
-					return { sessionId: input.sessionId, playbookId: input.playbookId };
+					return fakeDetail(input.sessionId);
 				},
 			},
 		});
 
 		const detail = await runtime.getDetail({ playbookId: "designer", sessionId: "sess_1" });
 
-		expect(detail).toEqual({ sessionId: "sess_1", playbookId: "designer" });
+		expect(detail.session.session_id).toBe("sess_1");
 		expect(calls).toEqual(["sessions.detail:sess_1:designer"]);
 	});
 

@@ -1,6 +1,6 @@
 // Pure Bailian raw-event → ProviderSessionEvent mapper. Type-only imports keep this module free
 // of any Node/runtime dependency, so it is safe to bundle into a browser via the
-// `@openagentpack/sdk/session-events` subpath (consumed by the webui console-direct transport).
+// `@openagentpack/sdk/session-events` subpath.
 
 import type { SessionEventType } from "../../types/dto.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
@@ -57,12 +57,12 @@ export function toSessionEvent(raw: Record<string, unknown>): ProviderSessionEve
 		event.content = (raw.message as string) ?? extractContentText(raw);
 	}
 
-	// TODO(artifact-download, Mode B): bailian's `download_file` builtin flows through
+	// TODO(artifact-download): bailian's `download_file` builtin flows through
 	// tool_call/tool_call_output above — there is NO structured artifact-delivered event in the
 	// current wire, and we have no real bailian delivery sample to confirm one. When such a sample
 	// exists, populate `event.artifact = { file_id, filename, content_type, size }` here (mirroring
 	// qoder/mapper.ts) so the shared sanitizer surfaces it as metadata.artifact and the webui shows
-	// the same download card. Until then Mode B simply produces no artifact (graceful: no card).
+	// the same download card.
 
 	return event;
 }

@@ -112,8 +112,7 @@ export type AgentRecoveryAction = z.infer<typeof AgentRecoveryActionSchema>;
 // A raw cloud agent as listed from the provider (Bailian `/agents` list) — the actual
 // remote object, NOT a local config agent. This is the resource-center's source of truth:
 // it surfaces same-name duplicates and identity-stamp drift (metadata.playbook vs agents.*) that
-// the local config view cannot. Wire fields are snake_case across both transports; Mode B
-// (console RPC) normalizes its camelCase into this shape. tools/skills/mcp_servers stay
+// the local config view cannot. Wire fields are snake_case. tools/skills/mcp_servers stay
 // loose (`unknown`) because shapes differ by provider and the resource center only inspects
 // metadata/name/timestamps for classification.
 export const CloudAgentSchema = z.object({
@@ -142,9 +141,8 @@ export type ListCloudAgentsResponse = z.infer<typeof ListCloudAgentsResponseSche
 
 // Raw cloud environment — the sandbox (networking policy + preinstalled packages) that
 // sessions/agents run inside. A shared, base resource not tied to any playbook. Wire fields are
-// snake_case; Mode B (console RPC) normalizes its camelCase into this shape. `config` stays
-// loose (`unknown`) since it's a discriminated union (cloud / self_hosted) the resource
-// center only displays.
+// snake_case. `config` stays loose (`unknown`) since it's a discriminated union (cloud /
+// self_hosted) the resource center only displays.
 export const CloudEnvironmentSchema = z.object({
 	id: z.string(),
 	name: z.string().optional(),
@@ -168,8 +166,7 @@ export type ListCloudEnvironmentsResponse = z.infer<typeof ListCloudEnvironments
 
 // Raw cloud vault — a credential store bound to a session via top-level `vault_ids`. A vault
 // holds no inline credentials (those are separate objects); this DTO is the vault envelope the
-// resource center / base-vault lookup needs. Wire fields are snake_case; Mode B (console RPC)
-// normalizes its camelCase (`displayName`) into `display_name`.
+// resource center / base-vault lookup needs. Wire fields are snake_case.
 export const CloudVaultSchema = z.object({
 	id: z.string(),
 	display_name: z.string().optional(),
@@ -220,10 +217,7 @@ export const AgentSyncRunSchema = z.object({
 export type AgentSyncRun = z.infer<typeof AgentSyncRunSchema>;
 
 // ──────────────────────────────────────────────────────────────────────────
-// Session-runtime contract — single source of truth. Wire fields are snake_case
-// across every transport (Mode A REST and Mode B console RPC), so neither side
-// remaps casing or renames fields. See openspec/specs/api-contract and
-// openspec/specs/webui-console-direct.
+// Session-runtime contract — single source of truth. Wire fields are snake_case.
 // ──────────────────────────────────────────────────────────────────────────
 
 // The Agents session-event `type` values. The contract keeps the full set for
