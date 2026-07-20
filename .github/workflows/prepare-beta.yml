@@ -46,10 +46,10 @@ jobs:
           git fetch origin main
           if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
             git fetch origin "${branch}"
-            git checkout --branch "${branch}" --track "origin/${branch}"
+            git checkout -b "${branch}" --track "origin/${branch}"
             git merge --no-edit origin/main
           else
-            git checkout --branch "${branch}" origin/main
+            git checkout -b "${branch}" origin/main
             bunx changeset pre enter beta
           fi
 
