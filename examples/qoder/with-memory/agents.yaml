@@ -18,6 +18,8 @@ environments:
 memory_stores:
   project-kb:
     description: "Project knowledge base for the research agent"
+    metadata:
+      example: with-memory
     entries:
       - key: architecture
         content: |

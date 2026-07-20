@@ -197,6 +197,7 @@ export function mapMemoryStore(name: string, decl: MemoryStoreDecl): unknown {
 	return {
 		name,
 		description: decl.description,
+		metadata: decl.metadata,
 	};
 }
 

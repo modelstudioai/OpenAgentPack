@@ -6,6 +6,23 @@ import { applyCommand } from "./commands/apply.ts";
 import { deploymentGetCommand, deploymentListCommand, deploymentRunCommand } from "./commands/deployment.ts";
 import { destroyCommand } from "./commands/destroy.ts";
 import { initCommand } from "./commands/init.ts";
+import {
+	memoryBatchCreateCommand,
+	memoryCreateCommand,
+	memoryDeleteCommand,
+	memoryGetCommand,
+	memoryListCommand,
+	memoryStoreArchiveCommand,
+	memoryStoreCreateCommand,
+	memoryStoreDeleteCommand,
+	memoryStoreGetCommand,
+	memoryStoreListCommand,
+	memoryStoreUpdateCommand,
+	memoryUpdateCommand,
+	memoryVersionGetCommand,
+	memoryVersionListCommand,
+	memoryVersionRedactCommand,
+} from "./commands/memory.ts";
 import { migrateCommand } from "./commands/migrate.ts";
 import { modelsListCommand } from "./commands/models.ts";
 import { planCommand } from "./commands/plan.ts";
@@ -290,6 +307,110 @@ deploymentCmd
 	.addOption(configFileOption())
 	.addOption(providerOption("Target provider"))
 	.action(withResolvedConfigFile(deploymentRunCommand));
+
+const memoryStoreCmd = program.command("memory-store").description("Manage persistent memory stores");
+memoryStoreCmd
+	.command("create <name>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--description <description>")
+	.action(withResolvedConfigFile(memoryStoreCreateCommand));
+memoryStoreCmd
+	.command("list")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--limit <n>", "Page size", parsePositiveInteger)
+	.option("--cursor <cursor>")
+	.option("--include-archived")
+	.action(withResolvedConfigFile(memoryStoreListCommand));
+memoryStoreCmd
+	.command("get <store-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile(memoryStoreGetCommand));
+memoryStoreCmd
+	.command("update <store-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--name <name>")
+	.option("--description <description>")
+	.action(withResolvedConfigFile(memoryStoreUpdateCommand));
+memoryStoreCmd
+	.command("archive <store-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile(memoryStoreArchiveCommand));
+memoryStoreCmd
+	.command("delete <store-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile(memoryStoreDeleteCommand));
+
+const memoryCmd = program.command("memory").description("Manage memories inside a store");
+memoryCmd
+	.command("create <store-id> <path>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--content <text>")
+	.option("--content-file <path>")
+	.action(withResolvedConfigFile(memoryCreateCommand));
+memoryCmd
+	.command("batch-create <store-id> <json-file>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.addOption(new Option("--on-conflict <mode>", "Conflict handling (Ark)").choices(["overwrite", "fail"]))
+	.action(withResolvedConfigFile(memoryBatchCreateCommand));
+memoryCmd
+	.command("list <store-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--limit <n>", "Page size", parsePositiveInteger)
+	.option("--cursor <cursor>")
+	.option("--prefix <path>")
+	.option("--depth <n>", "Hierarchy depth", parsePositiveInteger)
+	.option("--full", "Include content")
+	.action(withResolvedConfigFile(memoryListCommand));
+memoryCmd
+	.command("get <store-id> <memory-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile(memoryGetCommand));
+memoryCmd
+	.command("update <store-id> <memory-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--path <path>")
+	.option("--content <text>")
+	.option("--content-file <path>")
+	.option("--expected-sha256 <sha256>", "Optimistic concurrency precondition")
+	.action(withResolvedConfigFile(memoryUpdateCommand));
+memoryCmd
+	.command("delete <store-id> <memory-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--expected-sha256 <sha256>", "Optimistic concurrency precondition")
+	.action(withResolvedConfigFile(memoryDeleteCommand));
+
+const memoryVersionCmd = memoryCmd.command("version").description("Inspect immutable memory history");
+memoryVersionCmd
+	.command("list <store-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.option("--limit <n>", "Page size", parsePositiveInteger)
+	.option("--cursor <cursor>")
+	.option("--memory-id <id>")
+	.option("--full", "Include version content")
+	.action(withResolvedConfigFile(memoryVersionListCommand));
+memoryVersionCmd
+	.command("get <store-id> <version-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile(memoryVersionGetCommand));
+memoryVersionCmd
+	.command("redact <store-id> <version-id>")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile(memoryVersionRedactCommand));
 
 const modelsCmd = program.command("models").description("Discover available models from providers");
 

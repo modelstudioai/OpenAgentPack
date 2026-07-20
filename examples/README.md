@@ -20,6 +20,7 @@ examples/
 │   ├── basic/                   minimal agent
 │   ├── with-skills/             skill + file-referenced instructions
 │   ├── with-mcp/                MCP server + vault + restricted network
+│   ├── with-memory/             persistent memory store (beta)
 │   ├── multiagent/              coordinator multi-agent (Claude only)
 │   ├── multi-provider/          same agent on both Claude + Qoder
 │   ├── deployment/              schedule + outcome rubric (native)
@@ -28,7 +29,7 @@ examples/
 │   ├── basic/                   minimal agent
 │   ├── with-skills/             skill + file-referenced instructions
 │   ├── with-mcp/                MCP server + vault + restricted network
-│   ├── with-memory/             memory_store (Qoder only)
+│   ├── with-memory/             persistent memory store
 │   ├── with-vault/              vault only
 │   ├── vault-only/              vault-only project
 │   ├── multi-provider/          same agent on both Claude + Qoder
@@ -48,6 +49,9 @@ examples/
     └── run-session-complex.ts   tool calls + streaming events
 ```
 
+See [`memory/README.md`](./memory/README.md) for portable Memory CRUD, provider
+extensions, and live-test commands.
+
 ## Provider capability matrix
 
 | Feature | Bailian | Qoder | Claude | Volcengine Ark | Notes |
@@ -57,7 +61,7 @@ examples/
 | Skill | native | native | native | native | Claude uploads via `files[]`; others upload zip; Volcengine Ark is create + attach only. |
 | Agent | native | native | native | native | Core managed-agent resource. |
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
-| Memory Store | unsupported | native | unsupported | native | Qoder and Volcengine Ark. |
+| Memory Store | unsupported | native | native | native | Qoder, Claude (beta), and Volcengine Ark. |
 | Multi-Agent | unsupported | unsupported | native | native | Claude and Volcengine Ark support coordinator. |
 | Deployment | emulated | native | native | emulated | Qoder and Claude schedule server-side; Bailian and Ark expand into a session at `run` time. |
 | Session | native | native | native | native | All four support runtime sessions. |

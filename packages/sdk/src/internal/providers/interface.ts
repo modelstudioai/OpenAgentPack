@@ -10,6 +10,22 @@ import type {
 } from "../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../types/dto.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
+import type {
+	BatchCreateMemoryInput,
+	BatchCreateMemoryResult,
+	CreateMemoryInput,
+	MemoryInfo,
+	MemoryListItem,
+	MemoryListOptions,
+	MemoryPage,
+	MemoryProviderCapabilities,
+	MemoryStoreInfo,
+	MemoryStoreListOptions,
+	MemoryVersionInfo,
+	MemoryVersionListOptions,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "../types/memory.ts";
 import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../types/session.ts";
 import type {
 	EventListOptions,
@@ -114,6 +130,7 @@ export interface ProviderAdapter {
 	 * resume after. true → send-then-stream with `afterId`; false → connect-before-send.
 	 */
 	readonly eventResume: boolean;
+	readonly memoryCapabilities?: MemoryProviderCapabilities;
 
 	validate(): Promise<void>;
 	/**
@@ -179,6 +196,19 @@ export interface ProviderAdapter {
 
 	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
 	deleteMemoryStore?(id: string): Promise<void>;
+	listMemoryStores?(options?: MemoryStoreListOptions): Promise<MemoryPage<MemoryStoreInfo>>;
+	getMemoryStore?(id: string): Promise<MemoryStoreInfo>;
+	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo>;
+	archiveMemoryStore?(id: string): Promise<MemoryStoreInfo>;
+	createMemory?(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo>;
+	batchCreateMemories?(storeId: string, input: BatchCreateMemoryInput): Promise<BatchCreateMemoryResult>;
+	listMemories?(storeId: string, options?: MemoryListOptions): Promise<MemoryPage<MemoryListItem>>;
+	getMemory?(storeId: string, memoryId: string): Promise<MemoryInfo>;
+	updateMemory?(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo>;
+	deleteMemory?(storeId: string, memoryId: string, expectedContentSha256?: string): Promise<void>;
+	listMemoryVersions?(storeId: string, options?: MemoryVersionListOptions): Promise<MemoryPage<MemoryVersionInfo>>;
+	getMemoryVersion?(storeId: string, versionId: string): Promise<MemoryVersionInfo>;
+	redactMemoryVersion?(storeId: string, versionId: string): Promise<MemoryVersionInfo>;
 
 	createDeployment(
 		name: string,

@@ -197,10 +197,15 @@ memory_stores:
   <name>:
     description: <string>
     provider: <string>          # optional
+	metadata: { <string>: <string> } # optional
     entries: [ { key: <string>, content: <string> } ]
 ```
 
-Supported on **Qoder** and **Volcengine Ark** (**Bailian** and **Claude**: `unsupported`).
+Supported on **Qoder**, **Claude (beta)**, and **Volcengine Ark** (**Bailian**: `unsupported`).
+
+Declarative `entries` are managed seeds: apply creates or updates those paths but
+preserves additional memories written by agents. Runtime CRUD and version commands
+are documented in [`examples/memory/`](../../examples/memory/README.md).
 
 ## Skill
 

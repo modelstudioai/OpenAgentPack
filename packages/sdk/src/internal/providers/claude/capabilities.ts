@@ -6,11 +6,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 	skill: { tier: "native", reason: "skills API with files[] upload" },
 	agent: { tier: "native", reason: "managed agents API" },
 	template: { tier: "unsupported", reason: "no Forward Template equivalent on Claude" },
-	memory_store: {
-		tier: "unsupported",
-		reason: "Claude exposes Memory Stores, but the OpenAgentPack adapter has not implemented them yet",
-		remediation: "use skill knowledge or MCP until Claude Memory Store support is added to the adapter",
-	},
+	memory_store: { tier: "native", reason: "beta memory_stores API" },
 	mcp_server: { tier: "native", reason: "mcp_servers field on agent" },
 	multiagent: { tier: "native", reason: "coordinator + roster topology" },
 	deployment: { tier: "native", reason: "deployments API" },

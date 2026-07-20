@@ -15,6 +15,14 @@ import type {
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../../types/dto.ts";
 import type { ProviderFileInfo } from "../../types/file.ts";
 import type {
+	CreateMemoryInput,
+	MemoryListOptions,
+	MemoryStoreListOptions,
+	MemoryVersionListOptions,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "../../types/memory.ts";
+import type {
 	ForwardSessionBindings,
 	ProviderSessionInfo,
 	SessionBindings,
@@ -47,6 +55,7 @@ import type {
 	ResolvedDeploymentRefs,
 	ResolvedTemplateRefs,
 } from "../interface.ts";
+import { ProviderMemoryApi } from "../memory-api.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
@@ -88,13 +97,34 @@ function deriveForwardGateway(cloudGateway?: string): string {
 export class QoderAdapter implements ProviderAdapter {
 	readonly name = "qoder" as const;
 	readonly eventResume = true;
+	readonly memoryCapabilities = {
+		archive_store: true,
+		batch_create: false,
+		versions: true,
+		optimistic_concurrency: true,
+		memory_metadata: true,
+	} as const;
 	private client: QoderClient;
+	private memoryApi: ProviderMemoryApi;
 	private forwardClient: QoderClient;
 	private projectName: string;
 	private forwardSessionIds = new Set<string>();
 
 	constructor(apiKey: string, gateway?: string, projectName?: string, forwardGateway?: string) {
 		this.client = new QoderClient({ apiKey, gateway });
+		this.memoryApi = new ProviderMemoryApi(this.client, {
+			pathStyle: "relative",
+			cursorParam: "after_id",
+			updatePrecondition: "content_sha256",
+			prefixParam: "prefix",
+			versionsSegment: "versions",
+			storeMetadataMode: "merge_patch",
+			supportsView: false,
+			supportsMemoryMetadata: true,
+			supportsPathUpdate: false,
+			supportsDeletePrecondition: false,
+			supportsIncludeArchived: true,
+		});
 		this.forwardClient = new QoderClient({
 			apiKey,
 			gateway: forwardGateway ?? deriveForwardGateway(gateway),
@@ -559,14 +589,13 @@ export class QoderAdapter implements ProviderAdapter {
 		const body = mapMemoryStore(name, decl);
 		const res = (await this.client.post("/memory_stores", body)) as Record<string, unknown>;
 		const storeId = res.id as string;
-
-		if (decl.entries?.length) {
-			for (const entry of decl.entries) {
-				await this.client.post(`/memory_stores/${storeId}/memories`, {
-					content: entry.content,
-					path: entry.key,
-				});
+		try {
+			for (const entry of decl.entries ?? []) {
+				await this.memoryApi.createMemory(storeId, { content: entry.content, path: entry.key });
 			}
+		} catch (error) {
+			await this.client.delete(`/memory_stores/${storeId}`).catch(() => undefined);
+			throw error;
 		}
 
 		return toRemoteResource(res);
@@ -574,6 +603,43 @@ export class QoderAdapter implements ProviderAdapter {
 
 	async deleteMemoryStore(id: string): Promise<void> {
 		await this.client.delete(`/memory_stores/${id}`);
+	}
+
+	listMemoryStores(options?: MemoryStoreListOptions) {
+		return this.memoryApi.listStores(options);
+	}
+	getMemoryStore(id: string) {
+		return this.memoryApi.getStore(id);
+	}
+	updateMemoryStore(id: string, input: UpdateMemoryStoreInput) {
+		return this.memoryApi.updateStore(id, input);
+	}
+	archiveMemoryStore(id: string) {
+		return this.memoryApi.archiveStore(id);
+	}
+	createMemory(storeId: string, input: CreateMemoryInput) {
+		return this.memoryApi.createMemory(storeId, input);
+	}
+	listMemories(storeId: string, options?: MemoryListOptions) {
+		return this.memoryApi.listMemories(storeId, options);
+	}
+	getMemory(storeId: string, memoryId: string) {
+		return this.memoryApi.getMemory(storeId, memoryId);
+	}
+	updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput) {
+		return this.memoryApi.updateMemory(storeId, memoryId, input);
+	}
+	deleteMemory(storeId: string, memoryId: string, expected?: string) {
+		return this.memoryApi.deleteMemory(storeId, memoryId, expected);
+	}
+	listMemoryVersions(storeId: string, options?: MemoryVersionListOptions) {
+		return this.memoryApi.listVersions(storeId, options);
+	}
+	getMemoryVersion(storeId: string, versionId: string) {
+		return this.memoryApi.getVersion(storeId, versionId);
+	}
+	redactMemoryVersion(storeId: string, versionId: string) {
+		return this.memoryApi.redactVersion(storeId, versionId);
 	}
 
 	async createDeployment(

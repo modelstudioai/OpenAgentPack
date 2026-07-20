@@ -76,6 +76,7 @@ const memoryEntrySchema = z.object({
 const memoryStoreSchema = z.object({
 	description: z.string(),
 	provider: z.string().optional(),
+	metadata: z.record(z.string(), z.string()).optional(),
 	entries: z.array(memoryEntrySchema).optional(),
 });
 

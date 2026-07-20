@@ -123,6 +123,35 @@ Manage scheduled / triggered deployments.
 | `deployment get <name>` | Show a deployment's status and resolved bindings. |
 | `deployment run <name>` | Trigger a deployment run (native on Qoder/Claude, emulated as a session on Bailian/Volcengine Ark). |
 
+## `agents memory-store`
+
+Manage persistent stores directly. Store creation through `agents apply` remains
+the recommended declarative workflow.
+
+| Command | Description |
+|---------|-------------|
+| `create <name>` | Create a store (`--description`). |
+| `list` | List stores (`--limit`, `--cursor`, `--include-archived`). |
+| `get <store-id>` | Retrieve a store. |
+| `update <store-id>` | Update `--name` and/or `--description`. |
+| `archive <store-id>` | Archive a store (Qoder/Claude). |
+| `delete <store-id>` | Permanently delete a store and its memories. |
+
+## `agents memory`
+
+Manage individual text memories. Content can be passed with `--content` or
+`--content-file`. Portable paths are relative; adapters handle wire-format differences.
+
+| Command | Description |
+|---------|-------------|
+| `create <store-id> <path>` | Create one memory. |
+| `batch-create <store-id> <json-file>` | Ark batch create; supports `--on-conflict overwrite\|fail`. |
+| `list <store-id>` | List memories; supports pagination, prefix/depth and `--full`. |
+| `get <store-id> <memory-id>` | Retrieve full content. |
+| `update <store-id> <memory-id>` | Update content/path; `--expected-sha256` enables optimistic concurrency where supported. |
+| `delete <store-id> <memory-id>` | Delete one memory. |
+| `version list|get|redact` | Immutable history operations (Qoder/Claude). |
+
 ## `agents models`
 
 | Subcommand | Description |
