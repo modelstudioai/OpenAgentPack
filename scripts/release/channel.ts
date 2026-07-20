@@ -30,27 +30,16 @@ export function commonReleaseVersion(versions: readonly string[]): string {
 	return unique[0];
 }
 
-export function validateReleaseIdentity(
-	channel: ReleaseChannel,
-	ref: string,
-	version: string,
-	expectedBase?: string,
-): ReleaseIdentity {
+export function validateReleaseIdentity(channel: ReleaseChannel, ref: string, version: string): ReleaseIdentity {
 	if (channel === "stable") {
 		if (ref !== "main") throw new Error(`stable releases must run from main, not ${ref}`);
 		if (!stableVersion.test(version)) throw new Error(`stable release version must be X.Y.Z; found ${version}`);
 		return { channel, version, distTag: "latest" };
 	}
 
-	const branch = /^release\/([0-9]+\.[0-9]+\.[0-9]+)-beta$/.exec(ref);
-	if (!branch) throw new Error(`beta releases must run from release/X.Y.Z-beta, not ${ref}`);
-	const base = branch[1];
-	if (expectedBase && base !== expectedBase) {
-		throw new Error(`beta branch series ${base} does not match requested ${expectedBase}`);
-	}
-	const betaVersion = /^([0-9]+\.[0-9]+\.[0-9]+)-beta\.[0-9]+$/.exec(version);
-	if (!betaVersion || betaVersion[1] !== base) {
-		throw new Error(`beta package version must match ${base}-beta.N; found ${version}`);
+	if (ref !== "main") throw new Error(`beta snapshots must run from main, not ${ref}`);
+	if (!/^0\.0\.0-beta\.run-[1-9]\d*\.sha-[0-9a-f]{7}$/.test(version)) {
+		throw new Error(`beta snapshot version has an unexpected format: ${version}`);
 	}
 	return { channel, version, distTag: "beta" };
 }
@@ -67,12 +56,7 @@ function main(): void {
 	const ref = option("ref");
 	if (channel !== "beta" && channel !== "stable") throw new Error("--channel must be beta or stable");
 	if (!ref) throw new Error("--ref is required");
-	const identity = validateReleaseIdentity(
-		channel,
-		ref,
-		commonReleaseVersion(releasePackageVersions()),
-		option("expected"),
-	);
+	const identity = validateReleaseIdentity(channel, ref, commonReleaseVersion(releasePackageVersions()));
 	const output = option("output");
 	if (output) {
 		appendFileSync(output, `channel=${identity.channel}\nversion=${identity.version}\ndist-tag=${identity.distTag}\n`);

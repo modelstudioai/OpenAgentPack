@@ -22,6 +22,9 @@ export function registryVersion(raw: string, name: string): string {
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (typeof parsed === "string" && parsed.length > 0) return parsed;
+		if (Array.isArray(parsed) && parsed.length === 1 && typeof parsed[0] === "string" && parsed[0].length > 0) {
+			return parsed[0];
+		}
 	} catch {
 		// Fall through to the stable error below.
 	}

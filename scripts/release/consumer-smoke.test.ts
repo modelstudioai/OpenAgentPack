@@ -8,9 +8,11 @@ describe("published consumer smoke", () => {
 
 	test("reads an exact registry version", () => {
 		expect(registryVersion('"1.2.3"', "@openagentpack/sdk")).toBe("1.2.3");
+		expect(registryVersion('["1.2.3"]', "@openagentpack/sdk")).toBe("1.2.3");
 		const invalidVersion = () => registryVersion("[]", "@openagentpack/sdk");
 		expect(invalidVersion).toThrow("invalid version for @openagentpack/sdk");
 		expect(invalidVersion).toThrow("received: []");
+		expect(() => registryVersion('["1.2.3","1.2.4"]', "@openagentpack/sdk")).toThrow("invalid version");
 	});
 
 	test("requires the fixed release group to resolve one version", () => {

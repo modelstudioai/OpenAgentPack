@@ -55,6 +55,10 @@ describe("release publish recovery", () => {
 		expect(() => assertPublishEnvironment(false, {})).toThrow("GitHub Actions");
 		expect(() => assertPublishEnvironment(false, { ...workflow, GITHUB_WORKFLOW: "CI" })).toThrow("GitHub Actions");
 		expect(() => assertPublishEnvironment(false, workflow)).not.toThrow();
+		expect(() => assertPublishEnvironment(false, { ...workflow, GITHUB_EVENT_NAME: "push" })).not.toThrow();
+		expect(() => assertPublishEnvironment(false, { ...workflow, GITHUB_EVENT_NAME: "pull_request" })).toThrow(
+			"GitHub Actions",
+		);
 		expect(() => assertPublishEnvironment(true, {})).not.toThrow();
 	});
 });
