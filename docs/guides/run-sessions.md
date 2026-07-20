@@ -12,7 +12,7 @@ A **session** is a runtime conversation started from a managed agent. Sessions a
 agents session run "Summarize the repo structure" --agent assistant
 ```
 
-`session run` creates a session, sends the prompt, and polls until the response completes. Pass `--stream` to receive live events over SSE. When only one agent is configured, `--agent` is auto-detected. For a Qoder agent with `delivery.qoder.type: forward`, Identity is optional: without one OpenCMA looks up the enabled Identity whose `external_id` is `__qca_admin_identity__` and sends its real `idn_...` id. Configure `defaults.session.qoder.identity_id` or pass `--identity-id` to select an existing business Identity. OpenCMA never creates or updates Identity resources implicitly.
+`session run` creates a session, sends the prompt, and polls until the response completes. Pass `--stream` to receive live events over SSE. When only one agent is configured, `--agent` is auto-detected. A Qoder agent with `delivery.qoder.type: forward` requires a declared Identity selected through `defaults.identity`; `agents apply` creates or resolves it before sessions run. Pass `--identity-id` only to override the resolved default with an existing provider Identity for one invocation.
 
 Options:
 

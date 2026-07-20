@@ -10,18 +10,39 @@ export interface ProjectConfig {
 	memory_stores?: Record<string, MemoryStoreDecl>;
 	skills?: Record<string, SkillDecl>;
 	files?: Record<string, FileDecl>;
+	identities?: Record<string, IdentityDecl>;
 	agents?: Record<string, AgentDecl>;
+	channels?: Record<string, ChannelDecl>;
 	deployments?: Record<string, DeploymentDecl>;
 }
 
 export interface DefaultsConfig {
 	provider?: string;
-	session?: {
-		qoder?: {
-			/** Existing Qoder Forward Identity used only as the CLI/session runtime default. */
-			identity_id?: string;
-		};
-	};
+	/** Logical name of the default declared Identity used by identity-aware resources and runtimes. */
+	identity?: string;
+}
+
+// --- Identity ---
+
+export type IdentityDecl = ManagedIdentityDecl | ExternalIdentityDecl;
+
+export interface ManagedIdentityDecl {
+	provider?: ProviderName;
+	external_id: string;
+	name?: string;
+	enabled?: boolean;
+	metadata?: Record<string, string>;
+	identity_id?: never;
+}
+
+export interface ExternalIdentityDecl {
+	provider?: ProviderName;
+	/** Pre-existing provider Identity id. External references are never mutated or deleted. */
+	identity_id: string;
+	external_id?: never;
+	name?: never;
+	enabled?: never;
+	metadata?: never;
 }
 
 // --- Environment ---
@@ -155,6 +176,21 @@ export interface AgentDecl {
 
 export interface AgentDeliveryDecl {
 	type: "managed" | "forward";
+}
+
+// --- Channel ---
+
+export interface ChannelDecl {
+	provider?: ProviderName;
+	/** Logical Agent name. The provider adapter resolves its materialized remote resource. */
+	agent: string;
+	/** Logical Identity name. Falls back to defaults.identity. */
+	identity?: string;
+	type: string;
+	name?: string;
+	enabled?: boolean;
+	credentials?: Record<string, string>;
+	options?: Record<string, unknown>;
 }
 
 export type AgentSkillDecl = string | AgentSkillRefDecl;

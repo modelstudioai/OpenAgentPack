@@ -1,5 +1,10 @@
 import { UserError } from "../errors.ts";
-import type { ResolvedAgentRefs, ResolvedDeploymentRefs, ResolvedTemplateRefs } from "../providers/interface.ts";
+import type {
+	ResolvedAgentRefs,
+	ResolvedChannelRefs,
+	ResolvedDeploymentRefs,
+	ResolvedTemplateRefs,
+} from "../providers/interface.ts";
 import type { IStateManager } from "../state/state-manager.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { ResourceAddress } from "../types/state.ts";
@@ -163,6 +168,28 @@ export function resolveDeploymentRefs(
 		vault_ids,
 		memory_store_ids,
 	};
+}
+
+export function resolveChannelRefs(
+	channelName: string,
+	config: ProjectConfig,
+	provider: string,
+	state: IStateManager,
+): ResolvedChannelRefs {
+	const channel = config.channels?.[channelName];
+	if (!channel) throw new UserError(`Channel '${channelName}' not found in config`);
+
+	const agent = config.agents?.[channel.agent];
+	if (!agent) throw new UserError(`Channel '${channelName}' references unknown agent '${channel.agent}'`);
+	const agentType = agent.delivery?.[provider]?.type === "forward" ? "template" : "agent";
+	const agent_id = requireRef(state, { type: agentType, name: channel.agent, provider });
+
+	const identityName = channel.identity ?? config.defaults?.identity;
+	if (!identityName) {
+		throw new UserError(`Channel '${channelName}' must declare identity or use defaults.identity.`);
+	}
+	const identity_id = requireRef(state, { type: "identity", name: identityName, provider });
+	return { identity_id, agent_id };
 }
 
 function resolveTunnelIdFromConfig(config: ProjectConfig, tunnelName: string, provider: string): string {

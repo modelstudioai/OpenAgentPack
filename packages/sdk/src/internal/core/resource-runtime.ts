@@ -90,6 +90,8 @@ const IMPORTABLE_RESOURCE_TYPES = new Set<ResourceType>([
 	"skill",
 	"agent",
 	"template",
+	"identity",
+	"channel",
 ]);
 
 // Adopt an existing remote resource into state: derive its content hash from the

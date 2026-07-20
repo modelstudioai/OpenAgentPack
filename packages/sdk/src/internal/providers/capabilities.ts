@@ -8,7 +8,9 @@ export type ResourceKind =
 	| "mcp_server"
 	| "multiagent"
 	| "deployment"
-	| "session";
+	| "session"
+	| "identity"
+	| "channel";
 
 export type SupportTier = "native" | "emulated" | "unsupported";
 
@@ -55,4 +57,6 @@ export const REQUIRED_METHODS_BY_KIND: Partial<Record<ResourceKind, readonly str
 	memory_store: ["createMemoryStore", "deleteMemoryStore"],
 	deployment: ["createDeployment", "updateDeployment", "deleteDeployment", "runDeployment", "getDeployment"],
 	session: ["createSession", "listSessions", "getSession", "deleteSession", "sendSessionMessage"],
+	identity: ["createIdentity", "updateIdentity", "deleteIdentity"],
+	channel: ["createChannel", "updateChannel", "deleteChannel"],
 };

@@ -9,6 +9,8 @@ export const ResourceTypeSchema = z.enum([
 	"template",
 	"deployment",
 	"file",
+	"identity",
+	"channel",
 ]);
 export type ResourceType = z.infer<typeof ResourceTypeSchema>;
 

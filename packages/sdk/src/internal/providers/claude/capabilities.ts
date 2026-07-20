@@ -15,4 +15,6 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 	multiagent: { tier: "native", reason: "coordinator + roster topology" },
 	deployment: { tier: "native", reason: "deployments API" },
 	session: { tier: "native", reason: "sessions API" },
+	identity: { tier: "unsupported", reason: "no mapped Identity primitive on Claude" },
+	channel: { tier: "unsupported", reason: "no mapped messaging Channel primitive on Claude" },
 };

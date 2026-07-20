@@ -283,7 +283,9 @@ export interface paths {
 												| "agent"
 												| "template"
 												| "deployment"
-												| "file";
+												| "file"
+												| "identity"
+												| "channel";
 											name: string;
 											provider: string;
 										};
@@ -298,7 +300,9 @@ export interface paths {
 											| "agent"
 											| "template"
 											| "deployment"
-											| "file";
+											| "file"
+											| "identity"
+											| "channel";
 										name: string;
 										provider: string;
 									}[];
@@ -315,7 +319,9 @@ export interface paths {
 												| "agent"
 												| "template"
 												| "deployment"
-												| "file";
+												| "file"
+												| "identity"
+												| "channel";
 											name: string;
 											provider: string;
 										};
@@ -341,7 +347,9 @@ export interface paths {
 												| "agent"
 												| "template"
 												| "deployment"
-												| "file";
+												| "file"
+												| "identity"
+												| "channel";
 											name: string;
 											provider: string;
 										}[];

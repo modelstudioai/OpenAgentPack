@@ -111,7 +111,7 @@ Manage runtime agent sessions.
 | `session events <session-id>` | List event history for a session. |
 | `session delete <session-id>` | Delete a session. |
 
-`session create` / `session run` accept `--agent`, `--identity-id`, `--environment`, `--vault`, `--memory-stores`, `--title`, and `--provider`. `--identity-id` selects an existing Qoder Forward Identity and overrides `defaults.session.qoder.identity_id`; when neither is provided, OpenCMA resolves the Identity whose `external_id` is `__qca_admin_identity__`. OpenCMA never creates or updates an Identity. `session run` and `session send` use polling by default and accept `--stream` to opt into SSE streaming, plus `--json` for JSON output. `session list` accepts `--agent` and `--all`; `session events` accepts `--limit`, `--all`, `--json`.
+`session create` / `session run` accept `--agent`, `--identity-id`, `--environment`, `--vault`, `--memory-stores`, `--title`, and `--provider`. Forward Sessions resolve the declared logical `defaults.identity`; `--identity-id` overrides it with an existing provider id for one invocation. `session run` and `session send` use polling by default and accept `--stream` to opt into SSE streaming, plus `--json` for JSON output. `session list` accepts `--agent` and `--all`; `session events` accepts `--limit`, `--all`, `--json`.
 
 ## `agents deployment`
 

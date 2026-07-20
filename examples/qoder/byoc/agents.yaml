@@ -1,0 +1,88 @@
+# Qoder BYOC 端到端测试配置示例
+#
+# 用途：验证 Qoder BYOC 接入（工具调用）是否打通。
+# 使用前请确保已设置环境变量：
+# - QODER_PAT        Qoder API 个人访问令牌（https://qoder.com/account/integrations）
+# - BYOC_ENVIRONMENT_ID  已创建的 BYOC environment id
+# - BYOC_TUNNEL_ID       已创建的 BYOC tunnel id
+# - DINGTALK_CLIENT_ID / DINGTALK_CLIENT_SECRET  钉钉渠道凭证（可选）
+#
+# 关键约束：
+# - environment_id / tunnel_id 指向的 BYOC 资源由平台侧开通，OpenCMA 只引用不修改。
+# - tunnel 只是 agents.yaml 内的命名别名，直接引用 Qoder 下发的 tunnel_id。
+
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+  identity: byoc
+
+# Forward Identity 表示集成侧的终端用户。OpenCMA 按 external_id 创建/复用并管理远端 Identity。
+identities:
+  byoc:
+    external_id: byoc
+    name: "byoc"
+    enabled: true
+    metadata:
+      purpose: byoc-assistant
+
+channels:
+  byoc-dingtalk:
+    name: "byoc Agent DingTalk"
+    agent: byoc-agent
+    type: dingtalk
+    enabled: true
+    credentials:
+      client_id: ${DINGTALK_CLIENT_ID}
+      client_secret: ${DINGTALK_CLIENT_SECRET}
+    options:
+      include_tool_calls: false
+      include_thinking: false
+
+# 已存在的 BYOC 环境，通过 environment_id 直接引用，不需要 state import。
+environments:
+  byoc:
+    description: "BYOC self-hosted environment"
+    environment_id: ${BYOC_ENVIRONMENT_ID}
+    config:
+      type: self_hosted
+    metadata:
+      purpose: byoc-test
+
+# 已存在的 BYOC tunnel。直接引用 Qoder 下发的 tunnel_id，OpenCMA 不会尝试创建或修改它。
+tunnels:
+  internal:
+    description: "BYOC tunnel"
+    tunnel_id: ${BYOC_TUNNEL_ID}
+
+agents:
+  byoc-agent:
+    description: "Assistant running inside BYOC"
+    model:
+      qoder: auto
+    instructions: |
+      You are a BYOC end-to-end test assistant running in a self-hosted environment.
+      Your goal is to verify that Qoder BYOC tool calling is working.
+      Answer user questions concisely. Use the available builtin tools when helpful.
+      If a tool call fails, report the error clearly so connectivity issues can be diagnosed.
+    environment: byoc
+    tunnel: internal
+    tools:
+      builtin: [Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, DeliverArtifacts]
+      permissions:
+        Bash: allow
+        Read: allow
+        Write: allow
+        Edit: allow
+        Glob: allow
+        Grep: allow
+        WebFetch: allow
+        WebSearch: allow
+        DeliverArtifacts: allow
+    delivery:
+      qoder:
+        type: forward

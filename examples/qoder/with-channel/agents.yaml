@@ -1,0 +1,43 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+  identity: support-user
+
+identities:
+  support-user:
+    external_id: ${SUPPORT_USER_ID}
+    name: "Support User"
+
+environments:
+  runtime:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  support-agent:
+    model:
+      qoder: auto
+    instructions: |
+      You are a concise support assistant.
+    environment: runtime
+    delivery:
+      qoder:
+        type: forward
+
+channels:
+  support-dingtalk:
+    agent: support-agent
+    type: dingtalk
+    credentials:
+      client_id: ${DINGTALK_CLIENT_ID}
+      client_secret: ${DINGTALK_CLIENT_SECRET}
+    options:
+      include_tool_calls: false
+      include_thinking: false

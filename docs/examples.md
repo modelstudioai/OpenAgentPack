@@ -12,6 +12,7 @@ The [`examples/`](../examples) directory has runnable configs for every provider
 | Connect an MCP server + vault | [`examples/claude/with-mcp/`](../examples/claude/with-mcp/) · [`examples/qoder/with-mcp/`](../examples/qoder/with-mcp/) · [`examples/ark/with-mcp/`](../examples/ark/with-mcp/) |
 | Use an official MCP server | [`examples/bailian/with-mcp/`](../examples/bailian/with-mcp/) |
 | Use a vault | [`examples/bailian/with-vault/`](../examples/bailian/with-vault/) · [`examples/qoder/with-vault/`](../examples/qoder/with-vault/) |
+| Connect a credential-based IM Channel | [`examples/qoder/with-channel/`](../examples/qoder/with-channel/) |
 | Use memory stores | [`examples/qoder/with-memory/`](../examples/qoder/with-memory/) · [`examples/ark/full/`](../examples/ark/full/) |
 | Upload local files (Files API) | [`examples/bailian/with-files/`](../examples/bailian/with-files/) · [`examples/ark/with-files/`](../examples/ark/with-files/) |
 | Coordinate multiple agents | [`examples/claude/multiagent/`](../examples/claude/multiagent/) · [`examples/ark/multiagent/`](../examples/ark/multiagent/) |

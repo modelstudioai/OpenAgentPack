@@ -51,6 +51,14 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 	const vaultNames = new Set(Object.keys(config.vaults ?? {}));
 	const memoryNames = new Set(Object.keys(config.memory_stores ?? {}));
 	const agentNames = new Set(Object.keys(config.agents ?? {}));
+	const identityNames = new Set(Object.keys(config.identities ?? {}));
+
+	if (config.defaults?.identity && !identityNames.has(config.defaults.identity)) {
+		diagnostics.error(
+			"config.defaults.identity.unknown",
+			`defaults.identity references unknown identity '${config.defaults.identity}'`,
+		);
+	}
 
 	for (const [name, agent] of Object.entries(config.agents ?? {})) {
 		if (agent.environment && !envNames.has(agent.environment)) {
@@ -102,6 +110,24 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 			);
 		}
 	}
+
+	for (const [name, channel] of Object.entries(config.channels ?? {})) {
+		if (!agentNames.has(channel.agent)) {
+			diagnostics.error("config.channel.agent.unknown", `channel.${name}: references unknown agent '${channel.agent}'`);
+		}
+		const identity = channel.identity ?? config.defaults?.identity;
+		if (!identity) {
+			diagnostics.error(
+				"config.channel.identity.required",
+				`channel.${name}: declare identity or configure defaults.identity`,
+			);
+		} else if (!identityNames.has(identity)) {
+			diagnostics.error(
+				"config.channel.identity.unknown",
+				`channel.${name}: references unknown identity '${identity}'`,
+			);
+		}
+	}
 }
 
 export function collectProviderCapabilities(
@@ -119,6 +145,83 @@ export function collectProviderCapabilities(
 			continue;
 		}
 		const caps = def.capabilities;
+
+		for (const [name, identity] of Object.entries(config.identities ?? {})) {
+			if (identity.provider && identity.provider !== providerName) continue;
+			if (!isSupported(caps, "identity")) {
+				diagnostics.error(
+					`${providerName}.identity.unsupported`,
+					`${caps.identity.reason}. ${caps.identity.remediation ?? ""}`.trim(),
+					{ type: "identity", name, provider: providerName },
+				);
+			}
+		}
+
+		for (const [name, channel] of Object.entries(config.channels ?? {})) {
+			if (channel.provider && channel.provider !== providerName) continue;
+			if (!isSupported(caps, "channel")) {
+				diagnostics.error(
+					`${providerName}.channel.unsupported`,
+					`${caps.channel.reason}. ${caps.channel.remediation ?? ""}`.trim(),
+					{ type: "channel", name, provider: providerName },
+				);
+				continue;
+			}
+
+			if (providerName === "qoder") {
+				const agent = config.agents?.[channel.agent];
+				if (agent?.provider && agent.provider !== providerName) {
+					diagnostics.error(
+						"config.channel.agent.provider_mismatch",
+						`channel.${name}: agent '${channel.agent}' is pinned to provider '${agent.provider}'.`,
+						{ type: "channel", name, provider: providerName },
+					);
+				}
+				const identityName = channel.identity ?? config.defaults?.identity;
+				const identity = identityName ? config.identities?.[identityName] : undefined;
+				if (identity?.provider && identity.provider !== providerName) {
+					diagnostics.error(
+						"config.channel.identity.provider_mismatch",
+						`channel.${name}: identity '${identityName}' is pinned to provider '${identity.provider}'.`,
+						{ type: "channel", name, provider: providerName },
+					);
+				}
+				if (agent && agent.delivery?.qoder?.type !== "forward") {
+					diagnostics.error(
+						"qoder.channel.forward_template.required",
+						`channel.${name}: Qoder Channels require agent '${channel.agent}' to use delivery.qoder.type: forward.`,
+						{ type: "channel", name, provider: providerName },
+					);
+				}
+				const requiredCredentials: Record<string, string[]> = {
+					dingtalk: ["client_id", "client_secret"],
+					feishu: ["app_id", "app_secret"],
+					wecom: ["bot_id", "secret"],
+				};
+				if (channel.type === "wechat") {
+					diagnostics.error(
+						"qoder.channel.wechat.credentials.unsupported",
+						`channel.${name}: personal WeChat supports QR binding only; credential-based apply is unavailable.`,
+						{ type: "channel", name, provider: providerName },
+					);
+				} else if (!requiredCredentials[channel.type]) {
+					diagnostics.error(
+						"qoder.channel.type.unsupported",
+						`channel.${name}: unsupported Qoder channel type '${channel.type}'.`,
+						{ type: "channel", name, provider: providerName },
+					);
+				} else {
+					const missing = requiredCredentials[channel.type]!.filter((key) => !channel.credentials?.[key]);
+					if (missing.length) {
+						diagnostics.error(
+							"qoder.channel.credentials.required",
+							`channel.${name}: '${channel.type}' requires credentials: ${missing.join(", ")}.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
+				}
+			}
+		}
 
 		for (const [name, agent] of Object.entries(config.agents ?? {})) {
 			if (agent.provider && agent.provider !== providerName) continue;

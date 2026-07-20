@@ -87,14 +87,42 @@ export async function buildPlan(
 				);
 			}
 		}
+		if (address.type === "identity" && existing) {
+			const identityDecl = config.identities?.[address.name];
+			if (existing.externally_managed && identityDecl && !identityDecl.identity_id) {
+				diagnostics.error(
+					"plan.identity.ownership_transition",
+					`identity.${address.name} is recorded as an external reference (${existing.remote_id ?? "unknown id"}); ` +
+						`replacing identity_id with a managed declaration would modify and eventually delete an Identity this project does not own. ` +
+						`Restore identity_id or release the state reference first.`,
+					address,
+				);
+				stateIndex.delete(key);
+				continue;
+			}
+			if (
+				!existing.externally_managed &&
+				existing.remote_id &&
+				identityDecl?.identity_id &&
+				identityDecl.identity_id !== existing.remote_id
+			) {
+				diagnostics.warning(
+					"plan.identity.ownership_orphan",
+					`identity.${address.name}: switching to external reference '${identityDecl.identity_id}' orphans the previously ` +
+						`managed Identity '${existing.remote_id}'.`,
+					address,
+				);
+			}
+		}
 
-		// Reference-only environments are recorded, never mutated remotely — say so.
-		const isExternalEnv =
-			address.type === "environment" && Boolean(config.environments?.[address.name]?.environment_id);
-		const createReason = isExternalEnv
-			? "Record external environment reference (no remote mutation)"
+		// Reference-only resources are recorded, never mutated remotely — say so.
+		const isExternalReference =
+			(address.type === "environment" && Boolean(config.environments?.[address.name]?.environment_id)) ||
+			(address.type === "identity" && Boolean(config.identities?.[address.name]?.identity_id));
+		const createReason = isExternalReference
+			? `Record external ${address.type} reference (no remote mutation)`
 			: "Resource does not exist in state";
-		const updateSuffix = isExternalEnv ? " — external reference, no remote mutation" : "";
+		const updateSuffix = isExternalReference ? " — external reference, no remote mutation" : "";
 
 		if (!existing) {
 			actions.push({
