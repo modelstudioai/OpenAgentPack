@@ -17,7 +17,7 @@ OpenAgentPack welcomes exploratory and AI-assisted contributions. The merge bar 
 | CLI or SDK behavior | `Gate` | Contract plus a regression test or reproduction |
 | Provider contracts, config/schema, release/package files, workflows | `Gate` plus CodeQL | Behavior/risk and validation evidence; inspect compatibility and security impact |
 
-The PR evidence check deliberately applies only to the third row. It does not require a design document, a linked Issue, or an AI-use declaration.
+The PR evidence check deliberately applies only to the third row. It does not require a design document, a linked Issue, an AI-use declaration, a special commit-message marker, or a history rewrite. A generated `bun.lock` change by itself is covered by audit and compatibility checks rather than the evidence gate.
 
 ## GitHub settings
 

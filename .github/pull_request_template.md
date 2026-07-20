@@ -36,7 +36,8 @@
 ## Behavior / risk
 
 <!-- Required only when changing provider contracts, config/schema parsing, release/package files, or GitHub workflows.
-State the user-visible behavior or compatibility/security risk. “No user-visible behavior change” is valid for an internal refactor. -->
+State the user-visible behavior or compatibility/security risk. “No user-visible behavior change” is valid for an internal refactor.
+No special commit-message marker or history rewrite is required. -->
 
 ## Validation
 
