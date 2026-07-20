@@ -267,7 +267,12 @@ interface SessionRunOpts {
 	title?: string;
 	provider?: string;
 	json?: boolean;
+	stream?: boolean;
 	noStream?: boolean;
+}
+
+export function shouldStreamSession(options: { stream?: boolean; noStream?: boolean }): boolean {
+	return options.stream === true && options.noStream !== true;
 }
 
 export async function sessionRunCommand(
@@ -297,18 +302,19 @@ export async function sessionRunCommand(
 	};
 
 	const ctx = await buildCliRuntime(options.file);
-	const run = options.noStream
-		? await startSessionRunPolling(ctx, prompt, runOptions)
-		: await startSessionRun(ctx, prompt, runOptions);
+	const stream = shouldStreamSession(options);
+	const run = stream
+		? await startSessionRun(ctx, prompt, runOptions)
+		: await startSessionRunPolling(ctx, prompt, runOptions);
 	const session = run.session;
 	if (!options.json) {
 		log.success(`Session created: ${chalk.bold(session.id)}`);
 	}
 
-	if (options.noStream) {
-		renderCollectedEvents(run as Awaited<ReturnType<typeof startSessionRunPolling>>, !!options.json);
-	} else {
+	if (stream) {
 		await streamAndRender((run as Awaited<ReturnType<typeof startSessionRun>>).events, !!options.json);
+	} else {
+		renderCollectedEvents(run as Awaited<ReturnType<typeof startSessionRunPolling>>, !!options.json);
 	}
 }
 
@@ -316,17 +322,18 @@ interface SessionSendOpts {
 	file: string;
 	provider?: string;
 	json?: boolean;
+	stream?: boolean;
 	noStream?: boolean;
 }
 
 export async function sessionSendCommand(sessionId: string, message: string, options: SessionSendOpts) {
 	const ctx = await buildCliRuntime(options.file);
-	if (options.noStream) {
-		const result = await sendSessionMessagePolling(ctx, sessionId, message, { provider: options.provider });
-		renderCollectedEvents(result, !!options.json);
-	} else {
+	if (shouldStreamSession(options)) {
 		const events = await sendSessionMessageStreaming(ctx, sessionId, message, { provider: options.provider });
 		await streamAndRender(events, !!options.json);
+	} else {
+		const result = await sendSessionMessagePolling(ctx, sessionId, message, { provider: options.provider });
+		renderCollectedEvents(result, !!options.json);
 	}
 }
 

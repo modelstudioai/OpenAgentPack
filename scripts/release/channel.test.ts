@@ -13,14 +13,12 @@ describe("release channel guard", () => {
 	});
 
 	test("accepts deterministic beta snapshots only on main", () => {
-		expect(validateReleaseIdentity("beta", "main", "0.0.0-beta.run-123456789.sha-a1b2c3d")).toEqual({
+		expect(validateReleaseIdentity("beta", "main", "1.2.3-beta-a1b2c3d-20260720")).toEqual({
 			channel: "beta",
-			version: "0.0.0-beta.run-123456789.sha-a1b2c3d",
+			version: "1.2.3-beta-a1b2c3d-20260720",
 			distTag: "beta",
 		});
-		expect(() => validateReleaseIdentity("beta", "feature/test", "0.0.0-beta.run-123456789.sha-a1b2c3d")).toThrow(
-			"main",
-		);
+		expect(() => validateReleaseIdentity("beta", "feature/test", "1.2.3-beta-a1b2c3d-20260720")).toThrow("main");
 		expect(() => validateReleaseIdentity("beta", "main", "1.2.3-beta.0")).toThrow("unexpected format");
 	});
 

@@ -172,6 +172,16 @@ test("session run exposes an explicit Forward identity override", async () => {
 
 	expect(result.exitCode).toBe(0);
 	expect(result.stdout).toContain("--identity-id <id>");
+	expect(result.stdout).toContain("--stream");
+	expect(result.stdout).not.toContain("--no-stream");
+});
+
+test("session send exposes explicit streaming as an opt-in", async () => {
+	const result = await runAgents(["session", "send", "--help"]);
+
+	expect(result.exitCode).toBe(0);
+	expect(result.stdout).toContain("--stream");
+	expect(result.stdout).not.toContain("--no-stream");
 });
 
 test("global --file before plan selects the config file", async () => {
@@ -528,11 +538,11 @@ test("json-mode user errors are written to stderr with empty stdout", async () =
 	expect(result.stderr).toContain("File not found");
 });
 
-test("session run reports missing applied resources through the core runtime", async () => {
+test("session run defaults to polling and reports missing applied resources through the core runtime", async () => {
 	const dir = await makeTempDir();
 	const configPath = await writeConfig(dir);
 
-	const result = await runAgents(["session", "run", "assistant", "hello", "--file", configPath, "--no-stream"]);
+	const result = await runAgents(["session", "run", "assistant", "hello", "--file", configPath]);
 
 	expect(result.exitCode).toBe(1);
 	expect(result.stdout).toBe("");

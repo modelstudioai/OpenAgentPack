@@ -12,6 +12,7 @@ export interface ReleaseIdentity {
 const root = resolve(import.meta.dirname, "../..");
 const releasePackages = ["sdk", "playground", "cli"] as const;
 const stableVersion = /^[0-9]+\.[0-9]+\.[0-9]+$/;
+export const betaSnapshotVersion = /^[0-9]+\.[0-9]+\.[0-9]+-beta-[0-9a-f]{7}-\d{8}$/;
 
 export function releasePackageVersions(): string[] {
 	return releasePackages.map((pkg) => {
@@ -38,7 +39,7 @@ export function validateReleaseIdentity(channel: ReleaseChannel, ref: string, ve
 	}
 
 	if (ref !== "main") throw new Error(`beta snapshots must run from main, not ${ref}`);
-	if (!/^0\.0\.0-beta\.run-[1-9]\d*\.sha-[0-9a-f]{7}$/.test(version)) {
+	if (!betaSnapshotVersion.test(version)) {
 		throw new Error(`beta snapshot version has an unexpected format: ${version}`);
 	}
 	return { channel, version, distTag: "beta" };

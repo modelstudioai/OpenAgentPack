@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { commonRegistryVersion, packageName, registryVersion, waitForRegistry } from "./consumer-smoke.ts";
+import {
+	commonRegistryVersion,
+	normalizeLineEndings,
+	packageName,
+	registryVersion,
+	waitForRegistry,
+} from "./consumer-smoke.ts";
 
 describe("published consumer smoke", () => {
+	test("compares published files across Windows and Unix line endings", () => {
+		expect(normalizeLineEndings("first\r\nsecond\r\n")).toBe("first\nsecond\n");
+		expect(normalizeLineEndings("first\nsecond\n")).toBe("first\nsecond\n");
+	});
+
 	test("builds canonical package names", () => {
 		expect(packageName("sdk")).toBe("@openagentpack/sdk");
 	});

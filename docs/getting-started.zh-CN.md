@@ -131,7 +131,7 @@ $ agents apply -y
 
 ## 运行 session
 
-**session** 是从一个已托管 agent 启动的运行时对话。`agents session run` 创建 session、发送 prompt 并流式返回：
+**session** 是从一个已托管 agent 启动的运行时对话。`agents session run` 创建 session、发送 prompt，并默认轮询至响应完成；如需通过 SSE 实时返回事件，请添加 `--stream`：
 
 ```bash
 agents session run "Summarize the repo structure" --agent assistant

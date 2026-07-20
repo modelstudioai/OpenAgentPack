@@ -229,7 +229,7 @@ sessionCmd
 
 sessionCmd
 	.command("run <prompt-or-agent> [prompt]")
-	.description("Create a session, send a message, and stream the response")
+	.description("Create a session, send a message, and wait for the response")
 	.addOption(configFileOption())
 	.option("--agent <name>", "Agent name (auto-detected when only one agent is configured)")
 	.option("--identity-id <id>", "Override the configured Qoder Forward Identity")
@@ -242,16 +242,18 @@ sessionCmd
 	.option("--title <title>", "Session title")
 	.addOption(providerOption("Target provider"))
 	.option("--json", "Output events as JSONL")
-	.option("--no-stream", "Use polling instead of SSE streaming")
+	.addOption(new Option("--stream", "Stream events over SSE instead of polling").conflicts("noStream"))
+	.addOption(new Option("--no-stream", "Use polling (deprecated; polling is now the default)").hideHelp())
 	.action(withResolvedConfigFile(sessionRunCommand));
 
 sessionCmd
 	.command("send <session-id> <message>")
-	.description("Send a message to an existing session and stream the response")
+	.description("Send a message to an existing session and wait for the response")
 	.addOption(configFileOption())
 	.addOption(providerOption("Target provider"))
 	.option("--json", "Output events as JSONL")
-	.option("--no-stream", "Use polling instead of SSE streaming")
+	.addOption(new Option("--stream", "Stream events over SSE instead of polling").conflicts("noStream"))
+	.addOption(new Option("--no-stream", "Use polling (deprecated; polling is now the default)").hideHelp())
 	.action(withResolvedConfigFile(sessionSendCommand));
 
 sessionCmd

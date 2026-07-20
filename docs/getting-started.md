@@ -131,7 +131,7 @@ $ agents apply -y
 
 ## Run a session
 
-A **session** is a runtime conversation started from a managed agent. `agents session run` creates a session, sends a prompt, and streams the response:
+A **session** is a runtime conversation started from a managed agent. `agents session run` creates a session, sends a prompt, and polls until the response completes. Add `--stream` to stream live events over SSE:
 
 ```bash
 agents session run "Summarize the repo structure" --agent assistant
