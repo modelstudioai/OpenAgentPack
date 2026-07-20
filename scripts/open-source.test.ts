@@ -138,9 +138,10 @@ describe("open-source repository invariants", () => {
 		expect(unpinned).toEqual([]);
 	});
 
-	test("npm publishing is manual, approval-gated, and cannot be cancelled mid-publish", () => {
+	test("npm publishing auto-starts stable releases, remains approval-gated, and cannot be cancelled", () => {
 		const workflow = readFileSync(resolve(root, ".github/workflows/release.yml"), "utf8");
-		expect(workflow).not.toMatch(/\npush:/);
+		expect(workflow).toMatch(/\n {2}push:\n {4}branches: \[main\]/);
+		expect(workflow).toContain("contains(github.event.head_commit.message, 'chore: release packages')");
 		expect(workflow).toContain("environment: npm-release");
 		expect(workflow).toContain("vars.NPM_RELEASE_ENABLED == 'true'");
 		expect(workflow).toContain("inputs.confirm == 'PUBLISH'");

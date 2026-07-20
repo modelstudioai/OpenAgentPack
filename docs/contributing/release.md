@@ -30,27 +30,25 @@ Add a changeset whenever a user-visible package change is made:
 bun run changeset
 ```
 
-Choose the SemVer impact and describe the change for the generated changelog. Once merged, the **Release PR** workflow creates or updates a stable version PR on `main`. It never publishes npm packages.
+Choose the SemVer impact and describe the change for the generated changelog. Once merged, the **Release PR** workflow creates or updates a stable version PR on `main`. Only merging that Release PR starts stable publishing, which still waits for approval on the `npm-release` Environment.
 
 ## Publish a beta
 
-1. In GitHub, open **Actions → Prepare Beta Release → Run workflow**.
-2. Keep the workflow branch set to `main`, enter the target stable series (for example `0.1.0`), and run it.
-3. The workflow creates or updates `release/0.1.0-beta`, consumes the available changesets, and commits the next version such as `0.1.0-beta.0`.
-4. Open **Actions → Publish npm → Run workflow**.
-5. Select `release/0.1.0-beta` in the workflow branch dropdown, choose `beta`, type `PUBLISH`, and run it.
-6. Approve the `npm-release` Environment deployment after reviewing the commit and job summary.
+1. In GitHub, open **Actions → Publish npm → Run workflow**.
+2. Keep the workflow branch set to `main`, choose `beta`, type `PUBLISH`, and run it.
+3. Approve the `npm-release` Environment deployment after reviewing the commit, generated version, and job summary.
 
-The publish workflow validates that the selected branch, package version, and channel agree. It publishes with the npm `beta` dist-tag and creates the immutable `v0.1.0-beta.N` tag. It then installs that exact version from the public npm registry on Linux, Windows, and macOS under Node.js 22 and 24. The GitHub prerelease is created only after all six consumer jobs pass.
+The workflow derives an immutable version from the GitHub Actions run ID and current `main` commit without changing Git history, for example `0.0.0-beta.run-123456789.sha-a1b2c3d`. It publishes with the npm `beta` dist-tag and creates the matching immutable Git tag. It then installs that exact version from the public npm registry on Linux, Windows, and macOS under Node.js 22 and 24. The GitHub prerelease is created only after all six consumer jobs pass.
 
-For another beta, merge fixes and their changesets into `main`, then rerun **Prepare Beta Release** for the same series. The workflow merges `main` into the beta branch and calculates the next beta. Never merge the beta branch back into `main`; delete it after the stable release.
+For another beta, merge fixes into `main` and run **Publish npm** again. Every run gets a new Actions-run-and-commit-derived version; no beta branch is created and changesets are not consumed.
 
 ## Publish a stable release
 
 1. Review and merge the automated `chore: release packages` PR.
-2. Open **Actions → Publish npm → Run workflow**.
-3. Select `main`, choose `stable`, type `PUBLISH`, and run it.
-4. Approve the `npm-release` Environment deployment after reviewing the exact package version.
+2. **Publish npm** starts automatically when the release commit reaches `main`.
+3. Approve the `npm-release` Environment deployment after reviewing the exact package version.
+
+If publishing fails partway through, manually rerun it from **Actions → Publish npm → Run workflow** with branch `main`, channel `stable`, and confirmation `PUBLISH`. Exact package versions already published are skipped.
 
 Only a clean `X.Y.Z` version on `main` can publish to npm's `latest` tag. Publishing creates the matching immutable Git tag, waits for all three packages to become visible in the public registry, and runs the six-job consumer matrix. The GitHub Release is the final certification step and is created only after that matrix passes. Publishing is idempotent: packages whose exact version already exists are skipped, so a partially failed publish can be retried from the same commit.
 
@@ -93,7 +91,7 @@ npm install --global @openagentpack/cli
 npm install --global @openagentpack/cli@beta
 
 # Pin or test an exact version without a global install
-npx @openagentpack/cli@0.1.0-beta.0 --version
+npx @openagentpack/cli@0.0.0-beta.run-123456789.sha-a1b2c3d --version
 
 # SDK
 npm install @openagentpack/sdk
@@ -108,4 +106,4 @@ After installing the CLI, run `agents --help`. A beta user returns to stable wit
 - If all packages published but a post-release consumer job fails, keep the immutable tag, do not unpublish or move the tag, and do not create the GitHub Release. Fix the compatibility issue and publish a new patch version; npm package versions cannot be overwritten.
 - Registry visibility is retried for five minutes before it is classified as a release failure. Retry the same workflow only when npm propagation, rather than package compatibility, was the cause.
 - If a version tag already points at another commit, stop. Tags are immutable; investigate the repository history instead of moving or deleting the tag.
-- If **Prepare Beta Release** reports no unreleased changesets, add a changeset on `main` before preparing another beta.
+- Beta publishing must be manually dispatched from `main`; the release identity check rejects other branches.

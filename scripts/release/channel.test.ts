@@ -12,17 +12,16 @@ describe("release channel guard", () => {
 		expect(() => validateReleaseIdentity("stable", "main", "1.2.3-beta.0")).toThrow("X.Y.Z");
 	});
 
-	test("binds beta versions to their isolated release branch", () => {
-		expect(validateReleaseIdentity("beta", "release/1.2.3-beta", "1.2.3-beta.4", "1.2.3")).toEqual({
+	test("accepts deterministic beta snapshots only on main", () => {
+		expect(validateReleaseIdentity("beta", "main", "0.0.0-beta.run-123456789.sha-a1b2c3d")).toEqual({
 			channel: "beta",
-			version: "1.2.3-beta.4",
+			version: "0.0.0-beta.run-123456789.sha-a1b2c3d",
 			distTag: "beta",
 		});
-		expect(() => validateReleaseIdentity("beta", "main", "1.2.3-beta.0")).toThrow("release/X.Y.Z-beta");
-		expect(() => validateReleaseIdentity("beta", "release/1.2.3-beta", "1.2.4-beta.0")).toThrow("1.2.3-beta.N");
-		expect(() => validateReleaseIdentity("beta", "release/1.2.3-beta", "1.2.3-beta.0", "2.0.0")).toThrow(
-			"does not match",
+		expect(() => validateReleaseIdentity("beta", "feature/test", "0.0.0-beta.run-123456789.sha-a1b2c3d")).toThrow(
+			"main",
 		);
+		expect(() => validateReleaseIdentity("beta", "main", "1.2.3-beta.0")).toThrow("unexpected format");
 	});
 
 	test("requires all fixed-group package versions to match", () => {

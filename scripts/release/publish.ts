@@ -46,7 +46,7 @@ export function assertPublishEnvironment(
 		!dryRun &&
 		(environment.GITHUB_ACTIONS !== "true" ||
 			environment.GITHUB_WORKFLOW !== "Publish npm" ||
-			environment.GITHUB_EVENT_NAME !== "workflow_dispatch")
+			!["workflow_dispatch", "push"].includes(environment.GITHUB_EVENT_NAME ?? ""))
 	) {
 		throw new Error("Real npm publishing is allowed only from the GitHub Actions Publish npm workflow.");
 	}

@@ -1,6 +1,8 @@
 name: Publish npm
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       channel:
@@ -11,7 +13,7 @@ on:
           - beta
           - stable
       confirm:
-        description: Type PUBLISH to confirm
+        description: Type PUBLISH to confirm a manual beta or stable retry
         required: true
         type: string
 
@@ -23,7 +25,10 @@ concurrency:
 
 jobs:
   preflight:
-    if: vars.NPM_RELEASE_ENABLED == 'true' && inputs.confirm == 'PUBLISH'
+    if: >-
+      vars.NPM_RELEASE_ENABLED == 'true' &&
+      ((github.event_name == 'push' && contains(github.event.head_commit.message, 'chore: release packages')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.confirm == 'PUBLISH'))
     runs-on: ubuntu-latest
     outputs:
       channel: ${{ steps.release.outputs.channel }}
@@ -53,11 +58,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Prepare immutable beta snapshot version
+        if: github.event_name == 'workflow_dispatch' && inputs.channel == 'beta'
+        run: >-
+          bun run scripts/release/snapshot.ts apply
+          --run-id "${{ github.run_id }}"
+          --sha "${{ github.sha }}"
+
       - name: Validate channel, branch, and package versions
         id: release
         run: >-
           bun run scripts/release/channel.ts validate
-          --channel "${{ inputs.channel }}"
+          --channel "${{ github.event_name == 'push' && 'stable' || inputs.channel }}"
           --ref "${{ github.ref_name }}"
           --output "$GITHUB_OUTPUT"
 
@@ -94,6 +106,9 @@ jobs:
       - name: Build publishable packages
         run: |
           bun install --frozen-lockfile
+          if [ "${{ needs.preflight.outputs.channel }}" = beta ]; then
+            bun run scripts/release/snapshot.ts apply --version "${{ needs.preflight.outputs.version }}"
+          fi
           bun run build:packages
 
       - name: Publish packages with npm Trusted Publishing
