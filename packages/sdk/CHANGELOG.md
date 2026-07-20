@@ -1,5 +1,11 @@
 # @openagentpack/sdk
 
+## 0.2.0-beta.0
+
+### Minor Changes
+
+- fd1cf3b: Add BYOC runtime, session, vault, and Qoder deployment capabilities, including native deployments, tunnels, and forward templates.
+
 ## 0.1.1
 
 ### Patch Changes

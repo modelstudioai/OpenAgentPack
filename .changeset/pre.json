@@ -1,0 +1,13 @@
+{
+	"mode": "pre",
+	"tag": "beta",
+	"initialVersions": {
+		"@openagentpack/server": "0.0.4",
+		"webui": "0.0.1",
+		"@openagentpack/cli": "0.1.1",
+		"@openagentpack/playbooks": "0.0.1",
+		"@openagentpack/playground": "0.1.1",
+		"@openagentpack/sdk": "0.1.1"
+	},
+	"changesets": ["brave-agents-build"]
+}
