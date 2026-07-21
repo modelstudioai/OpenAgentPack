@@ -241,6 +241,8 @@ export interface DeploymentDecl {
 	description?: string;
 	provider?: ProviderName;
 	metadata?: Record<string, string>;
+	/** Qoder-only deployment-level variables copied into each created session. */
+	environment_variables?: string;
 }
 
 export type DeploymentResourceDecl =

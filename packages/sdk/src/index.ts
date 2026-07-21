@@ -65,8 +65,12 @@ export {
 	getDeploymentDetailsForContext,
 	getDeploymentRuntimeProviderForContext,
 	listDeploymentsForContext,
+	listRemoteDeploymentsForContext,
+	pauseDeploymentForContext,
 	runDeploymentForContext,
 } from "./internal/core/deployment-runtime.ts";
+
+export type { DeploymentListFilter, DeploymentListResult } from "./internal/providers/interface.ts";
 
 export type { DestroyResourceResult } from "./internal/core/destroy-runtime.ts";
 export {

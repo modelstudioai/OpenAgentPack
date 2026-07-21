@@ -3,7 +3,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command, Option } from "commander";
 import { applyCommand } from "./commands/apply.ts";
-import { deploymentGetCommand, deploymentListCommand, deploymentRunCommand } from "./commands/deployment.ts";
+import {
+	deploymentGetCommand,
+	deploymentListCommand,
+	deploymentPauseCommand,
+	deploymentRunCommand,
+} from "./commands/deployment.ts";
 import { destroyCommand } from "./commands/destroy.ts";
 import { initCommand } from "./commands/init.ts";
 import {
@@ -292,6 +297,12 @@ deploymentCmd
 	.description("List deployments tracked in state")
 	.addOption(configFileOption())
 	.addOption(providerOption("Filter by provider"))
+	.option("--remote", "List deployments from the provider API")
+	.addOption(new Option("--status <status>", "Filter remote deployments by status").choices(["active", "paused"]))
+	.option("--include-archived", "Include archived remote deployments")
+	.option("--agent-id <id>", "Filter remote deployments by agent ID")
+	.option("--limit <count>", "Maximum remote deployments per page", parsePositiveInteger)
+	.option("--all", "Fetch all remote pages")
 	.action(withResolvedConfigFile(deploymentListCommand));
 
 deploymentCmd
@@ -302,8 +313,22 @@ deploymentCmd
 	.action(withResolvedConfigFile(deploymentGetCommand));
 
 deploymentCmd
+	.command("pause <name>")
+	.description("Pause a native deployment's scheduled runs")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile((name, options) => deploymentPauseCommand(name, options, true)));
+
+deploymentCmd
+	.command("unpause <name>")
+	.description("Resume a paused native deployment")
+	.addOption(configFileOption())
+	.addOption(providerOption("Target provider"))
+	.action(withResolvedConfigFile((name, options) => deploymentPauseCommand(name, options, false)));
+
+deploymentCmd
 	.command("run <name>")
-	.description("Trigger a deployment run (native on Claude, emulated as a session on Qoder)")
+	.description("Trigger a deployment run (native on Qoder/Claude, emulated on Bailian/Ark)")
 	.addOption(configFileOption())
 	.addOption(providerOption("Target provider"))
 	.action(withResolvedConfigFile(deploymentRunCommand));
