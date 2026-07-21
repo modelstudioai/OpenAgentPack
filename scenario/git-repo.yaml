@@ -21,29 +21,6 @@ providers:
 
 defaults:
   provider: qoder
-  identity: byoc
-
-# Forward Identity 表示集成侧的终端用户。OpenCMA 按 external_id 创建/复用并管理远端 Identity。
-identities:
-  byoc:
-    external_id: byoc
-    name: "byoc"
-    enabled: true
-    metadata:
-      purpose: byoc-assistant
-
-channels:
-  byoc-dingtalk:
-    name: "byoc Agent DingTalk"
-    agent: byoc-agent
-    type: dingtalk
-    enabled: true
-    credentials:
-      client_id: ${client_id}
-      client_secret: ${client_secret}
-    options:
-      include_tool_calls: false
-      include_thinking: false
 
 # 已存在的 BYOC 环境，通过 environment_id 直接引用，不需要 state import。
 environments:
@@ -74,47 +51,8 @@ vaults:
         access_token: ${MCP_COOP_TOKEN}
         protocol: streamable_http
 
-# 持久化记忆库。当前 Qoder Forward Template 尚不能挂载 Memory Store，
-# 因此先由 OpenCMA 管理该 Store，后续可通过 memory CLI 维护其中的内容。
-# memory_stores:
-#   byoc-memory:
-#     description: "Persistent context and learned knowledge for the Alibaba BYOC assistant"
-#     metadata:
-#       purpose: byoc-assistant
-#       environment: alibaba-byoc
-#     entries:
-#       - key: context/README.md
-#         content: |
-#           This memory store belongs to the Alibaba BYOC assistant.
-#           Use it to retain durable project context, user preferences, and lessons learned across sessions.
-#           Do not store credentials, access tokens, or other secrets here.
 
 agents:
-  # Managed Session GitHub 资源端到端测试。resources 是 provider-neutral
-  # 配置，Qoder/Claude adapter 会分别映射成各自 Session API 的 wire shape。
-  github-session-agent:
-    description: "GitHub repository session resource end-to-end test (tool permissions enabled)"
-    model:
-      qoder: auto
-    instructions: |
-      Inspect the mounted GitHub repository. Report its repository name, current
-      branch, latest commit SHA, and the first-level files. Do not modify or push.
-    environment: alibaba-byoc
-    tunnel: alibaba-internal
-    tools:
-      builtin: [Bash, Read, Glob, Grep]
-      permissions:
-        Bash: allow
-        Read: allow
-        Glob: allow
-        Grep: allow
-    resources:
-      - type: github_repository
-        url: ${GITHUB_REPOSITORY_URL}
-        authorization_token: ${GITHUB_TOKEN}
-        checkout:
-          branch: master
-
   byoc-agent:
     description: "Assistant running inside Alibaba BYOC"
     model:
@@ -139,6 +77,3 @@ agents:
       - name: coop
         url: https://mcp.alibaba-inc.com/coop/mcp
     vault: alibaba-mcp-oauth
-    delivery:
-      qoder:
-        type: forward
