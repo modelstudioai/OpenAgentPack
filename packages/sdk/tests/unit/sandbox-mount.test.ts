@@ -90,6 +90,19 @@ describe("rewriteFileMentions", () => {
 		expect(rewriteFileMentions(prompt, "bailian")).toBe("see /mnt/uploads/a.png here");
 	});
 
+	test("rewrites multiple sentinels with a linear scanner", () => {
+		const prompt = [`first ${"\u27E6file:uploads/a.png\u27E7"}`, `second ${"\u27E6file:uploads/b.png\u27E7"}`].join(
+			" and ",
+		);
+		expect(rewriteFileMentions(prompt, "qoder")).toBe("first /data/uploads/a.png and second /data/uploads/b.png");
+	});
+
+	test("leaves unterminated sentinels unchanged", () => {
+		const longTail = "x".repeat(10_000);
+		const prompt = `before ${"\u27E6file:uploads/a.png"}${longTail}`;
+		expect(rewriteFileMentions(prompt, "bailian")).toBe(prompt);
+	});
+
 	test("no sentinel → unchanged", () => {
 		expect(rewriteFileMentions("hello", "bailian")).toBe("hello");
 	});
@@ -123,6 +136,23 @@ describe("prepareInitialSessionPrompt", () => {
 		expect(out).not.toContain("gitlab.example.com");
 		expect(out).not.toContain("do-not-leak");
 		expect(out.endsWith("implement the feature")).toBe(true);
+	});
+
+	test("derives repository names without regex query or fragment stripping", () => {
+		const out = prepareInitialSessionPrompt(
+			"inspect it",
+			bindings([
+				{
+					type: "github_repository",
+					url: "https://git.example.com/team/repo.git?token=abc#readme",
+					authorization_token: "do-not-leak",
+				},
+			]),
+			"qoder",
+		);
+		expect(out).toContain("`/data/workspace/repo`");
+		expect(out).not.toContain("token=abc");
+		expect(out).not.toContain("readme");
 	});
 
 	test("shell-quotes an explicit repository mount path", () => {
