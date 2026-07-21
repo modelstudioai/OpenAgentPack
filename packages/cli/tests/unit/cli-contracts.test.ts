@@ -422,6 +422,49 @@ test("deployment list renders deployment rows through the core runtime", async (
 	expect(result.stdout).not.toMatch(/[\u4e00-\u9fff]/);
 });
 
+test("deployment help exposes remote list and lifecycle commands", async () => {
+	const help = await runAgents(["deployment", "--help"]);
+	expect(help.exitCode).toBe(0);
+	expect(help.stdout).toContain("pause");
+	expect(help.stdout).toContain("unpause");
+
+	const listHelp = await runAgents(["deployment", "list", "--help"]);
+	expect(listHelp.exitCode).toBe(0);
+	expect(listHelp.stdout).toContain("--remote");
+	expect(listHelp.stdout).toContain("--include-archived");
+});
+
+test("deployment remote list validates provider filter combinations locally", async () => {
+	const invalidStatus = await runAgents([
+		"deployment",
+		"list",
+		"--remote",
+		"--provider",
+		"claude",
+		"--status",
+		"running",
+	]);
+	expect(invalidStatus.exitCode).not.toBe(0);
+	expect(invalidStatus.stderr).toContain("Allowed choices are active, paused");
+
+	const dir = await makeTempDir();
+	const configPath = await writeDeploymentConfig(dir);
+	const incompatible = await runAgents([
+		"deployment",
+		"list",
+		"--file",
+		configPath,
+		"--remote",
+		"--provider",
+		"claude",
+		"--status",
+		"active",
+		"--include-archived",
+	]);
+	expect(incompatible.exitCode).not.toBe(0);
+	expect(incompatible.stderr).toContain("cannot combine --status with --include-archived");
+});
+
 test("destroy with empty state is handled through the core runtime", async () => {
 	const dir = await makeTempDir();
 	const configPath = await writeConfig(dir);

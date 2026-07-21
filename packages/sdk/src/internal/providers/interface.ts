@@ -123,6 +123,22 @@ export interface DeploymentInfo {
 	attributes?: Record<string, unknown>;
 }
 
+export interface DeploymentListFilter {
+	agent_id?: string;
+	status?: "active" | "paused";
+	include_archived?: boolean;
+	limit?: number;
+	page?: string;
+	created_at_gte?: string;
+	created_at_lte?: string;
+}
+
+export interface DeploymentListResult {
+	deployments: DeploymentInfo[];
+	has_more: boolean;
+	next_page?: string;
+}
+
 export interface ProviderAdapter {
 	readonly name: string;
 	/**
@@ -226,6 +242,9 @@ export interface ProviderAdapter {
 	deleteDeployment(id: string): Promise<void>;
 	runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult>;
 	getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo>;
+	listDeployments?(filter?: DeploymentListFilter): Promise<DeploymentListResult>;
+	pauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
+	unpauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 
 	uploadFile(filePath: string, options?: { name?: string; purpose?: string }): Promise<ProviderFileInfo>;
 	/** Upload from in-memory content (no filesystem), for server contexts that receive bytes directly (e.g. webui browser uploads). */

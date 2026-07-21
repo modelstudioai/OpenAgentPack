@@ -288,6 +288,7 @@ const deploymentSchema = z.object({
 	description: z.string().optional(),
 	provider: z.string().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
+	environment_variables: z.string().optional(),
 });
 
 export const projectConfigSchema = z.object({
