@@ -9,7 +9,10 @@ import {
 	type Artifact,
 	type ArtifactSegment,
 	type DeliveredFile,
+	type DocumentSegment,
+	documentTypeLabel,
 	preferInlineMarkdownPreview,
+	resolveDocumentContent,
 } from "@/lib/view/artifact";
 
 interface ArtifactViewProps {
@@ -183,6 +186,34 @@ function WebFrame({ artifact }: { artifact: Artifact }) {
 	);
 }
 
+function DocumentFrame({ segment }: { segment: DocumentSegment }) {
+	const title = segment.title ?? documentTypeLabel(segment.mimeType);
+	const srcDoc = resolveDocumentContent(segment);
+	const openNew = (event: MouseEvent) => {
+		event.preventDefault();
+		void openHtmlArtifactInNewWindow("", srcDoc);
+	};
+	return (
+		<div className="artifact-frame-wrap">
+			<div className="artifact-frame-bar">
+				<span className="artifact-frame-url" title={title}>
+					{title}
+				</span>
+				<button type="button" className="artifact-frame-btn" onClick={openNew}>
+					<ExternalLink size={14} />
+					新窗口打开
+				</button>
+			</div>
+			<iframe
+				className="artifact-frame"
+				srcDoc={srcDoc}
+				title={title}
+				sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
+			/>
+		</div>
+	);
+}
+
 function FileCard({ artifact }: { artifact: Artifact }) {
 	const access = useArtifactAccess();
 	const fileName = artifactDisplayName(artifact.url, artifact.title);
@@ -291,6 +322,8 @@ function segmentKey(segment: ArtifactSegment): string {
 			return `artifact:${segment.artifact.url}`;
 		case "delivered_file":
 			return `delivered:${segment.file.file_id}`;
+		case "document":
+			return `document:${segment.mimeType}:${segment.content.slice(0, 128)}`;
 	}
 }
 
@@ -323,6 +356,8 @@ function ArtifactBlock({ segment }: { segment: ArtifactSegment }) {
 			}
 		case "delivered_file":
 			return <DeliveredFileCard file={segment.file} />;
+		case "document":
+			return <DocumentFrame segment={segment} />;
 	}
 }
 

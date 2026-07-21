@@ -8,6 +8,21 @@ import type { ProviderSessionEvent } from "../types/session-event.ts";
 
 const DEFAULT_TEXT_LIMIT = 4000;
 const TOOL_TEXT_LIMIT = 8000;
+/** Self-contained rich documents (HTML/SVG/Mermaid) need much more room than chat text. */
+const DOCUMENT_TEXT_LIMIT = 32_000;
+
+/**
+ * Lightweight check: does this message text contain a self-contained rich document?
+ * Used by the sanitizer to pick a higher truncation limit so HTML reports, SVG
+ * graphics and Mermaid diagrams survive transport intact.
+ */
+function hasDocumentContent(text: string): boolean {
+	// Fenced document code block: ```html, ```svg, ```mermaid
+	if (/```(?:html|htm|svg|mermaid)\s*\n/i.test(text)) return true;
+	// Inline HTML document (DOCTYPE or <html tag)
+	if (/<(?:!DOCTYPE\s+)?html[\s>]/i.test(text)) return true;
+	return false;
+}
 
 export function sanitizeSessionEvents(
 	events: ProviderSessionEvent[],
@@ -27,8 +42,14 @@ export function sanitizeSessionEvent(
 	// has no dedicated fields for them, so they live in the open metadata bag where the
 	// presentation layer can read them uniformly).
 	const isToolEvent = event.type === "tool_result" || event.type === "tool_use";
-	const textLimit = isToolEvent ? TOOL_TEXT_LIMIT : DEFAULT_TEXT_LIMIT;
 	const primarySource = event.content ?? (event.type === "tool_use" ? event.tool_input : undefined);
+	// Pick a truncation limit appropriate to the content: tool events get 8 000 chars,
+	// message events containing self-contained documents get 32 000, everything else 4 000.
+	const textLimit = isToolEvent
+		? TOOL_TEXT_LIMIT
+		: typeof primarySource === "string" && hasDocumentContent(primarySource)
+			? DOCUMENT_TEXT_LIMIT
+			: DEFAULT_TEXT_LIMIT;
 	const primary = sanitizeOptionalText(primarySource, textLimit);
 	const raw = options.includeRaw ? sanitizeUnknown(event.raw, TOOL_TEXT_LIMIT * 2) : undefined;
 	const redacted = Boolean(primary?.redacted || raw?.redacted);
@@ -96,11 +117,27 @@ function sanitizeUnknown(value: unknown, limit: number): SanitizedValue<unknown>
 
 function sanitizeText(value: string, limit: number): SanitizedValue<string> {
 	const redacted = redactSensitiveText(value);
-	const truncated = redacted.length > limit;
+	if (redacted.length <= limit) {
+		return { value: redacted, redacted: redacted !== value, truncated: false };
+	}
+
+	// When the content is HTML, try to truncate at a tag boundary to avoid splitting
+	// an open tag (which would cause the browser to treat all subsequent text as a
+	// single malformed element).
+	let cut = limit;
+	if (/<[a-z][\s\S]*>/i.test(redacted)) {
+		const lastLt = redacted.lastIndexOf("<", cut);
+		const lastGt = redacted.lastIndexOf(">", cut);
+		if (lastLt > lastGt) {
+			// We're inside an unclosed tag — back up to before the `<`.
+			cut = lastLt;
+		}
+	}
+
 	return {
-		value: truncated ? `${redacted.slice(0, limit)}\n...[truncated ${redacted.length - limit} chars]` : redacted,
+		value: `${redacted.slice(0, cut)}\n...[truncated ${redacted.length - cut} chars]`,
 		redacted: redacted !== value,
-		truncated,
+		truncated: true,
 	};
 }
 

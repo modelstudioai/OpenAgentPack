@@ -22,7 +22,26 @@ export type ArtifactSegment =
 	| { type: "text"; content: string }
 	| { type: "images"; artifacts: Artifact[] }
 	| { type: "artifact"; artifact: Artifact }
-	| { type: "delivered_file"; file: DeliveredFile };
+	| { type: "delivered_file"; file: DeliveredFile }
+	| DocumentSegment;
+
+/** MIME type for self-contained rich documents extracted from agent messages. */
+export type DocumentMimeType = "text/html" | "image/svg+xml" | "text/mermaid";
+
+/**
+ * A self-contained rich document (HTML page, SVG graphic, Mermaid diagram) that the agent
+ * produced inline in a chat message. Rendered via sandboxed iframe (`srcdoc`) instead of
+ * being sanitized through the Markdown pipeline.
+ */
+export interface DocumentSegment {
+	type: "document";
+	/** Raw document source code (HTML / SVG / Mermaid syntax). */
+	content: string;
+	/** Document MIME, determines how the iframe renders the content. */
+	mimeType: DocumentMimeType;
+	/** Optional human-readable title (inferred from fence lang tag or `<title>` element). */
+	title?: string;
+}
 
 export interface ArtifactResult {
 	segments: ArtifactSegment[];
@@ -152,7 +171,7 @@ type ContentRegion = { kind: "prose"; text: string } | { kind: "code"; text: str
 
 const RE_INLINE_CODE = /`[^`\n]+`/g;
 
-type FenceSpan = { start: number; end: number; text: string };
+type FenceSpan = { start: number; end: number; text: string; lang: string };
 
 /**
  * Locate fenced ``` blocks. Handles:
@@ -176,6 +195,7 @@ function findFencedCodeBlocks(text: string): FenceSpan[] {
 		}
 
 		const tickCount = open[1].length;
+		const lang = (open[2] ?? "").trim().split(/\s+/)[0] ?? "";
 		const start = offset;
 		offset += line.length + 1;
 		i += 1;
@@ -188,7 +208,7 @@ function findFencedCodeBlocks(text: string): FenceSpan[] {
 			const closeOnly = closeLine.match(/^(`{3,})\s*$/);
 			if (closeOnly && closeOnly[1].length >= tickCount) {
 				const end = offset + closeLine.length;
-				blocks.push({ start, end, text: text.slice(start, end) });
+				blocks.push({ start, end, text: text.slice(start, end), lang });
 				offset = end + 1;
 				i += 1;
 				closed = true;
@@ -199,7 +219,7 @@ function findFencedCodeBlocks(text: string): FenceSpan[] {
 			const inlineClose = closeLine.match(/(`{3,})\s*$/);
 			if (inlineClose && (inlineClose.index ?? 0) > 0 && inlineClose[1].length >= tickCount) {
 				const end = lineStart + (inlineClose.index ?? 0) + inlineClose[1].length;
-				blocks.push({ start, end, text: text.slice(start, end) });
+				blocks.push({ start, end, text: text.slice(start, end), lang });
 				offset = end + 1;
 				i += 1;
 				closed = true;
@@ -211,7 +231,7 @@ function findFencedCodeBlocks(text: string): FenceSpan[] {
 		}
 
 		if (!closed) {
-			blocks.push({ start, end: text.length, text: text.slice(start) });
+			blocks.push({ start, end: text.length, text: text.slice(start), lang });
 			break;
 		}
 	}
@@ -293,7 +313,212 @@ function extractArtifactsFromProse(
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Document detection — self-contained rich documents (HTML / SVG / Mermaid)
+// ---------------------------------------------------------------------------
+
+/** Fenced code block languages that represent a renderable document rather than source code. */
+const DOCUMENT_LANGUAGES = new Set(["html", "htm", "svg", "mermaid"]);
+
+const LANG_TO_MIME: Record<string, DocumentMimeType> = {
+	html: "text/html",
+	htm: "text/html",
+	svg: "image/svg+xml",
+	mermaid: "text/mermaid",
+};
+
+/** Minimum character count for a fenced document block (avoids extracting short code snippets). */
+const MIN_FENCED_DOCUMENT_CHARS = 500;
+
+/**
+ * Matches a complete inline HTML document: `<!DOCTYPE html>…</html>` or `<html…>…</html>`.
+ * Uses a non-greedy match on the closing tag to handle multiple HTML blocks in theory,
+ * though in practice a single document per message is the common case.
+ */
+const RE_INLINE_HTML_DOC = /<!DOCTYPE\s+html[^>]*>[\s\S]*?<\/html\s*>/i;
+
+/** Minimum character count for an inline HTML document. */
+const MIN_INLINE_HTML_CHARS = 1000;
+
+interface DocumentSpan {
+	start: number;
+	end: number;
+	segment: DocumentSegment;
+}
+
+/** Extract the `<title>…</title>` text from an HTML string, if present. */
+function extractHtmlTitle(html: string): string | undefined {
+	const match = /<title[^>]*>([^<]+)<\/title>/i.exec(html);
+	return match?.[1]?.trim() || undefined;
+}
+
+/**
+ * Scan the full message text for self-contained document blocks:
+ *   1. Fenced code blocks whose language tag is a document language (html/svg/mermaid)
+ *      and whose inner content meets the minimum size threshold.
+ *   2. Inline HTML documents (`<!DOCTYPE html>…</html>`) not already inside a fence.
+ *
+ * Returns spans sorted by start position. The caller removes them from the text before
+ * running URL extraction on the remaining prose.
+ */
+function extractDocumentSpans(text: string): DocumentSpan[] {
+	const spans: DocumentSpan[] = [];
+	const fences = findFencedCodeBlocks(text);
+
+	for (const fence of fences) {
+		if (!DOCUMENT_LANGUAGES.has(fence.lang.toLowerCase())) continue;
+
+		// Inner content = everything between the opening and closing fence lines.
+		const firstNewline = fence.text.indexOf("\n");
+		const innerText = firstNewline >= 0 ? fence.text.slice(firstNewline + 1) : "";
+		// Strip trailing closing fence line (```) if present.
+		const cleaned = innerText.replace(/```+\s*$/, "").trim();
+		if (cleaned.length < MIN_FENCED_DOCUMENT_CHARS) continue;
+
+		const mime = LANG_TO_MIME[fence.lang.toLowerCase()];
+		if (!mime) continue;
+
+		spans.push({
+			start: fence.start,
+			end: fence.end,
+			segment: { type: "document", content: cleaned, mimeType: mime },
+		});
+	}
+
+	// Inline HTML documents — only look in prose regions not covered by a fence.
+	const fencedRanges = fences.map((f) => ({ start: f.start, end: f.end }));
+	const isInsideFence = (start: number) => fencedRanges.some((r) => start >= r.start && start < r.end);
+
+	// Strategy: search the full text for RE_INLINE_HTML_DOC first (complete documents).
+	let searchFrom = 0;
+	while (searchFrom < text.length) {
+		const match = RE_INLINE_HTML_DOC.exec(text.slice(searchFrom));
+		if (!match) break;
+		const absStart = searchFrom + match.index;
+		if (!isInsideFence(absStart) && match[0].length >= MIN_INLINE_HTML_CHARS) {
+			spans.push({
+				start: absStart,
+				end: absStart + match[0].length,
+				segment: {
+					type: "document",
+					content: match[0],
+					mimeType: "text/html",
+					title: extractHtmlTitle(match[0]),
+				},
+			});
+			searchFrom = absStart + match[0].length;
+			continue;
+		}
+		searchFrom = absStart + 1;
+	}
+
+	// Truncated HTML document: DOCTYPE/<html present but no closing tag (stream was cut).
+	// Handles the common case where the agent writes a short preamble ("以下是报告：")
+	// before the HTML document, and the stream is truncated mid-document.
+	if (!spans.some((s) => s.segment.mimeType === "text/html")) {
+		const hasClosing = /<\/html\s*>/i.test(text);
+		if (!hasClosing) {
+			// Look for DOCTYPE or <html anywhere in the text (not just at position 0).
+			const docStartMatch = /<!DOCTYPE\s+html|<html[\s>]/i.exec(text);
+			if (docStartMatch) {
+				const docStart = docStartMatch.index;
+				// Only treat as a document if the preamble is short (< 300 chars) and
+				// the HTML content is substantial — avoids false positives on articles
+				// that merely mention HTML in passing.
+				const htmlContentLen = text.length - docStart;
+				if (docStart < 300 && htmlContentLen >= MIN_INLINE_HTML_CHARS && !isInsideFence(docStart)) {
+					spans.push({
+						start: docStart,
+						end: text.length,
+						segment: {
+							type: "document",
+							content: text.slice(docStart),
+							mimeType: "text/html",
+							title: extractHtmlTitle(text),
+						},
+					});
+				}
+			}
+		}
+	}
+
+	spans.sort((a, b) => a.start - b.start);
+	return spans;
+}
+
+/** Human-readable label for a document MIME type (used as fallback title in UI). */
+export function documentTypeLabel(mimeType: DocumentMimeType): string {
+	switch (mimeType) {
+		case "text/html":
+			return "HTML 文档";
+		case "image/svg+xml":
+			return "SVG 图形";
+		case "text/mermaid":
+			return "Mermaid 图表";
+	}
+}
+
+/**
+ * Resolve a document segment into a complete HTML string suitable for `<iframe srcDoc>`.
+ * HTML and SVG documents are returned as-is (SVG is self-rendering in browsers).
+ * Mermaid syntax is wrapped in a minimal HTML shell that loads mermaid.js from CDN.
+ */
+export function resolveDocumentContent(segment: DocumentSegment): string {
+	if (segment.mimeType === "text/mermaid") {
+		return [
+			"<!DOCTYPE html>",
+			'<html><head><meta charset="UTF-8">',
+			'<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>',
+			"<style>body{margin:16px;font-family:system-ui,sans-serif}</style>",
+			"</head><body>",
+			'<pre class="mermaid">',
+			segment.content,
+			"</pre>",
+			"<script>mermaid.initialize({startOnLoad:true})</script>",
+			"</body></html>",
+		].join("\n");
+	}
+	// HTML and SVG documents are self-contained.
+	return segment.content;
+}
+
 export function extractArtifacts(text: string): ArtifactResult {
+	if (!text) return { segments: [] };
+
+	// Pass 1: extract self-contained document blocks (HTML / SVG / Mermaid).
+	const docSpans = extractDocumentSpans(text);
+
+	if (docSpans.length > 0) {
+		// Build ordered list of text slices and document segments.
+		const allSegments: ArtifactSegment[] = [];
+		let cursor = 0;
+
+		for (const span of docSpans) {
+			if (cursor < span.start) {
+				const slice = text.slice(cursor, span.start);
+				allSegments.push(...extractNonDocumentArtifacts(slice).segments);
+			}
+			allSegments.push(span.segment);
+			cursor = span.end;
+		}
+
+		if (cursor < text.length) {
+			allSegments.push(...extractNonDocumentArtifacts(text.slice(cursor)).segments);
+		}
+
+		return { segments: allSegments };
+	}
+
+	// No documents found — use the standard URL extraction pipeline.
+	return extractNonDocumentArtifacts(text);
+}
+
+/**
+ * Standard artifact extraction for text that has already had document blocks removed.
+ * Extracts URLs (images, links, bare URLs) from prose regions and preserves fenced code
+ * blocks as plain text segments.
+ */
+function extractNonDocumentArtifacts(text: string): ArtifactResult {
 	if (!text) return { segments: [] };
 
 	const bag = {
@@ -332,7 +557,7 @@ export function extractArtifacts(text: string): ArtifactResult {
  */
 export function preferInlineMarkdownPreview(segments: ArtifactSegment[]): boolean {
 	if (!segments.some((s) => s.type === "images")) return false;
-	if (segments.some((s) => s.type === "artifact")) return false;
+	if (segments.some((s) => s.type === "artifact" || s.type === "document")) return false;
 
 	const textSegments = segments.filter((s) => s.type === "text");
 	if (textSegments.length === 0) return false;
