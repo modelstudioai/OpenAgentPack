@@ -183,6 +183,28 @@ describe("core session runtime", () => {
 		expect(calls).toEqual(["createSession", "send:do work", "stream:evt_user"]);
 	});
 
+	test("startRun tells the first message to work inside the mounted Git repository", async () => {
+		const calls: string[] = [];
+		const provider = adapter("qoder", calls, true);
+		const runtime = ctx(provider);
+		runtime.config.agents!.assistant!.resources = [
+			{
+				type: "github_repository",
+				url: "git@code.example.com:team/project.git",
+				authorization_token: "never-send-this",
+			},
+		];
+		const run = await startSessionRun(runtime, "do work", { agent: "assistant" });
+		for await (const _event of run.events) {
+			// Consume the lazy stream so the message is sent.
+		}
+
+		const sent = calls.find((call) => call.startsWith("send:"));
+		expect(sent).toContain("/data/workspace/project");
+		expect(sent).toContain("cd -- '/data/workspace/project' &&");
+		expect(sent).not.toContain("never-send-this");
+	});
+
 	test("forwards explicit tunnel overrides when creating a session", async () => {
 		let tunnelId: string | undefined;
 		const provider = {

@@ -163,7 +163,13 @@ export {
 	uploadFile,
 } from "./internal/core/session-runtime.ts";
 export { resolveSessionProvider } from "./internal/session/session-manager.ts";
-export { prependFileHint, preparePromptForProvider, rewriteFileMentions } from "./internal/utils/sandbox-mount.ts";
+export {
+	prependFileHint,
+	prepareInitialSessionPrompt,
+	preparePromptForProvider,
+	resolveRepositoryMountPath,
+	rewriteFileMentions,
+} from "./internal/utils/sandbox-mount.ts";
 export { resolveProviderConfigFromEnv } from "./internal/providers/registry.ts";
 export {
 	applyProviderConfigToEnv,

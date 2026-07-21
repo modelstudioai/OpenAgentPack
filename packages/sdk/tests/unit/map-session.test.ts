@@ -29,7 +29,7 @@ function minimalBindings(): SessionBindings {
 }
 
 describe("Qoder mapSession", () => {
-	test("maps a GitHub repository resource", () => {
+	test("maps a Git repository resource", () => {
 		const body = mapQoderSession({
 			...minimalBindings(),
 			resources: [
@@ -69,7 +69,7 @@ describe("Qoder mapSession", () => {
 			mount_path: "/data/workspace/my-repo",
 		});
 	});
-	test("rejects an explicit GitHub mount path outside /data", () => {
+	test("rejects an explicit Git repository mount path outside /data", () => {
 		expect(() =>
 			mapQoderSession({
 				...minimalBindings(),
@@ -82,7 +82,7 @@ describe("Qoder mapSession", () => {
 					},
 				],
 			}),
-		).toThrow("qoder GitHub Session resource mount_path must start with '/data/'.");
+		).toThrow("qoder Git repository Session resource mount_path must start with '/data/'.");
 	});
 	test("full bindings produce correct body with resources array", () => {
 		const body = mapQoderSession(fullBindings()) as Record<string, unknown>;
@@ -129,7 +129,7 @@ describe("Qoder mapSession", () => {
 });
 
 describe("Claude mapSession", () => {
-	test("maps a GitHub repository resource", () => {
+	test("maps a Git repository resource", () => {
 		const body = mapClaudeSession({
 			...minimalBindings(),
 			resources: [

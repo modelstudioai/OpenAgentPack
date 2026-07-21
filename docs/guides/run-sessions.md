@@ -63,9 +63,11 @@ agents:
 
 Store both variables in `.env` (which is gitignored). The token must be able to read the repository. `checkout` and `mount_path` are optional in the portable declaration. For Qoder, OpenAgentPack always sends a path under `/data`: when omitted it derives `/data/workspace/<repo-name>` from `url`; an explicit Qoder `mount_path` must start with `/data/`. This is required for Qoder to materialize the repository in the Session environment. Other providers retain their own path semantics.
 
+When a new Session starts, OpenAgentPack includes the resolved Git working-tree paths in the first user message. If exactly one repository is mounted, the Agent is instructed to prefix every shell command with a safely quoted `cd -- <mount-path> &&` and to use absolute paths beneath the mount for non-shell file tools. With multiple repositories, all paths are listed and the Agent chooses the appropriate working tree from the task. Repository URLs and credentials are never included in this path hint.
+
 Provider mount roots are fixed and OpenAgentPack applies the same policy to wire requests and prompt file hints:
 
-| Provider | Required mount root | Default GitHub repository path |
+| Provider | Required mount root | Default Git repository path |
 | --- | --- | --- |
 | Qoder | `/data` | `/data/workspace/<repo-name>` |
 | Claude | `/workspace` | `/workspace/<repo-name>` |

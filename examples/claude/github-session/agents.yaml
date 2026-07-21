@@ -29,4 +29,3 @@ agents:
       - type: github_repository
         url: ${GITHUB_REPOSITORY_URL}
         authorization_token: ${GITHUB_TOKEN}
-        mount_path: /workspace/repository
