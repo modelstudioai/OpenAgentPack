@@ -53,14 +53,14 @@ export function assertPublishEnvironment(
 }
 
 export function inferDistTag(version: string): string | undefined {
-	const prerelease = version.match(/^[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z-]+)(?:\.|$)/);
+	const prerelease = version.match(/^[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z]+)(?:[.-]|$)/);
 	return prerelease?.[1];
 }
 
-export function publishCommand(dryRun: boolean, version: string): string[] {
+export function publishCommand(dryRun: boolean, version: string, distTag?: string): string[] {
 	if (dryRun) return ["npm", "pack", "--dry-run"];
 	const command = ["npm", "publish", "--access", "public", "--provenance"];
-	const publishTag = inferDistTag(version);
+	const publishTag = distTag ?? inferDistTag(version);
 	if (publishTag) command.push("--tag", publishTag);
 	return command;
 }
@@ -149,6 +149,11 @@ function trackedFileContents(path: string): string | undefined {
 function main(): number {
 	const args = process.argv.slice(2);
 	const dryRun = args.includes("--dry-run");
+	const tagIndex = args.indexOf("--tag");
+	const distTag = tagIndex === -1 ? undefined : args[tagIndex + 1];
+	if (tagIndex !== -1 && (!distTag || !/^[a-z][a-z0-9-]*$/.test(distTag))) {
+		throw new Error("--tag must be a lowercase npm dist-tag");
+	}
 	assertPublishEnvironment(dryRun);
 
 	console.log(`Publishing packages${dryRun ? " (dry-run)" : ""}...\n`);
@@ -166,7 +171,7 @@ function main(): number {
 			continue;
 		}
 
-		const cmd = publishCommand(dryRun, manifest.version);
+		const cmd = publishCommand(dryRun, manifest.version, distTag);
 
 		console.log(`\n--- Publishing ${manifest.name} ---`);
 		let originalLicense: string | undefined;

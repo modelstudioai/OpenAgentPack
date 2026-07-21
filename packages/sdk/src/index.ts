@@ -78,6 +78,42 @@ export {
 	listProviderModelsForContext,
 	listProviderNames,
 } from "./internal/core/models-runtime.ts";
+export {
+	archiveMemoryStore,
+	batchCreateMemories,
+	createMemory,
+	createMemoryStore,
+	deleteMemoryStore,
+	deleteMemory,
+	getMemory,
+	getMemoryProviderCapabilities,
+	getMemoryStore,
+	getMemoryVersion,
+	listMemories,
+	listMemoryStores,
+	listMemoryVersions,
+	redactMemoryVersion,
+	updateMemory,
+	updateMemoryStore,
+} from "./internal/core/memory-runtime.ts";
+export type {
+	BatchCreateMemoryInput,
+	BatchCreateMemoryResult,
+	CreateMemoryInput,
+	CreateMemoryStoreInput,
+	MemoryInfo,
+	MemoryListOptions,
+	MemoryListItem,
+	MemoryPrefixInfo,
+	MemoryPage,
+	MemoryProviderCapabilities,
+	MemoryStoreInfo,
+	MemoryStoreListOptions,
+	MemoryVersionInfo,
+	MemoryVersionListOptions,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "./internal/types/memory.ts";
 
 export type {
 	AgentBuildInput,

@@ -28,6 +28,7 @@ describe("release publish recovery", () => {
 
 	test("derives a safe npm dist-tag from prerelease versions", () => {
 		expect(inferDistTag("1.0.1-beta.5")).toBe("beta");
+		expect(inferDistTag("1.0.1-beta-a1b2c3d-20260720")).toBe("beta");
 		expect(inferDistTag("2.0.0-rc.1")).toBe("rc");
 		expect(inferDistTag("1.0.1")).toBeUndefined();
 	});
@@ -36,6 +37,15 @@ describe("release publish recovery", () => {
 		expect(publishCommand(true, "1.2.3")).toEqual(["npm", "pack", "--dry-run"]);
 		expect(publishCommand(false, "1.2.3")).toEqual(["npm", "publish", "--access", "public", "--provenance"]);
 		expect(publishCommand(false, "1.2.3-beta.4")).toEqual([
+			"npm",
+			"publish",
+			"--access",
+			"public",
+			"--provenance",
+			"--tag",
+			"beta",
+		]);
+		expect(publishCommand(false, "1.2.3-beta-a1b2c3d-20260720", "beta")).toEqual([
 			"npm",
 			"publish",
 			"--access",

@@ -145,6 +145,8 @@ describe("open-source repository invariants", () => {
 		expect(workflow).toContain("environment: npm-release");
 		expect(workflow).toContain("vars.NPM_RELEASE_ENABLED == 'true'");
 		expect(workflow).toContain("inputs.confirm == 'PUBLISH'");
+		expect(workflow).toContain(["dist-tag: $", "{{ steps.release.outputs.dist-tag }}"].join(""));
+		expect(workflow).toContain('bun run release:publish -- --tag "$NPM_DIST_TAG"');
 		expect(workflow).toContain("id-token: write");
 		expect(workflow).toContain("cancel-in-progress: false");
 		expect(workflow).toContain("workflow_dispatch:");

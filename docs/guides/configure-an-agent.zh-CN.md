@@ -307,7 +307,7 @@ agents:
 
 Memory Store 为 Agent 提供持久化上下文，适合存储项目知识、约定规范等长期信息。
 
-> 注意：Memory Store 目前由 Qoder 和 火山方舟 Provider 原生支持。
+> 注意：Memory Store 目前由 Qoder、Claude（beta）和火山方舟 Provider 原生支持。
 
 ```yaml
 memory_stores:

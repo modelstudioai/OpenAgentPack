@@ -128,7 +128,7 @@ agents:
 
 See [Use MCP and vaults](./use-mcp-and-vaults.md).
 
-## Memory stores (Qoder, Ark)
+## Memory stores (Qoder, Claude beta, Ark)
 
 ```yaml
 memory_stores:

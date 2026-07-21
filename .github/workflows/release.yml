@@ -33,6 +33,7 @@ jobs:
     outputs:
       channel: ${{ steps.release.outputs.channel }}
       version: ${{ steps.release.outputs.version }}
+      dist-tag: ${{ steps.release.outputs.dist-tag }}
     permissions:
       contents: read
     steps:
@@ -113,7 +114,8 @@ jobs:
       - name: Publish packages with npm Trusted Publishing
         env:
           NPM_CONFIG_PROVENANCE: "true"
-        run: bun run release:publish
+          NPM_DIST_TAG: ${{ needs.preflight.outputs.dist-tag }}
+        run: bun run release:publish -- --tag "$NPM_DIST_TAG"
 
       - name: Create immutable Git tag
         env:

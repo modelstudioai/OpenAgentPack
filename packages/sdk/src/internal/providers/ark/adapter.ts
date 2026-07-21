@@ -12,6 +12,14 @@ import type {
 } from "../../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../../types/dto.ts";
 import type { ProviderFileInfo } from "../../types/file.ts";
+import type {
+	BatchCreateMemoryInput,
+	CreateMemoryInput,
+	MemoryListOptions,
+	MemoryStoreListOptions,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "../../types/memory.ts";
 import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../../types/session.ts";
 import type {
 	EventListOptions,
@@ -35,6 +43,7 @@ import type {
 	ResolvedAgentRefs,
 	ResolvedDeploymentRefs,
 } from "../interface.ts";
+import { ProviderMemoryApi } from "../memory-api.ts";
 import { arkEnvironmentWireNameAttempt, normalizeWireResourceName } from "../resource-naming.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
@@ -66,11 +75,29 @@ import {
 export class ArkAdapter implements ProviderAdapter {
 	readonly name = "ark" as const;
 	readonly eventResume = false;
+	readonly memoryCapabilities = {
+		archive_store: false,
+		batch_create: true,
+		versions: false,
+		optimistic_concurrency: false,
+		memory_metadata: false,
+	} as const;
 	private client: ArkClient;
+	private memoryApi: ProviderMemoryApi;
 	private projectName: string;
 
 	constructor(apiKey: string, projectName?: string) {
 		this.client = new ArkClient({ apiKey });
+		this.memoryApi = new ProviderMemoryApi(this.client, {
+			pathStyle: "absolute",
+			cursorParam: "page",
+			updatePrecondition: "none",
+			prefixParam: "path_prefix",
+			supportsView: false,
+			supportsMemoryMetadata: false,
+			supportsDeletePrecondition: false,
+			supportsIncludeArchived: false,
+		});
 		this.projectName = projectName ?? "";
 	}
 
@@ -264,14 +291,13 @@ export class ArkAdapter implements ProviderAdapter {
 		const body = mapMemoryStore(name, decl);
 		const res = (await this.client.post("/memory_stores", body)) as Record<string, unknown>;
 		const storeId = res.id as string;
-
-		if (decl.entries?.length) {
-			for (const entry of decl.entries) {
-				await this.client.post(`/memory_stores/${storeId}/memories`, {
-					content: entry.content,
-					path: entry.key,
-				});
+		try {
+			for (const entry of decl.entries ?? []) {
+				await this.memoryApi.createMemory(storeId, { content: entry.content, path: entry.key });
 			}
+		} catch (error) {
+			await this.client.delete(`/memory_stores/${storeId}`).catch(() => undefined);
+			throw error;
 		}
 
 		return toRemoteResource(res);
@@ -279,6 +305,34 @@ export class ArkAdapter implements ProviderAdapter {
 
 	async deleteMemoryStore(id: string): Promise<void> {
 		await this.client.delete(`/memory_stores/${id}`);
+	}
+
+	listMemoryStores(options?: MemoryStoreListOptions) {
+		return this.memoryApi.listStores(options);
+	}
+	getMemoryStore(id: string) {
+		return this.memoryApi.getStore(id);
+	}
+	updateMemoryStore(id: string, input: UpdateMemoryStoreInput) {
+		return this.memoryApi.updateStore(id, input);
+	}
+	createMemory(storeId: string, input: CreateMemoryInput) {
+		return this.memoryApi.createMemory(storeId, input);
+	}
+	batchCreateMemories(storeId: string, input: BatchCreateMemoryInput) {
+		return this.memoryApi.batchCreateMemories(storeId, input);
+	}
+	listMemories(storeId: string, options?: MemoryListOptions) {
+		return this.memoryApi.listMemories(storeId, options);
+	}
+	getMemory(storeId: string, memoryId: string) {
+		return this.memoryApi.getMemory(storeId, memoryId);
+	}
+	updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput) {
+		return this.memoryApi.updateMemory(storeId, memoryId, input);
+	}
+	deleteMemory(storeId: string, memoryId: string, expected?: string) {
+		return this.memoryApi.deleteMemory(storeId, memoryId, expected);
 	}
 
 	// --- Deployment (emulated) ---

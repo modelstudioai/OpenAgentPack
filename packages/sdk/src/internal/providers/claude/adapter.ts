@@ -1,9 +1,24 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { UserError } from "../../errors.ts";
-import type { AgentDecl, DeploymentDecl, EnvironmentDecl, SkillDecl, VaultDecl } from "../../types/config.ts";
+import type {
+	AgentDecl,
+	DeploymentDecl,
+	EnvironmentDecl,
+	MemoryStoreDecl,
+	SkillDecl,
+	VaultDecl,
+} from "../../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../../types/dto.ts";
 import type { ProviderFileInfo } from "../../types/file.ts";
+import type {
+	CreateMemoryInput,
+	MemoryListOptions,
+	MemoryStoreListOptions,
+	MemoryVersionListOptions,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "../../types/memory.ts";
 import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../../types/session.ts";
 import type {
 	EventListOptions,
@@ -28,6 +43,7 @@ import type {
 	ResolvedAgentRefs,
 	ResolvedDeploymentRefs,
 } from "../interface.ts";
+import { ProviderMemoryApi } from "../memory-api.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
@@ -59,11 +75,33 @@ import {
 export class ClaudeAdapter implements ProviderAdapter {
 	readonly name = "claude" as const;
 	readonly eventResume = false;
+	readonly memoryCapabilities = {
+		archive_store: true,
+		batch_create: false,
+		versions: true,
+		optimistic_concurrency: true,
+		memory_metadata: false,
+	} as const;
 	private client: ClaudeClient;
+	private memoryClient: ClaudeClient;
+	private memoryApi: ProviderMemoryApi;
 	private projectName: string;
 
 	constructor(apiKey: string, beta?: string, projectName?: string) {
 		this.client = new ClaudeClient({ apiKey, beta });
+		// Anthropic rejects agent-memory-2026-07-22 when combined with the
+		// managed-agents beta, so Memory Stores use a dedicated client/header.
+		this.memoryClient = new ClaudeClient({ apiKey, beta: "agent-memory-2026-07-22" });
+		this.memoryApi = new ProviderMemoryApi(this.memoryClient, {
+			pathStyle: "absolute",
+			cursorParam: "page",
+			updatePrecondition: "precondition",
+			prefixParam: "path_prefix",
+			supportsView: true,
+			supportsMemoryMetadata: false,
+			supportsDeletePrecondition: true,
+			supportsIncludeArchived: true,
+		});
 		this.projectName = projectName ?? "";
 	}
 
@@ -84,7 +122,13 @@ export class ClaudeAdapter implements ProviderAdapter {
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
 		// Claude archives agents (POST /agents/{id}/archive) instead of hard-deleting
 		// them; an archived ghost must not count as existing for refresh/adoption.
-		const raw = await locateRemote(this.client, ClaudeAdapter.ENDPOINT_MAP[type], name, id, notArchived);
+		const raw = await locateRemote(
+			type === "memory_store" ? this.memoryClient : this.client,
+			ClaudeAdapter.ENDPOINT_MAP[type],
+			name,
+			id,
+			notArchived,
+		);
 		return raw ? toRemoteResource(raw) : null;
 	}
 
@@ -253,6 +297,64 @@ export class ClaudeAdapter implements ProviderAdapter {
 
 	async deleteAgent(id: string): Promise<void> {
 		await this.client.post(`/agents/${id}/archive`, {});
+	}
+
+	async createMemoryStore(name: string, decl: MemoryStoreDecl): Promise<RemoteResource> {
+		const res = (await this.memoryClient.post("/memory_stores", {
+			name,
+			description: decl.description,
+			metadata: decl.metadata,
+		})) as Record<string, unknown>;
+		const storeId = String(res.id);
+		try {
+			for (const entry of decl.entries ?? []) {
+				await this.memoryApi.createMemory(storeId, { path: entry.key, content: entry.content });
+			}
+		} catch (error) {
+			await this.memoryClient.delete(`/memory_stores/${storeId}`).catch(() => undefined);
+			throw error;
+		}
+		return toRemoteResource(res);
+	}
+
+	async deleteMemoryStore(id: string): Promise<void> {
+		await this.memoryClient.delete(`/memory_stores/${id}`);
+	}
+	listMemoryStores(options?: MemoryStoreListOptions) {
+		return this.memoryApi.listStores(options);
+	}
+	getMemoryStore(id: string) {
+		return this.memoryApi.getStore(id);
+	}
+	updateMemoryStore(id: string, input: UpdateMemoryStoreInput) {
+		return this.memoryApi.updateStore(id, input);
+	}
+	archiveMemoryStore(id: string) {
+		return this.memoryApi.archiveStore(id);
+	}
+	createMemory(storeId: string, input: CreateMemoryInput) {
+		return this.memoryApi.createMemory(storeId, input);
+	}
+	listMemories(storeId: string, options?: MemoryListOptions) {
+		return this.memoryApi.listMemories(storeId, options);
+	}
+	getMemory(storeId: string, memoryId: string) {
+		return this.memoryApi.getMemory(storeId, memoryId);
+	}
+	updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput) {
+		return this.memoryApi.updateMemory(storeId, memoryId, input);
+	}
+	deleteMemory(storeId: string, memoryId: string, expected?: string) {
+		return this.memoryApi.deleteMemory(storeId, memoryId, expected);
+	}
+	listMemoryVersions(storeId: string, options?: MemoryVersionListOptions) {
+		return this.memoryApi.listVersions(storeId, options);
+	}
+	getMemoryVersion(storeId: string, versionId: string) {
+		return this.memoryApi.getVersion(storeId, versionId);
+	}
+	redactMemoryVersion(storeId: string, versionId: string) {
+		return this.memoryApi.redactVersion(storeId, versionId);
 	}
 
 	async createDeployment(

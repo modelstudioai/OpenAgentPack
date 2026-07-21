@@ -9,6 +9,16 @@ import type {
 	VaultDecl,
 } from "../types/config.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
+import type {
+	CreateMemoryInput,
+	MemoryInfo,
+	MemoryListItem,
+	MemoryListOptions,
+	MemoryPage,
+	MemoryStoreInfo,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "../types/memory.ts";
 import type { SkillFile } from "../types/skill-file.ts";
 import type { ResourceType } from "../types/state.ts";
 import type {
@@ -67,6 +77,10 @@ export interface ResourceCrudAdapter {
 	// providers omit them entirely (no throw-stubs).
 	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
 	deleteMemoryStore?(id: string): Promise<void>;
+	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo>;
+	createMemory?(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo>;
+	listMemories?(storeId: string, options?: MemoryListOptions): Promise<MemoryPage<MemoryListItem>>;
+	updateMemory?(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo>;
 
 	createDeployment(
 		name: string,

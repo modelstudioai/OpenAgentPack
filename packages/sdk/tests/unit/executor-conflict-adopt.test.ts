@@ -57,6 +57,94 @@ function makeCtx(
 const existingResource: RemoteResource = { id: "env_existing", type: "environment", version: 3 };
 
 describe("executor conflict-adopt", () => {
+	test("memory store conflict adopts and reconciles without deleting learned memories", async () => {
+		const calls: string[] = [];
+		let storeMetadata: Record<string, string> | undefined;
+		const provider = {
+			name: "qoder",
+			findResource: async () => ({ id: "memstore_existing", type: "memory_store" }),
+			createMemoryStore: async () => {
+				throw new ConflictError(409, "exists", "Qoder API");
+			},
+			deleteMemoryStore: async () => {
+				calls.push("delete-store");
+			},
+			updateMemoryStore: async (id: string, input: { metadata?: Record<string, string> }) => {
+				calls.push(`update-store:${id}`);
+				storeMetadata = input.metadata;
+				return {
+					id,
+					type: "memory_store",
+					name: "notes",
+					description: "notes",
+					metadata: {},
+					created_at: "",
+					updated_at: "",
+				};
+			},
+			listMemories: async () => ({
+				data: [
+					{
+						id: "mem_seed",
+						type: "memory",
+						memory_store_id: "memstore_existing",
+						path: "seed.md",
+						content_size_bytes: 3,
+						content_sha256: "old",
+						metadata: {},
+						created_at: "",
+						updated_at: "",
+					},
+					{
+						id: "mem_learned",
+						type: "memory",
+						memory_store_id: "memstore_existing",
+						path: "learned.md",
+						content_size_bytes: 7,
+						content_sha256: "learned",
+						metadata: {},
+						created_at: "",
+						updated_at: "",
+					},
+				],
+				has_more: false,
+			}),
+			updateMemory: async (_storeId: string, id: string) => {
+				calls.push(`update-memory:${id}`);
+				return { id, type: "memory" };
+			},
+			createMemory: async () => ({ id: "mem_new", type: "memory" }),
+		} as unknown as ProviderAdapter;
+		const memoryConfig: ProjectConfig = {
+			version: "1",
+			providers: { qoder: {} },
+			defaults: { provider: "qoder" },
+			memory_stores: { notes: { description: "notes", entries: [{ key: "seed.md", content: "new" }] } },
+		};
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "create",
+					address: { type: "memory_store", name: "notes", provider: "qoder" },
+					reason: "missing",
+					after: { content_hash: "h" },
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+		const ctx: ExecContext = {
+			config: memoryConfig,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state: StateManager.initialize(tmpPath()),
+		};
+		const result = await executePlan(plan, ctx);
+		expect(result.partial).toBe(false);
+		expect(calls).toEqual(["update-store:memstore_existing", "update-memory:mem_seed"]);
+		expect(storeMetadata).toEqual({});
+	});
+
 	test("ConflictError → findResource finds existing → onExisting rebuilds via updateEnvironment", async () => {
 		const calls: string[] = [];
 		const provider = {
