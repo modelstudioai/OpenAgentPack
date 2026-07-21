@@ -233,9 +233,9 @@ describe("extractArtifacts", () => {
 			"",
 			"```html",
 			"<!DOCTYPE html>",
-			'<link rel="preconnect" href="https://fonts.googleapis.com">',
-			'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-			'<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">',
+			'<link rel="preconnect" href="https://cdn.example.test">',
+			'<link rel="preconnect" href="https://assets.example.test" crossorigin>',
+			'<link href="https://cdn.example.test/styles.css" rel="stylesheet">',
 			"```",
 			"",
 			"预览：https://preview.example.com/page",
@@ -357,7 +357,7 @@ describe("document extraction", () => {
 	test("URLs inside an extracted HTML document are NOT extracted as artifacts", () => {
 		const html = makeHtmlDocument().replace(
 			"</head>",
-			'<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet"></head>',
+			'<link href="https://cdn.example.test/styles.css" rel="stylesheet"></head>',
 		);
 		const { segments } = extractArtifacts(html);
 		const artifacts = segments.filter((s) => s.type === "artifact" || s.type === "images");
@@ -370,16 +370,16 @@ describe("document extraction", () => {
 			"",
 			"```html",
 			"<!DOCTYPE html>",
-			'<link rel="preconnect" href="https://fonts.googleapis.com">',
-			'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-			'<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">',
+			'<link rel="preconnect" href="https://cdn.example.test">',
+			'<link rel="preconnect" href="https://assets.example.test" crossorigin>',
+			'<link href="https://cdn.example.test/styles.css" rel="stylesheet">',
 			"```",
 			"",
 			"预览：https://preview.example.com/page",
 		].join("\n");
 		const { segments } = extractArtifacts(input);
 		// The fenced block is too short to be a document — stays as text.
-		expect(segments.some((s) => s.type === "text" && s.content.includes("fonts.googleapis.com"))).toBe(true);
+		expect(segments.some((s) => s.type === "text" && s.content.includes("cdn.example.test"))).toBe(true);
 		expect(segments.every((s) => s.type !== "document")).toBe(true);
 	});
 
