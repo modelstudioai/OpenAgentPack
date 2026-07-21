@@ -7,6 +7,7 @@ import type {
 	CloudAgentList,
 	CloudEnvironmentList,
 	CloudVaultList,
+	CreateDeploymentOptions,
 	CreatedEnvironment,
 	CreatedVault,
 	CreateEnvironmentOptions,
@@ -18,6 +19,7 @@ import type {
 	DeleteSessionOptions,
 	DeleteSkillOptions,
 	DeleteVaultOptions,
+	DeploymentPathOptions,
 	FileDownloadUrl,
 	FileStatusInfo,
 	GetFileDownloadOptions,
@@ -29,12 +31,15 @@ import type {
 	ListSessionEventsOptions,
 	ListSessionsOptions,
 	ListSkillsOptions,
+	ManagedDeployment,
+	ManagedDeploymentRun,
 	ModelList,
 	SaveAgentsConfigOptions,
 	SendSessionMessageOptions,
 	SessionDetail,
 	SessionEventsPage,
 	SessionList,
+	SetDeploymentPausedOptions,
 	SkillStatusInfo,
 	SkillSummary,
 	SkillUploadResult,
@@ -52,6 +57,8 @@ export type {
 	CloudEnvironmentList,
 	CloudVaultList,
 	FileStatusInfo,
+	ManagedDeployment,
+	ManagedDeploymentRun,
 	ModelList,
 	ModelOption,
 	SessionDetail,
@@ -180,3 +187,14 @@ export function getApiConfigReady(): Promise<ApiResult<AgentsConfigReady>> {
 export function saveApiConfig(options: SaveAgentsConfigOptions): Promise<ApiResult<AgentsConfig>> {
 	return restTransport.saveConfig(options);
 }
+
+export const listApiDeployments = (): Promise<ApiResult<{ deployments: ManagedDeployment[] }>> =>
+	restTransport.listDeployments();
+export const createApiDeployment = (options: CreateDeploymentOptions): Promise<ApiResult<ManagedDeployment>> =>
+	restTransport.createDeployment(options);
+export const setApiDeploymentPaused = (options: SetDeploymentPausedOptions): Promise<ApiResult<void>> =>
+	restTransport.setDeploymentPaused(options);
+export const runApiDeployment = (options: DeploymentPathOptions): Promise<ApiResult<ManagedDeploymentRun>> =>
+	restTransport.runDeployment(options);
+export const deleteApiDeployment = (options: DeploymentPathOptions): Promise<ApiResult<void>> =>
+	restTransport.deleteDeployment(options);

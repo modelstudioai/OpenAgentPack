@@ -577,6 +577,501 @@
 				}
 			}
 		},
+		"/api/deployments": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "List managed deployments",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"deployments": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"name": {
+														"type": "string"
+													},
+													"playbookId": {
+														"type": "string"
+													},
+													"provider": {
+														"type": "string"
+													},
+													"prompt": {
+														"type": "string"
+													},
+													"schedule": {
+														"type": "object",
+														"properties": {
+															"expression": {
+																"type": "string"
+															},
+															"timezone": {
+																"type": "string"
+															}
+														},
+														"required": ["expression", "timezone"]
+													},
+													"status": {
+														"type": "string"
+													},
+													"remoteId": {
+														"type": "string",
+														"nullable": true
+													}
+												},
+												"required": ["id", "name", "playbookId", "provider", "prompt", "schedule", "status", "remoteId"]
+											}
+										}
+									},
+									"required": ["deployments"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"name": {
+										"type": "string",
+										"minLength": 1
+									},
+									"playbookId": {
+										"type": "string",
+										"minLength": 1
+									},
+									"prompt": {
+										"type": "string",
+										"minLength": 1
+									},
+									"expression": {
+										"type": "string",
+										"minLength": 1
+									},
+									"timezone": {
+										"type": "string",
+										"minLength": 1,
+										"default": "Asia/Shanghai"
+									}
+								},
+								"required": ["name", "playbookId", "prompt", "expression"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Create a native deployment",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"name": {
+											"type": "string"
+										},
+										"playbookId": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										},
+										"prompt": {
+											"type": "string"
+										},
+										"schedule": {
+											"type": "object",
+											"properties": {
+												"expression": {
+													"type": "string"
+												},
+												"timezone": {
+													"type": "string"
+												}
+											},
+											"required": ["expression", "timezone"]
+										},
+										"status": {
+											"type": "string"
+										},
+										"remoteId": {
+											"type": "string",
+											"nullable": true
+										}
+									},
+									"required": ["id", "name", "playbookId", "provider", "prompt", "schedule", "status", "remoteId"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/deployments/{id}/paused": {
+			"put": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"paused": {
+										"type": "boolean"
+									}
+								},
+								"required": ["paused"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Pause or resume a deployment",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string",
+											"nullable": true
+										},
+										"status": {
+											"type": "string"
+										}
+									},
+									"required": ["id", "status"],
+									"additionalProperties": {
+										"nullable": true
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/deployments/{id}/runs": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"201": {
+						"description": "Trigger a deployment run",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										},
+										"result": {
+											"type": "object",
+											"properties": {
+												"run_id": {
+													"type": "string"
+												},
+												"session_id": {
+													"type": "string",
+													"nullable": true
+												},
+												"error": {
+													"type": "object",
+													"properties": {
+														"type": {
+															"type": "string"
+														},
+														"message": {
+															"type": "string"
+														}
+													},
+													"required": ["type", "message"]
+												}
+											},
+											"required": ["session_id"]
+										}
+									},
+									"required": ["name", "provider", "result"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/deployments/{id}": {
+			"delete": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Delete a deployment",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"deleted": {
+											"type": "boolean"
+										}
+									},
+									"required": ["deleted"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/agents": {
 			"get": {
 				"parameters": [

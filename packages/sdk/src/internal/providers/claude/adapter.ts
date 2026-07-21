@@ -35,6 +35,8 @@ import { toRemoteResource } from "../base-client.ts";
 import type {
 	DeploymentContext,
 	DeploymentInfo,
+	DeploymentListFilter,
+	DeploymentListResult,
 	DeploymentRunResult,
 	ExportedResource,
 	ModelInfo,
@@ -64,6 +66,7 @@ import {
 	fileToDecl,
 	mapAgent,
 	mapDeployment,
+	mapDeploymentUpdate,
 	mapEnvironment,
 	mapSendMessage,
 	mapSession,
@@ -377,7 +380,20 @@ export class ClaudeAdapter implements ProviderAdapter {
 		basePath: string,
 	): Promise<RemoteResource> {
 		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
-		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
+		const current = (await this.client.get(`/deployments/${id}`)) as Record<string, unknown>;
+		if (current.schedule && !decl.schedule) {
+			throw new UserError(
+				`Deployment '${name}' cannot remove its schedule through the documented Claude update API; archive and recreate it as a manual deployment.`,
+			);
+		}
+		const body = mapDeploymentUpdate(
+			name,
+			decl,
+			refs,
+			this.projectName,
+			uploaded,
+			current.metadata as Record<string, unknown> | undefined,
+		);
 		const res = (await this.client.post(`/deployments/${id}`, body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
@@ -435,6 +451,40 @@ export class ClaudeAdapter implements ProviderAdapter {
 				: undefined,
 			attributes: res,
 		};
+	}
+
+	async listDeployments(filter?: DeploymentListFilter): Promise<DeploymentListResult> {
+		const params = new URLSearchParams();
+		if (filter?.agent_id) params.set("agent_id", filter.agent_id);
+		if (filter?.status) params.set("status", filter.status);
+		if (filter?.include_archived) params.set("include_archived", "true");
+		if (filter?.limit) params.set("limit", String(filter.limit));
+		if (filter?.page) params.set("page", filter.page);
+		if (filter?.created_at_gte) params.set("created_at[gte]", filter.created_at_gte);
+		if (filter?.created_at_lte) params.set("created_at[lte]", filter.created_at_lte);
+		const query = params.toString();
+		const res = (await this.client.get(`/deployments${query ? `?${query}` : ""}`)) as Record<string, unknown>;
+		const nextPage = (res.next_page as string | null | undefined) ?? undefined;
+		return {
+			deployments: ((res.data as Record<string, unknown>[] | undefined) ?? []).map(toDeploymentInfo),
+			has_more: nextPage !== undefined,
+			next_page: nextPage,
+		};
+	}
+
+	async pauseDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
+		return this.setDeploymentPaused(ctx, true);
+	}
+
+	async unpauseDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
+		return this.setDeploymentPaused(ctx, false);
+	}
+
+	private async setDeploymentPaused(ctx: DeploymentContext, paused: boolean): Promise<DeploymentInfo> {
+		if (!ctx.id) throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
+		const action = paused ? "pause" : "unpause";
+		const res = (await this.client.post(`/deployments/${ctx.id}/${action}`, {})) as Record<string, unknown>;
+		return toDeploymentInfo(res);
 	}
 
 	async createSession(bindings: SessionBindings): Promise<ProviderSessionInfo> {
@@ -530,6 +580,19 @@ export class ClaudeAdapter implements ProviderAdapter {
 	async deleteFile(id: string): Promise<void> {
 		await this.client.delete(`/files/${id}`);
 	}
+}
+
+function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
+	const sched = res.schedule as Record<string, unknown> | null | undefined;
+	return {
+		id: (res.id as string | undefined) ?? null,
+		status: (res.status as string) ?? "unknown",
+		paused_reason: (res.paused_reason as DeploymentInfo["paused_reason"] | null | undefined) ?? undefined,
+		schedule: sched
+			? { expression: sched.expression as string, timezone: sched.timezone as string | undefined }
+			: undefined,
+		attributes: res,
+	};
 }
 
 export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo {

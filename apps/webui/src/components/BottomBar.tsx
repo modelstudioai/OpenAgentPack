@@ -3,6 +3,7 @@ import { useCallback, useEffect, useImperativeHandle, useReducer, useRef, useSta
 import { usePromptEditor } from "@/components/prompt-editor/PromptEditorProvider";
 import suggestions from "@/data/suggestions.json";
 import type { UiModel } from "@/lib/domain/model-api";
+import type { SchedulePreset } from "@/lib/schedule";
 import {
 	AttachFilesButton,
 	ComposerFeeNotice,
@@ -12,6 +13,7 @@ import {
 	useFilePickerModal,
 } from "./ComposerInputShared";
 import ModelSelector from "./ModelSelector";
+import ScheduleButton from "./ScheduleButton";
 import { useSubmitTask } from "./useSubmitTask";
 
 export interface BottomBarHandle {
@@ -29,6 +31,7 @@ interface BottomBarProps {
 	onVisibilityChange: (visible: boolean) => void;
 	onMakeSame?: (input: { prompt: string; agentId?: string }) => void;
 	canSubmit?: boolean;
+	onOpenSchedule?: (preset?: SchedulePreset) => void;
 	ref?: React.Ref<BottomBarHandle>;
 }
 
@@ -60,6 +63,7 @@ export default function BottomBar({
 	onModelChange,
 	composerRef,
 	onVisibilityChange,
+	onOpenSchedule,
 	ref,
 	canSubmit = true,
 }: BottomBarProps) {
@@ -212,6 +216,7 @@ export default function BottomBar({
 				<div className="bar-footer">
 					<div className="bar-tools">
 						<AttachFilesButton onClick={openPicker} />
+						<ScheduleButton onOpenSchedule={onOpenSchedule} />
 					</div>
 					<div className="bar-mode-buttons">
 						<ModelSelector models={models} value={model} onChange={onModelChange} />

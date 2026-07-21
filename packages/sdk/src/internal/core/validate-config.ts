@@ -353,6 +353,15 @@ export function collectProviderCapabilities(
 				}
 			}
 			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+				if (deployment.provider && deployment.provider !== providerName) continue;
+				if (deployment.environment_variables !== undefined) {
+					diagnostics.error(
+						`${providerName}.deployment.environment_variables.unsupported`,
+						`deployment.${name}: environment_variables is supported only by Qoder deployments; ` +
+							`remove it or pin this deployment to the qoder provider.`,
+						{ type: "deployment", name, provider: providerName },
+					);
+				}
 				if (deployment.tunnel && (!deployment.provider || deployment.provider === providerName)) {
 					diagnostics.error(
 						`${providerName}.deployment.tunnel.unsupported`,

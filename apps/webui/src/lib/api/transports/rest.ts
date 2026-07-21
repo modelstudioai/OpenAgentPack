@@ -196,4 +196,10 @@ export const restTransport: ApiTransport = {
 	getConfig: () => request("GET", "/api/config"),
 	getConfigReady: () => request("GET", "/api/config/ready"),
 	saveConfig: (options) => request("PUT", "/api/config", { body: options.body }),
+	listDeployments: () => request("GET", "/api/deployments"),
+	createDeployment: (options) => request("POST", "/api/deployments", { body: options.body }),
+	setDeploymentPaused: (options) =>
+		discardResponse(request("PUT", "/api/deployments/{id}/paused", { path: options.path, body: options.body })),
+	runDeployment: (options) => request("POST", "/api/deployments/{id}/runs", { path: options.path }),
+	deleteDeployment: (options) => discardResponse(request("DELETE", "/api/deployments/{id}", { path: options.path })),
 };

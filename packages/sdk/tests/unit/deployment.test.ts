@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { validateProjectConfig } from "../../src/internal/core/validate-config.ts";
 import { resolveDeploymentRefs } from "../../src/internal/executor/resolver.ts";
 import { loadConfig } from "../../src/internal/parser/index.ts";
 import { computeResourceHash } from "../../src/internal/planner/hasher.ts";
@@ -160,8 +161,32 @@ describe("resolveDeploymentRefs", () => {
 	});
 });
 
+describe("deployment provider validation", () => {
+	test("rejects Qoder-only environment_variables on Claude", () => {
+		const config = makeConfig();
+		config.providers = { claude: {} };
+		config.defaults = { provider: "claude" };
+		config.deployments!.daily!.provider = "claude";
+		config.deployments!.daily!.environment_variables = "FEATURE_FLAG=on";
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics).toContainEqual(
+			expect.objectContaining({
+				severity: "error",
+				code: "claude.deployment.environment_variables.unsupported",
+			}),
+		);
+	});
+
+	test("allows deployment environment_variables on Qoder", () => {
+		const config = makeConfig();
+		config.deployments!.daily!.environment_variables = "FEATURE_FLAG=on";
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code.includes("environment_variables"))).toBe(false);
+	});
+});
+
 describe("Qoder native deployment CRUD", () => {
-	function makeAdapter() {
+	function makeAdapter(currentSchedule = false) {
 		const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 		const adapter = new QoderAdapter("pt-test-dummy", undefined, "proj") as QoderAdapter & {
 			client: {
@@ -173,11 +198,21 @@ describe("Qoder native deployment CRUD", () => {
 			async post(path, body) {
 				calls.push({ method: "post", path, body });
 				if (path.endsWith("/run")) return { id: "drun_1", type: "deployment_run", session_id: "sess_1", error: null };
+				if (path.endsWith("/pause")) return { id: "dep_1", type: "deployment", status: "paused" };
 				return { id: "dep_1", type: "deployment", status: "active" };
 			},
 			async get(path) {
 				calls.push({ method: "get", path });
-				return { id: "dep_1", type: "deployment", status: "active", schedule: null };
+				if (path.startsWith("/deployments?")) {
+					return { data: [{ id: "dep_1", name: "d", status: "active" }], has_more: true, next_page: "next" };
+				}
+				return {
+					id: "dep_1",
+					type: "deployment",
+					status: "active",
+					schedule: currentSchedule ? { type: "cron", expression: "0 9 * * *", timezone: "UTC" } : null,
+					metadata: { stale: "value" },
+				};
 			},
 		};
 		return { adapter, calls };
@@ -203,7 +238,51 @@ describe("Qoder native deployment CRUD", () => {
 		const { adapter, calls } = makeAdapter();
 		const res = await adapter.updateDeployment("dep_1", "d", decl, refs, "/tmp/agents.yaml");
 		expect(res).toEqual({ id: "dep_1", type: "deployment" });
-		expect(calls[0]).toMatchObject({ method: "post", path: "/deployments/dep_1" });
+		expect(calls[0]).toMatchObject({ method: "get", path: "/deployments/dep_1" });
+		expect(calls[1]).toMatchObject({ method: "post", path: "/deployments/dep_1" });
+		expect(calls[1].body).toMatchObject({
+			resources: [],
+			vault_ids: [],
+			description: "",
+			metadata: { stale: null, "agents.project": "proj", "agents.resource": "d" },
+		});
+		expect((calls[1].body as Record<string, unknown>).schedule).toBeUndefined();
+	});
+
+	test("refuses to silently preserve a removed schedule", async () => {
+		const { adapter, calls } = makeAdapter(true);
+		await expect(adapter.updateDeployment("dep_1", "d", decl, refs, "/tmp/agents.yaml")).rejects.toThrow(
+			/archive and recreate/,
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toMatchObject({ method: "get", path: "/deployments/dep_1" });
+	});
+
+	test("lists remote deployments with filters and pagination", async () => {
+		const { adapter, calls } = makeAdapter();
+		const result = await adapter.listDeployments({
+			status: "active",
+			include_archived: true,
+			page: "cursor",
+			limit: 10,
+		});
+		expect(result).toMatchObject({
+			has_more: true,
+			next_page: "next",
+			deployments: [{ id: "dep_1", status: "active" }],
+		});
+		expect(calls[0].path).toContain("/deployments?");
+		expect(calls[0].path).toContain("status=active");
+		expect(calls[0].path).toContain("include_archived=true");
+		expect(calls[0].path).toContain("page=cursor");
+	});
+
+	test("pauses and unpauses a remote deployment", async () => {
+		const { adapter, calls } = makeAdapter();
+		const ctx = { name: "d", id: "dep_1", decl, refs, basePath: "/tmp/agents.yaml" };
+		expect((await adapter.pauseDeployment(ctx)).status).toBe("paused");
+		expect((await adapter.unpauseDeployment(ctx)).status).toBe("active");
+		expect(calls.map((call) => call.path)).toEqual(["/deployments/dep_1/pause", "/deployments/dep_1/unpause"]);
 	});
 
 	test("deleteDeployment archives the remote deployment", async () => {

@@ -269,6 +269,7 @@ export function mapDeployment(
 	}
 
 	if (decl.description) body.description = decl.description;
+	if (decl.environment_variables !== undefined) body.environment_variables = decl.environment_variables;
 
 	if (projectName) {
 		body.metadata = injectMetadata(decl.metadata, projectName, name);
@@ -276,6 +277,34 @@ export function mapDeployment(
 		body.metadata = decl.metadata;
 	}
 
+	return body;
+}
+
+export function mapDeploymentUpdate(
+	name: string,
+	decl: DeploymentDecl,
+	refs: ResolvedDeploymentRefs,
+	projectName?: string,
+	uploadedFiles?: Map<string, string>,
+	existingMetadata?: Record<string, unknown>,
+): unknown {
+	const body = mapDeployment(name, decl, refs, projectName, uploadedFiles) as Record<string, unknown>;
+	body.vault_ids = refs.vault_ids;
+	body.resources = mapDeploymentResources(decl, refs, uploadedFiles);
+	if (decl.schedule) {
+		body.schedule = { type: "cron", expression: decl.schedule.expression, timezone: decl.schedule.timezone };
+	}
+	body.description = decl.description ?? "";
+	body.environment_variables = decl.environment_variables ?? null;
+	const desiredMetadata = projectName ? injectMetadata(decl.metadata, projectName, name) : (decl.metadata ?? {});
+	body.metadata = {
+		...Object.fromEntries(
+			Object.keys(existingMetadata ?? {})
+				.filter((key) => !(key in desiredMetadata))
+				.map((key) => [key, null]),
+		),
+		...desiredMetadata,
+	};
 	return body;
 }
 

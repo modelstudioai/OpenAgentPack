@@ -110,6 +110,11 @@ export interface ResourceCrudAdapter {
 export interface DeploymentRunAdapter {
 	runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult>;
 	getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo>;
+	listDeployments?(
+		filter?: import("./interface.ts").DeploymentListFilter,
+	): Promise<import("./interface.ts").DeploymentListResult>;
+	pauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
+	unpauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 }
 
 /**

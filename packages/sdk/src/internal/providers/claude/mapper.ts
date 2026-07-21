@@ -344,6 +344,33 @@ export function mapDeployment(
 	return body;
 }
 
+export function mapDeploymentUpdate(
+	name: string,
+	decl: DeploymentDecl,
+	refs: ResolvedDeploymentRefs,
+	projectName?: string,
+	uploadedFiles?: Map<string, string>,
+	existingMetadata?: Record<string, unknown>,
+): unknown {
+	const body = mapDeployment(name, decl, refs, projectName, uploadedFiles) as Record<string, unknown>;
+	body.vault_ids = refs.vault_ids;
+	body.resources = mapDeploymentResources(decl, refs, uploadedFiles);
+	if (decl.schedule) {
+		body.schedule = { type: "cron", expression: decl.schedule.expression, timezone: decl.schedule.timezone };
+	}
+	body.description = decl.description ?? "";
+	const desiredMetadata = projectName ? injectMetadata(decl.metadata, projectName, name) : (decl.metadata ?? {});
+	body.metadata = {
+		...Object.fromEntries(
+			Object.keys(existingMetadata ?? {})
+				.filter((key) => !(key in desiredMetadata))
+				.map((key) => [key, null]),
+		),
+		...desiredMetadata,
+	};
+	return body;
+}
+
 function mapInitialEvents(events: InitialEventDecl[]): unknown[] {
 	return events.map((ev) => {
 		if (ev.type === "user.message" || ev.type === "system.message") {

@@ -1,6 +1,11 @@
 import { UserError } from "../errors.ts";
 import { resolveDeploymentRefs } from "../executor/resolver.ts";
-import type { DeploymentContext } from "../providers/interface.ts";
+import type {
+	DeploymentContext,
+	DeploymentListFilter,
+	DeploymentListResult,
+	DeploymentInfo as ProviderDeploymentInfo,
+} from "../providers/interface.ts";
 import type { DeploymentRunAdapter } from "../providers/resource-workflow.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { ResourceState } from "../types/state.ts";
@@ -49,6 +54,17 @@ export interface DeploymentRun {
 	name: string;
 	provider: string;
 	result: DeploymentRunResult;
+}
+
+export async function listRemoteDeploymentsForContext(
+	ctx: ProjectRuntimeContext,
+	provider: string,
+	filter?: DeploymentListFilter,
+): Promise<DeploymentListResult> {
+	const adapter = getRuntimeProvider(ctx, provider);
+	if (!adapter.listDeployments)
+		throw new UserError(`Provider '${provider}' does not support remote deployment listing.`);
+	return adapter.listDeployments(filter);
 }
 
 export function listDeploymentsForContext(ctx: ProjectRuntimeContext, providerFilter?: string): DeploymentSummary[] {
@@ -107,6 +123,20 @@ export async function runDeploymentForContext(
 		provider,
 		result: await effectiveAdapter.runDeployment(depCtx),
 	};
+}
+
+export async function pauseDeploymentForContext(
+	ctx: ProjectRuntimeContext,
+	name: string,
+	paused: boolean,
+	resolvedProvider?: string,
+): Promise<ProviderDeploymentInfo> {
+	const provider = resolvedProvider ?? resolveDeploymentProvider(name, ctx.config);
+	const adapter = getRuntimeProvider(ctx, provider);
+	const operation = paused ? adapter.pauseDeployment : adapter.unpauseDeployment;
+	if (!operation)
+		throw new UserError(`Provider '${provider}' does not support ${paused ? "pausing" : "unpausing"} deployments.`);
+	return operation.call(adapter, buildDeploymentContext(ctx, name, provider));
 }
 
 export function getDeploymentRuntimeProviderForContext(
