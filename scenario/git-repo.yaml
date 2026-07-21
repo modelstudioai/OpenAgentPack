@@ -1,0 +1,144 @@
+# OpenCMA BYOC 端到端测试配置
+#
+# 用途：验证 Qoder BYOC 内网接入（工具调用 + MCP）是否打通。
+# 本文件含真实 environment_id / tunnel_id / 内网域名，已被 .gitignore 排除，请勿提交。
+#
+# 使用前请确保 .env 中已设置：
+# - QODER_PAT      Qoder API 个人访问令牌（https://qoder.com/account/integrations）
+# - MCP_COOP_TOKEN 内网 coop MCP 的 access token（apply 时需要）
+# - GITHUB_REPOSITORY_URL GitHub 仓库 URL
+# - GITHUB_TOKEN          GitHub 细粒度 token（仅需仓库 Contents 权限）
+#
+# 关键约束：
+# - environment_id 指向的 BYOC 环境由 QCA 侧开通，OpenCMA 只引用不修改。
+# - tunnel 只是 agents.yaml 内的命名别名，直接引用 Qoder 下发的 tunnel_id。
+
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+  identity: byoc
+
+# Forward Identity 表示集成侧的终端用户。OpenCMA 按 external_id 创建/复用并管理远端 Identity。
+identities:
+  byoc:
+    external_id: byoc
+    name: "byoc"
+    enabled: true
+    metadata:
+      purpose: byoc-assistant
+
+channels:
+  byoc-dingtalk:
+    name: "byoc Agent DingTalk"
+    agent: byoc-agent
+    type: dingtalk
+    enabled: true
+    credentials:
+      client_id: ${client_id}
+      client_secret: ${client_secret}
+    options:
+      include_tool_calls: false
+      include_thinking: false
+
+# 已存在的 BYOC 环境，通过 environment_id 直接引用，不需要 state import。
+environments:
+  alibaba-byoc:
+    description: "alibaba 内网byoc环境"
+    environment_id: env_00j8jl58nepkwyartwag
+    config:
+      type: self_hosted
+    metadata:
+      byoc: alibaba
+
+# 已存在的 BYOC tunnel。直接写死 tunnel_id，OpenCMA 不会尝试创建或修改它。
+tunnels:
+  alibaba-internal:
+    description: "Tunnel to Alibaba internal MCP services"
+    tunnel_id: tnl_00j8jl58if01s00dqm8k
+
+# 内网 MCP（Aone 协作 MCP）vault 配置。
+# 执行 apply 前请在 shell 中设置环境变量：export MCP_COOP_TOKEN=<your_token>
+# 该 token 通过 ${MCP_COOP_TOKEN} 注入，不会落盘到本文件。
+vaults:
+  alibaba-mcp-oauth:
+    display_name: "Alibaba MCP OAuth"
+    credentials:
+      - name: coop-mcp
+        mcp_server_url: "https://mcp.alibaba-inc.com/coop/mcp"
+        type: static_bearer
+        access_token: ${MCP_COOP_TOKEN}
+        protocol: streamable_http
+
+# 持久化记忆库。当前 Qoder Forward Template 尚不能挂载 Memory Store，
+# 因此先由 OpenCMA 管理该 Store，后续可通过 memory CLI 维护其中的内容。
+# memory_stores:
+#   byoc-memory:
+#     description: "Persistent context and learned knowledge for the Alibaba BYOC assistant"
+#     metadata:
+#       purpose: byoc-assistant
+#       environment: alibaba-byoc
+#     entries:
+#       - key: context/README.md
+#         content: |
+#           This memory store belongs to the Alibaba BYOC assistant.
+#           Use it to retain durable project context, user preferences, and lessons learned across sessions.
+#           Do not store credentials, access tokens, or other secrets here.
+
+agents:
+  # Managed Session GitHub 资源端到端测试。resources 是 provider-neutral
+  # 配置，Qoder/Claude adapter 会分别映射成各自 Session API 的 wire shape。
+  github-session-agent:
+    description: "GitHub repository session resource end-to-end test (tool permissions enabled)"
+    model:
+      qoder: auto
+    instructions: |
+      Inspect the mounted GitHub repository. Report its repository name, current
+      branch, latest commit SHA, and the first-level files. Do not modify or push.
+    environment: alibaba-byoc
+    tunnel: alibaba-internal
+    tools:
+      builtin: [Bash, Read, Glob, Grep]
+      permissions:
+        Bash: allow
+        Read: allow
+        Glob: allow
+        Grep: allow
+    resources:
+      - type: github_repository
+        url: ${GITHUB_REPOSITORY_URL}
+        authorization_token: ${GITHUB_TOKEN}
+        checkout:
+          branch: master
+
+  byoc-agent:
+    description: "Assistant running inside Alibaba BYOC"
+    model:
+      qoder: auto
+    instructions: |
+      You are a BYOC end-to-end test assistant running in a self-hosted environment.
+      Your goal is to verify that Qoder BYOC tool calling and MCP connectivity are working.
+      Answer user questions concisely. Use the available builtin tools and configured MCP servers when helpful.
+      If a tool or MCP call fails, report the error clearly so connectivity issues can be diagnosed.
+    environment: alibaba-byoc
+    tunnel: alibaba-internal
+    resources:
+      - type: github_repository
+        url: ${GITHUB_REPOSITORY_URL}
+        authorization_token: ${GITHUB_TOKEN}
+        mount_path: /data/workspace/repository
+    tools:
+      builtin: [Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch]
+      default_permission: allow
+    # 内网 MCP 服务器配置
+    mcp_servers:
+      - name: coop
+        url: https://mcp.alibaba-inc.com/coop/mcp
+    vault: alibaba-mcp-oauth
+    delivery:
+      qoder:
+        type: forward
