@@ -1,8 +1,9 @@
 import { resolveAgentMaterialization } from "../core/agent-materialization.ts";
 import { UserError } from "../errors.ts";
 import { requireRef } from "../executor/resolver.ts";
+import { getProvider } from "../providers/registry.ts";
 import type { IStateManager } from "../state/state-manager.ts";
-import type { AgentDecl, ProjectConfig } from "../types/config.ts";
+import type { AgentDecl, ProjectConfig, SessionResourceDecl } from "../types/config.ts";
 import type { SessionBindings } from "../types/session.ts";
 
 export interface SessionCreateOptions {
@@ -31,6 +32,8 @@ export interface SessionCreateOptions {
 	memoryStores?: string[];
 	/** Uploaded files to mount as session resources, so the task can read the user's files. */
 	files?: { fileId: string; mountPath: string }[];
+	/** Explicit resources override the resources declared on the agent. */
+	resources?: SessionResourceDecl[];
 	title?: string;
 	provider?: string;
 	metadata?: Record<string, string>;
@@ -67,7 +70,21 @@ export function buildSessionBindings(
 		const available = Object.keys(config.agents ?? {}).join(", ");
 		throw new UserError(`Agent '${agentName}' not found in config. Available agents: ${available || "(none)"}`);
 	}
+	const sessionResources = options.resources ?? agent.resources;
+	const providerFeatures = getProvider(provider)?.features;
+	for (const resource of sessionResources ?? []) {
+		if (!providerFeatures?.session_resources.includes(resource.type)) {
+			throw new UserError(
+				`Provider '${provider}' does not support Session resource type '${resource.type}' for agent '${agentName}'.`,
+			);
+		}
+	}
 	if (resolveAgentMaterialization(provider, agent).resourceType === "template") {
+		if (sessionResources?.length) {
+			throw new UserError(
+				`Forward session for '${agentName}' cannot attach Agent resources. Use managed delivery for GitHub repositories.`,
+			);
+		}
 		const templateId = requireRef(state, { type: "template", name: agentName, provider });
 		const defaultIdentity = config.defaults?.identity;
 		const identityId =
@@ -137,6 +154,7 @@ export function buildSessionBindings(
 		vault_ids: vaultIds,
 		memory_store_ids: memoryStoreIds,
 		files: (options.files ?? []).map((f) => ({ file_id: f.fileId, mount_path: f.mountPath })),
+		resources: sessionResources,
 		title: options.title,
 		metadata: options.metadata,
 	};

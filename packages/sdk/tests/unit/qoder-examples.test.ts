@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { resolveAgentRefs } from "../../src/internal/executor/resolver.ts";
 import { loadConfig } from "../../src/internal/parser/index.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
-import { mapAgent } from "../../src/internal/providers/qoder/mapper.ts";
+import { agentToDecl, mapAgent } from "../../src/internal/providers/qoder/mapper.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { StateFile } from "../../src/internal/types/state.ts";
 import "../../src/internal/providers/qoder/index.ts";
@@ -52,7 +52,9 @@ test("qoder bailian-cli example declares runnable core capabilities", async () =
 	expect(body.tools).toEqual([
 		{
 			type: "agent_toolset_20260401",
-			enabled_tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch", "DeliverArtifacts"],
+			configs: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch", "DeliverArtifacts"].map(
+				(name) => ({ name, enabled: true, permission_policy: { type: "always_allow" } }),
+			),
 		},
 	]);
 	expect(body.mcp_servers).toEqual([
@@ -71,4 +73,67 @@ test("qoder bailian-cli example declares runnable core capabilities", async () =
 		"create:skill:bailian-cli-skill",
 		"create:agent:bailian-cli",
 	]);
+});
+
+test("qoder agent mapper preserves declared tool permission policies", () => {
+	const body = mapAgent(
+		"reader",
+		{
+			model: "auto",
+			instructions: "Read only",
+			tools: {
+				builtin: ["Read", "Bash"],
+				permissions: { Read: "allow", Bash: "ask" },
+			},
+		},
+		{ skill_ids: [], memory_store_ids: [], multiagent_agent_ids: [] },
+	) as Record<string, unknown>;
+	expect(body.tools).toEqual([
+		{
+			type: "agent_toolset_20260401",
+			configs: [
+				{ name: "Read", enabled: true, permission_policy: { type: "always_allow" } },
+				{ name: "Bash", enabled: true, permission_policy: { type: "always_ask" } },
+			],
+		},
+	]);
+});
+
+test("qoder permission overrides are case- and separator-insensitive", () => {
+	const body = mapAgent(
+		"reader",
+		{
+			model: "auto",
+			instructions: "Read only",
+			tools: {
+				builtin: ["Bash", "web_search"],
+				permissions: { bash: "ask", WebSearch: "ask" },
+			},
+		},
+		{ skill_ids: [] },
+	) as { tools: Array<{ configs: unknown[] }> };
+	expect(body.tools[0]!.configs).toEqual([
+		{ name: "Bash", enabled: true, permission_policy: { type: "always_ask" } },
+		{ name: "WebSearch", enabled: true, permission_policy: { type: "always_ask" } },
+	]);
+});
+
+test("qoder sync preserves tool permission policies", () => {
+	const decl = agentToDecl({
+		model: "auto",
+		system: "test",
+		tools: [
+			{
+				type: "agent_toolset_20260401",
+				configs: [
+					{ name: "Read", enabled: true, permission_policy: { type: "always_allow" } },
+					{ name: "Bash", enabled: true, permission_policy: { type: "always_ask" } },
+				],
+			},
+		],
+	});
+	expect(decl.tools).toEqual({
+		builtin: ["read", "bash"],
+		permissions: { read: "allow", bash: "ask" },
+	});
 });

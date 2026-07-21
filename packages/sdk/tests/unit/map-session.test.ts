@@ -29,6 +29,61 @@ function minimalBindings(): SessionBindings {
 }
 
 describe("Qoder mapSession", () => {
+	test("maps a GitHub repository resource", () => {
+		const body = mapQoderSession({
+			...minimalBindings(),
+			resources: [
+				{
+					type: "github_repository",
+					url: "https://github.com/acme/repo.git",
+					authorization_token: "secret",
+					checkout: { branch: "main" },
+					mount_path: "/data/workspace/repo",
+				},
+			],
+		}) as Record<string, unknown>;
+		expect(body.resources).toContainEqual({
+			type: "github_repository",
+			url: "https://github.com/acme/repo.git",
+			authorization_token: "secret",
+			checkout: { type: "branch", name: "main" },
+			mount_path: "/data/workspace/repo",
+		});
+	});
+	test("derives the required /data workspace mount when GitHub mount_path is omitted", () => {
+		const body = mapQoderSession({
+			...minimalBindings(),
+			resources: [
+				{
+					type: "github_repository",
+					url: "https://github.com/acme/my-repo.git",
+					authorization_token: "secret",
+				},
+			],
+		}) as Record<string, unknown>;
+
+		expect(body.resources).toContainEqual({
+			type: "github_repository",
+			url: "https://github.com/acme/my-repo.git",
+			authorization_token: "secret",
+			mount_path: "/data/workspace/my-repo",
+		});
+	});
+	test("rejects an explicit GitHub mount path outside /data", () => {
+		expect(() =>
+			mapQoderSession({
+				...minimalBindings(),
+				resources: [
+					{
+						type: "github_repository",
+						url: "https://github.com/acme/repo.git",
+						authorization_token: "secret",
+						mount_path: "/workspace/repo",
+					},
+				],
+			}),
+		).toThrow("qoder GitHub Session resource mount_path must start with '/data/'.");
+	});
 	test("full bindings produce correct body with resources array", () => {
 		const body = mapQoderSession(fullBindings()) as Record<string, unknown>;
 
@@ -74,6 +129,26 @@ describe("Qoder mapSession", () => {
 });
 
 describe("Claude mapSession", () => {
+	test("maps a GitHub repository resource", () => {
+		const body = mapClaudeSession({
+			...minimalBindings(),
+			resources: [
+				{
+					type: "github_repository",
+					url: "https://github.com/acme/repo.git",
+					authorization_token: "secret",
+					checkout: { commit: "0123456789abcdef" },
+				},
+			],
+		}) as Record<string, unknown>;
+		expect(body.resources).toContainEqual({
+			type: "github_repository",
+			url: "https://github.com/acme/repo",
+			authorization_token: "secret",
+			checkout: { type: "commit", sha: "0123456789abcdef" },
+			mount_path: "/workspace/repo",
+		});
+	});
 	test("full bindings produce correct body with resources array", () => {
 		const body = mapClaudeSession(fullBindings()) as Record<string, unknown>;
 

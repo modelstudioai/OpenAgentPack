@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { UserError } from "../errors.ts";
-import type { ResourceKind } from "./capabilities.ts";
+import type { ProviderFeatures, ResourceKind } from "./capabilities.ts";
 import { isSupported, type ProviderCapabilities, REQUIRED_METHODS_BY_KIND } from "./capabilities.ts";
 import type { ProviderAdapter } from "./interface.ts";
 
@@ -8,6 +8,7 @@ export interface ProviderDefinition {
 	name: string;
 	configSchema: z.ZodType<unknown>;
 	capabilities: ProviderCapabilities;
+	features: ProviderFeatures;
 	createAdapter(config: unknown, projectName?: string): ProviderAdapter;
 }
 

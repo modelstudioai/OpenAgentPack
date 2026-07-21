@@ -40,3 +40,18 @@ test("inline instructions are a file-resolver no-op", async () => {
 	const loaded = await resolveProjectConfigFromObject(raw, { projectName: "server" });
 	expect(loaded.config.agents?.designer?.instructions).toBe("inline instructions, no file reference");
 });
+
+test("rejects permission keys that do not identify an enabled builtin", async () => {
+	const raw = validRawConfig();
+	(raw.agents.designer as Record<string, unknown>).tools = { builtin: ["Read"], permissions: { Bash: "ask" } };
+	await expect(resolveProjectConfigFromObject(raw, { projectName: "server" })).rejects.toThrow(/not enabled/);
+});
+
+test("rejects duplicate permission keys after normalization", async () => {
+	const raw = validRawConfig();
+	(raw.agents.designer as Record<string, unknown>).tools = {
+		builtin: ["WebSearch"],
+		permissions: { WebSearch: "allow", web_search: "ask" },
+	};
+	await expect(resolveProjectConfigFromObject(raw, { projectName: "server" })).rejects.toThrow(/duplicates/);
+});

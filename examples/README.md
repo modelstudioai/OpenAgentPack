@@ -21,6 +21,7 @@ examples/
 │   ├── with-skills/             skill + file-referenced instructions
 │   ├── with-mcp/                MCP server + vault + restricted network
 │   ├── with-memory/             persistent memory store (beta)
+│   ├── github-session/          private GitHub repository mounted into each Session
 │   ├── multiagent/              coordinator multi-agent (Claude only)
 │   ├── multi-provider/          same agent on both Claude + Qoder
 │   ├── deployment/              schedule + outcome rubric (native)
@@ -31,6 +32,7 @@ examples/
 │   ├── with-mcp/                MCP server + vault + restricted network
 │   ├── with-memory/             persistent memory store
 │   ├── with-vault/              vault only
+│   ├── github-session/          private GitHub repository mounted into each Session
 │   ├── vault-only/              vault-only project
 │   ├── multi-provider/          same agent on both Claude + Qoder
 │   ├── deployment/              schedule + memory_store (native)
@@ -65,6 +67,7 @@ extensions, and live-test commands.
 | Multi-Agent | unsupported | unsupported | native | native | Claude and Volcengine Ark support coordinator. |
 | Deployment | emulated | native | native | emulated | Qoder and Claude schedule server-side; Bailian and Ark expand into a session at `run` time. |
 | Session | native | native | native | native | All four support runtime sessions. |
+| GitHub Session resource | unsupported | native | native | unsupported | Qoder and Claude clone and mount repositories at Session creation. |
 
 ## Tool naming differences
 
@@ -103,3 +106,10 @@ agents session list --agent assistant  # filter by agent
 agents session get sess_abc123    # session detail
 agents session delete sess_abc123 # delete a session
 ```
+
+GitHub Session examples require `GITHUB_REPOSITORY_URL` and a read-capable
+`GITHUB_TOKEN` in `.env`. See `qoder/github-session` and `claude/github-session`.
+
+Qoder repository mounts must live under `/data`. Its example uses an explicit
+`/data/workspace/repository`; when `mount_path` is omitted, OpenAgentPack sends
+`/data/workspace/<repo-name>` automatically.

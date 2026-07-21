@@ -10,6 +10,8 @@ import type {
 } from "../../types/config.ts";
 import type { ManagedSessionBindings } from "../../types/session.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
+import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
+import { resolveBuiltinTools } from "../../utils/tool-permissions.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
 
@@ -234,12 +236,10 @@ export function mapAgent(
 	// Tools: builtin_toolkit + mcp_toolkit blocks
 	const BAILIAN_BUILTINS = new Set(["bash", "read", "write", "edit", "glob", "grep", "download_file"]);
 	if (decl.tools) {
-		const toolConfigs = decl.tools.builtin
-			.filter((t) => BAILIAN_BUILTINS.has(t))
-			.map((toolName) => ({
-				name: toolName,
-				enabled: true,
-			}));
+		const toolConfigs = resolveBuiltinTools(decl.tools, { supportedWireNames: BAILIAN_BUILTINS }).map((tool) => ({
+			name: tool.wireName,
+			enabled: true,
+		}));
 		body.tools = [
 			{
 				type: "builtin_toolkit",
@@ -310,7 +310,13 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 	// User-uploaded files mount through the `resources` array as `{type:"file",file_id}`.
 	if (bindings.vault_ids.length) body.vault_ids = bindings.vault_ids;
 	const resources: Record<string, unknown>[] = [];
-	for (const f of bindings.files ?? []) resources.push({ type: "file", file_id: f.file_id, mount_path: f.mount_path });
+	for (const f of bindings.files ?? []) {
+		resources.push({
+			type: "file",
+			file_id: f.file_id,
+			mount_path: resolveSandboxMountPath("bailian", f.mount_path),
+		});
+	}
 	if (resources.length) body.resources = resources;
 	if (bindings.memory_store_ids.length) body.memory_store_ids = bindings.memory_store_ids;
 

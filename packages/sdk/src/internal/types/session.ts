@@ -5,9 +5,21 @@ export interface SessionFileResource {
 	mount_path: string;
 }
 
+export interface SessionGithubRepositoryResource {
+	type: "github_repository";
+	url: string;
+	checkout?: { branch?: string; commit?: string };
+	mount_path?: string;
+	authorization_token: string;
+}
+
+export type SessionResource = SessionGithubRepositoryResource;
+
 interface CommonSessionBindings {
 	/** Uploaded files to mount in the session sandbox. */
 	files?: SessionFileResource[];
+	/** Provider-neutral resources to mount when the session is created. */
+	resources?: SessionResource[];
 	title?: string;
 	metadata?: Record<string, string>;
 }

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildSessionBindings, resolveSessionProvider } from "../../src/internal/session/session-manager.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { ProjectConfig } from "../../src/internal/types/config.ts";
+import "../../src/internal/providers/all.ts";
 
 function makeConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
 	return {
@@ -84,6 +85,32 @@ describe("buildSessionBindings", () => {
 		expect(bindings.environment_id).toBe("env_dev");
 		expect(bindings.vault_ids).toEqual(["vault_s1"]);
 		expect(bindings.memory_store_ids).toEqual(["ms_docs"]);
+	});
+
+	test("inherits provider-neutral session resources from the agent declaration", () => {
+		const config = makeConfig();
+		config.agents!.researcher!.resources = [
+			{
+				type: "github_repository",
+				url: "https://github.com/acme/repo.git",
+				authorization_token: "secret",
+				checkout: { branch: "main" },
+			},
+		];
+		const bindings = buildSessionBindings("researcher", config, "qoder", makeState());
+		expect(bindings.resources).toEqual(config.agents!.researcher!.resources);
+	});
+
+	test("rejects session resources before an unsupported provider can silently drop them", () => {
+		const config = makeConfig({ providers: { bailian: {} } });
+		config.agents!.researcher!.resources = [
+			{
+				type: "github_repository",
+				url: "https://github.com/acme/repo.git",
+				authorization_token: "secret",
+			},
+		];
+		expect(() => buildSessionBindings("researcher", config, "bailian", makeState())).toThrow(/does not support/);
 	});
 
 	test("CLI overrides replace agent declaration values", () => {

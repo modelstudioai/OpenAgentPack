@@ -150,6 +150,7 @@ export async function createSessionForAgent(
 		vaultIds: options.vaultIds,
 		memoryStores: options.memoryStores,
 		files: options.files,
+		resources: options.resources,
 		title: options.title,
 		metadata: options.metadata,
 	});
@@ -173,6 +174,7 @@ export async function startSessionRun(
 		vaultIds: options.vaultIds,
 		memoryStores: options.memoryStores,
 		files: options.files,
+		resources: options.resources,
 		title: options.title,
 		metadata: options.metadata,
 	});

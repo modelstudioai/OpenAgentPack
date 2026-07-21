@@ -46,7 +46,33 @@ agents session delete <session-id>
 
 ## What a session binds
 
-A Managed Session binds an Agent + environment + vaults + memory stores + files. A Qoder Forward Session binds a Template + Identity; the Template already owns its environment, tunnel, vault, and MCP configuration. `session create` lets callers override the relevant runtime bindings.
+A Managed Session binds an Agent + environment + vaults + memory stores + files + declared resources. A Qoder Forward Session binds a Template + Identity; the Template already owns its environment, tunnel, vault, and MCP configuration. `session create` lets callers override the relevant runtime bindings.
+
+To mount a private GitHub repository in every managed Session, declare a provider-neutral resource on the Agent. Qoder and Claude receive their respective API wire shapes from the same configuration:
+
+```yaml
+agents:
+  assistant:
+    # model, instructions, environment, ...
+    resources:
+      - type: github_repository
+        url: ${GITHUB_REPOSITORY_URL}
+        authorization_token: ${GITHUB_TOKEN}
+        checkout: { branch: main }
+```
+
+Store both variables in `.env` (which is gitignored). The token must be able to read the repository. `checkout` and `mount_path` are optional in the portable declaration. For Qoder, OpenAgentPack always sends a path under `/data`: when omitted it derives `/data/workspace/<repo-name>` from `url`; an explicit Qoder `mount_path` must start with `/data/`. This is required for Qoder to materialize the repository in the Session environment. Other providers retain their own path semantics.
+
+Provider mount roots are fixed and OpenAgentPack applies the same policy to wire requests and prompt file hints:
+
+| Provider | Required mount root | Default GitHub repository path |
+| --- | --- | --- |
+| Qoder | `/data` | `/data/workspace/<repo-name>` |
+| Claude | `/workspace` | `/workspace/<repo-name>` |
+| Bailian | `/mnt` | GitHub Session resources unsupported |
+| Ark | `/mnt` | GitHub Session resources unsupported |
+
+An explicit absolute path must already use the target provider's root and is passed through unchanged; an absolute path under another root is a validation error. A relative uploaded-file path is resolved under the provider root. Portable configurations should normally omit repository `mount_path` and let the provider adapter derive it.
 
 ## Programmatic usage
 

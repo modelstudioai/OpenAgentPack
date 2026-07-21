@@ -57,3 +57,83 @@ test("validates tunnel references and limits tunnels to Qoder", () => {
 	const diagnostics = validateProjectConfig(config);
 	expect(diagnostics.some((d) => d.code === "claude.agent.tunnel.unsupported")).toBe(true);
 });
+
+test("rejects tool approval and GitHub Session resources on unsupported providers", () => {
+	const config: ProjectConfig = {
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		agents: {
+			assistant: {
+				model: "qwen3.7-max",
+				instructions: "test",
+				tools: { builtin: ["bash"], default_permission: "ask" },
+				resources: [
+					{
+						type: "github_repository",
+						url: "https://github.com/acme/repo.git",
+						authorization_token: "secret",
+					},
+				],
+			},
+		},
+	};
+
+	const diagnostics = validateProjectConfig(config);
+	expect(diagnostics.some((item) => item.code === "bailian.agent.tool_permissions.unsupported")).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.agent.session_resource.github_repository.unsupported")).toBe(
+		true,
+	);
+});
+
+test("rejects Qoder GitHub Session mount paths outside /data", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { qoder: { api_key: "test" } },
+		defaults: { provider: "qoder" },
+		environments: { dev: { config: { type: "cloud" } } },
+		agents: {
+			reviewer: {
+				model: "auto",
+				instructions: "Review",
+				environment: "dev",
+				resources: [
+					{
+						type: "github_repository",
+						url: "https://github.com/acme/repo.git",
+						authorization_token: "secret",
+						mount_path: "/workspace/repo",
+					},
+				],
+			},
+		},
+	});
+
+	expect(diagnostics.some((item) => item.code === "qoder.agent.session_resource.mount_path.invalid")).toBe(true);
+});
+
+test("rejects Claude GitHub Session mount paths outside /workspace", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { claude: { api_key: "test" } },
+		defaults: { provider: "claude" },
+		environments: { dev: { config: { type: "cloud" } } },
+		agents: {
+			reviewer: {
+				model: "sonnet",
+				instructions: "Review",
+				environment: "dev",
+				resources: [
+					{
+						type: "github_repository",
+						url: "https://github.com/acme/repo.git",
+						authorization_token: "secret",
+						mount_path: "/data/repo",
+					},
+				],
+			},
+		},
+	});
+
+	expect(diagnostics.some((item) => item.code === "claude.agent.session_resource.mount_path.invalid")).toBe(true);
+});

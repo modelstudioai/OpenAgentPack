@@ -1,13 +1,18 @@
 // Single source of truth for where an uploaded file actually lands inside the agent sandbox.
 //
-// The mount_path the SDK *sends* is not the path the model *sees*: Agents backends (bailian,
-// claude) prepend `/mnt/session` to it, while qoder mounts uploads under `/data/`. We resolve
-// the real sandbox path here so both the wire mapper and the prompt hint stay in lockstep —
-// the model is told the same path the file is actually written to.
+// Every provider owns a fixed absolute mount root. Keep wire mapping and prompt hints on the
+// same policy so the model is told the exact path sent to the provider.
 //
 // Pure string ops only (no `node:path`): this module ships to the browser via the SDK bundle.
 
-const AGENTS_SESSION_PREFIX = "/mnt/session";
+import { UserError } from "../errors.ts";
+
+const PROVIDER_MOUNT_PREFIXES: Readonly<Record<string, string>> = {
+	qoder: "/data",
+	claude: "/workspace",
+	bailian: "/mnt",
+	ark: "/mnt",
+};
 
 function joinAbsolute(prefix: string, sub: string): string {
 	const left = prefix.replace(/\/+$/, "");
@@ -15,29 +20,24 @@ function joinAbsolute(prefix: string, sub: string): string {
 	return `${left}/${right}`;
 }
 
-function basename(p: string): string {
-	const trimmed = p.replace(/\/+$/, "");
-	const idx = trimmed.lastIndexOf("/");
-	return idx === -1 ? trimmed : trimmed.slice(idx + 1);
+export function providerMountPrefix(provider: string): string | undefined {
+	return PROVIDER_MOUNT_PREFIXES[provider];
 }
 
 /**
  * Map the SDK-sent `mount_path` to the absolute path the file occupies inside the sandbox.
- * - ark / bailian / claude: backend self-prefixes `/mnt/session`, preserving subdirs.
- * - qoder: uploads live under `/data/<basename>` (qoder's mount root; subdirs are flattened).
+ * Prefix provider-relative paths with the provider's fixed mount root. Paths that already
+ * use the correct root are preserved.
  * - unknown provider: return the path unchanged (conservative).
  */
 export function resolveSandboxMountPath(provider: string, mountPath: string): string {
-	switch (provider) {
-		case "ark":
-		case "bailian":
-		case "claude":
-			return joinAbsolute(AGENTS_SESSION_PREFIX, mountPath);
-		case "qoder":
-			return joinAbsolute("/data", basename(mountPath));
-		default:
-			return mountPath;
+	const prefix = providerMountPrefix(provider);
+	if (!prefix) return mountPath;
+	if (mountPath === prefix || mountPath.startsWith(`${prefix}/`)) return mountPath;
+	if (mountPath.startsWith("/")) {
+		throw new UserError(`${provider} mount_path must start with '${prefix}/'; received '${mountPath}'.`);
 	}
+	return joinAbsolute(prefix, mountPath);
 }
 
 /** Files as carried by `SessionBindings.files` — only `mount_path` matters for the hint. */

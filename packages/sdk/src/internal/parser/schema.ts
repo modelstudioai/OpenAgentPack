@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonicalToolName } from "../utils/tool-permissions.ts";
 
 const networkingSchema = z.object({
 	type: z.enum(["unrestricted", "limited"]),
@@ -168,11 +169,37 @@ const mcpToolkitSchema = z
 		configs: t.configs,
 	}));
 
-const toolsSchema = z.object({
-	builtin: z.array(z.string()),
-	mcp: z.array(mcpToolkitSchema).optional(),
-	permissions: z.record(z.string(), z.enum(["allow", "ask"])).optional(),
-});
+const toolsSchema = z
+	.object({
+		builtin: z.array(z.string()),
+		default_permission: z.enum(["allow", "ask"]).optional(),
+		mcp: z.array(mcpToolkitSchema).optional(),
+		permissions: z.record(z.string(), z.enum(["allow", "ask"])).optional(),
+	})
+	.superRefine((tools, ctx) => {
+		const enabled = new Set(tools.builtin.map(canonicalToolName));
+		const seen = new Map<string, string>();
+		for (const key of Object.keys(tools.permissions ?? {})) {
+			const canonical = canonicalToolName(key);
+			const previous = seen.get(canonical);
+			if (previous) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["permissions", key],
+					message: `duplicates permission key '${previous}' after tool-name normalization`,
+				});
+			} else {
+				seen.set(canonical, key);
+			}
+			if (!enabled.has(canonical)) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["permissions", key],
+					message: `references tool '${key}' which is not enabled in tools.builtin`,
+				});
+			}
+		}
+	});
 
 const multiagentSchema = z.object({
 	type: z.literal("coordinator"),
@@ -199,6 +226,19 @@ const agentDeliverySchema = z.object({
 	type: z.enum(["managed", "forward"]),
 });
 
+const sessionGithubRepoResourceSchema = z.object({
+	type: z.literal("github_repository"),
+	url: z.string().url(),
+	checkout: z
+		.object({ branch: z.string().min(1).optional(), commit: z.string().min(1).optional() })
+		.refine((value) => !(value.branch && value.commit), {
+			message: "checkout accepts either branch or commit, not both",
+		})
+		.optional(),
+	mount_path: z.string().optional(),
+	authorization_token: z.string().min(1),
+});
+
 const agentSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
@@ -212,6 +252,7 @@ const agentSchema = z.object({
 	skills: z.array(z.union([z.string(), agentSkillRefSchema])).optional(),
 	vault: z.string().optional(),
 	memory_stores: z.array(z.string()).optional(),
+	resources: z.array(sessionGithubRepoResourceSchema).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	delivery: z.record(z.string(), agentDeliverySchema).optional(),

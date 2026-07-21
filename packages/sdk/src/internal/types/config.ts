@@ -169,6 +169,8 @@ export interface AgentDecl {
 	skills?: AgentSkillDecl[];
 	vault?: string;
 	memory_stores?: string[];
+	/** Resources mounted into every managed session created for this agent. */
+	resources?: SessionResourceDecl[];
 	multiagent?: MultiagentDecl;
 	metadata?: Record<string, string>;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
@@ -204,6 +206,8 @@ export interface AgentSkillRefDecl {
 
 export interface AgentToolsDecl {
 	builtin: string[];
+	/** Permission inherited by every enabled builtin without an explicit override. */
+	default_permission?: "allow" | "ask";
 	mcp?: AgentMcpToolkitDecl[];
 	permissions?: Record<string, "allow" | "ask">;
 }
@@ -249,6 +253,14 @@ export type DeploymentResourceDecl =
 	| DeploymentFileResource
 	| DeploymentMemoryStoreResource
 	| DeploymentGithubRepoResource;
+
+/** Provider-neutral resources that can be attached directly when a session is created. */
+export interface SessionGithubRepoResourceDecl extends Omit<DeploymentGithubRepoResource, "authorization_token"> {
+	/** Required for private repositories; interpolate this value from an environment variable. */
+	authorization_token: string;
+}
+
+export type SessionResourceDecl = SessionGithubRepoResourceDecl;
 
 export interface DeploymentFileResource {
 	type: "file";

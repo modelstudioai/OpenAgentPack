@@ -7,6 +7,7 @@ registerProvider({
 	name: "claude",
 	configSchema: claudeConfigSchema,
 	capabilities: CLAUDE_CAPABILITIES,
+	features: { tool_permissions: true, session_resources: ["github_repository"] },
 	createAdapter: (config, projectName) => {
 		const c = config as ClaudeConfig;
 		return new ClaudeAdapter(c.api_key, c.beta, projectName);

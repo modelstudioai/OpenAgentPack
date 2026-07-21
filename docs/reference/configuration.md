@@ -241,11 +241,12 @@ agents:
     environment: <string>
     tunnel: <string>              # optional; Qoder BYOC tunnel name
     provider: <string>
-    tools: { builtin: [...], mcp: [...], permissions: {...} }
+    tools: { builtin: [...], default_permission: allow, mcp: [...], permissions: {...} }
     mcp_servers: [ { name, type?, url? } ]
     skills: [ <string> | { type, skill_id, version? } ]
     vault: <string>
     memory_stores: [ <string> ]
+    resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
     metadata: { <key>: <string> }
 ```
@@ -258,15 +259,37 @@ agents:
 | `tunnel` | string | no | Qoder BYOC tunnel name from `tunnels`; unsupported for other providers. |
 | `provider` | string | no | Pin the agent to one provider. |
 | `tools.builtin` | string[] | yes (in `tools`) | Lowercase tool names. |
-| `tools.permissions` | map<string,`"allow"`\|`"ask"`> | no | Per-tool permission policy. |
+| `tools.default_permission` | `"allow"` \| `"ask"` | no | Permission inherited by enabled builtins; defaults to `allow`. |
+| `tools.permissions` | map<string,`"allow"`\|`"ask"`> | no | Case- and separator-insensitive overrides for enabled builtins. Unknown and duplicate normalized names are rejected. |
 | `tools.mcp[]` | McpToolkitDecl[] | no | Select tools from an official MCP server. |
 | `mcp_servers[]` | `{ name, type?, url? }` | no | URL (`url`/`http`) or `official` MCP server. |
 | `skills[]` | string \| AgentSkillRef | no | Skill name or `{ type: "official"\|"custom", skill_id, version? }`. |
 | `vault` | string | no | Vault name. |
 | `memory_stores` | string[] | no | Bound memory stores. |
+| `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
 | `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
+
+### Session resources
+
+Qoder and Claude managed Sessions support a provider-neutral GitHub repository resource:
+
+```yaml
+agents:
+  reviewer:
+    # ...
+    resources:
+      - type: github_repository
+        url: https://github.com/acme/private-repo.git
+        authorization_token: ${GITHUB_TOKEN}
+        checkout: { branch: main } # or: { commit: <full-sha> }
+        mount_path: /data/workspace/private-repo # optional
+```
+
+Keep `authorization_token` in `.env`; never put its value directly in `agents.yaml`. Qoder mount paths must start with `/data/`. If the field is omitted for Qoder, OpenAgentPack sends `/data/workspace/<repo-name>` automatically; for the URL above that is `/data/workspace/private-repo`. Qoder requires this `/data` path for the repository mount to take effect. Other providers retain their own path semantics.
+
+Mount roots are provider invariants: Qoder uses `/data`, Claude uses `/workspace`, and Bailian and Ark use `/mnt`. A relative uploaded-file path is resolved under the target root. An explicit absolute path must already use the matching root and is passed through unchanged; OpenAgentPack rejects mismatched absolute paths instead of silently rewriting them. For GitHub Session resources, when the path is omitted Qoder derives `/data/workspace/<repo-name>` and Claude derives `/workspace/<repo-name>`.
 
 ### MCP toolkit (`tools.mcp[]`)
 
