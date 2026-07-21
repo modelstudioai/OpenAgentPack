@@ -46,7 +46,11 @@ describe("catalog accessors — locale wiring", () => {
 		const designer = cards.find((c) => c.id === "designer");
 		expect(designer?.title).toBe("Brand Web Designer");
 		expect(designer?.playbookTemplateId).toBe("designer");
-		// prompt is resolved via the locale chain and must never be blank.
-		expect(designer?.prompt).toBeTruthy();
+		expect(designer?.prompt).toBe(
+			"Build a product landing page with editorial black-and-white style and soft color story blocks.",
+		);
+
+		const artDesigner = cards.find((c) => c.id === "art-designer");
+		expect(artDesigner?.prompt).toBe("Generate a cyberpunk cat poster");
 	});
 });

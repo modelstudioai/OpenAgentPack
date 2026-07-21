@@ -7,12 +7,12 @@
 		},
 		"version": 3,
 		"metadata": {
-			"sample_prompt_zh": "帮我把这篇稿子润色一下，去掉AI味，读起来更自然顺畅。\n\n稿件：\n在当今数字化快速发展的时代，数据驱动决策已经成为企业不可忽视的核心能力。值得注意的是，数据不仅仅是数字的简单堆砌，更是战略规划的重要基石。首先，数据帮助企业洞察市场趋势；其次，数据优化运营效率；最后，数据提升客户体验。综上所述，数据驱动的意义深远而重大，必将影响未来的商业格局。",
 			"template_id": "editor",
 			"display_name_en": "Article Polish Editor",
-			"sample_prompt_en": "Please polish this draft to remove AI traces and make it read more naturally.\n\nDraft:\nIn today's era of rapid digital development, data-driven decision-making has become a core capability that enterprises cannot ignore. It is worth noting that data is not just a simple stacking of numbers, but an important cornerstone of strategic planning. First, data helps enterprises gain insights into market trends; second, data optimizes operational efficiency; finally, data improves customer experience. In summary, the significance of data-driven is profound and major, and will surely influence the future business landscape.",
 			"display_name_zh": "文章润色",
-			"avatar_url": "https://img.alicdn.com/imgextra/i1/O1CN01yCOy3D1yuidLMO8jU_!!6000000006639-2-tps-1728-2368.png"
+			"avatar_url": "https://img.alicdn.com/imgextra/i1/O1CN01yCOy3D1yuidLMO8jU_!!6000000006639-2-tps-1728-2368.png",
+			"sample_prompt_zh": "帮我把这篇稿子润色一下，去掉AI味，读起来更自然顺畅。",
+			"sample_prompt_en": "Please polish this draft to remove AI traces and make it read more naturally."
 		},
 		"tools": [
 			{
@@ -59,12 +59,12 @@
 		},
 		"version": 3,
 		"metadata": {
-			"sample_prompt_zh": "帮我们做一个产品落地页，黑白编辑风，带柔彩叙事区块。\n\n产品：OpenAgentPack —— 开源的 AI Agent 管理工具，帮开发者一键发布、版本管理和跨云迁移 Agent 配置。\n核心卖点：配置即代码可版本化；支持百炼/Claude/Qoder 多云；CLI 一键发布零运维。\n目标用户：AI 应用开发者。",
 			"template_id": "designer",
 			"display_name_en": "Brand Web Designer",
-			"sample_prompt_en": "Build a product landing page with editorial black-and-white style and soft color story blocks.\n\nProduct: OpenAgentPack — an open-source AI agent management tool for developers.\nKey features: config-as-code with versioning; multi-cloud (Bailian/Claude/Qoder); one-command CLI deploy with zero ops overhead.\nTarget users: AI application developers.",
 			"display_name_zh": "网页设计",
-			"avatar_url": "https://img.alicdn.com/imgextra/i1/O1CN018n83JF1E39za6CWbI_!!6000000000295-2-tps-1728-2368.png"
+			"avatar_url": "https://img.alicdn.com/imgextra/i1/O1CN018n83JF1E39za6CWbI_!!6000000000295-2-tps-1728-2368.png",
+			"sample_prompt_zh": "帮我们做一个产品落地页，黑白编辑风，带柔彩叙事区块。",
+			"sample_prompt_en": "Build a product landing page with editorial black-and-white style and soft color story blocks."
 		},
 		"tools": [
 			{
@@ -111,12 +111,12 @@
 		},
 		"version": 3,
 		"metadata": {
-			"sample_prompt_zh": "帮我把这些访谈记录和市场调研笔记整理成一份结构清晰的行业研究报告，要求结论先行、数据驱动。\n\n素材：\n- 访谈A（某电商技术总监）：今年 Q2 我们 AI 客服日均会话量从 8000 涨到 3.2 万，但人工坐席只从 15 人减到 11 人，ROI 不如预期。\n- 调研笔记：2024 年国内智能客服市场规模约 48 亿，同比 +23%；头部三家厂商市占率 62%，集中度上升。\n- 访谈B（SaaS 创始人）：客户最在意的不是多轮对话能力，而是工单首次解决率，我们做到 78% 后续约率明显下降。\n- 访谈C（零售 CIO）：上了大模型客服后，简单咨询自动化率 65%，但复杂售后仍需人工，整体满意度从 4.1 升到 4.3。",
 			"template_id": "researcher",
 			"display_name_en": "Industry Research Advisor",
-			"sample_prompt_en": "Help me organize these interview notes and market research materials into a well-structured industry research report with conclusion-first and data-driven insights.\n\nMaterials:\n- Interview A (e-commerce tech director): Our AI customer service daily conversations grew from 8,000 to 32,000 in Q2, but human agents only dropped from 15 to 11 — ROI below expectations.\n- Research note: China's smart customer service market reached ~4.8B RMB in 2024, +23% YoY; top 3 vendors hold 62% market share, concentration rising.\n- Interview B (SaaS founder): Customers care less about multi-turn dialogue than first-contact resolution rate; once we hit 78%, renewal rates dropped noticeably.\n- Interview C (retail CIO): After adopting LLM customer service, simple inquiry automation hit 65%, but complex after-sales still need humans; overall satisfaction rose from 4.1 to 4.3.",
 			"display_name_zh": "研究报告",
-			"avatar_url": "https://img.alicdn.com/imgextra/i2/O1CN01Gl4Bgl29fZIzVntMJ_!!6000000008095-2-tps-1728-2368.png"
+			"avatar_url": "https://img.alicdn.com/imgextra/i2/O1CN01Gl4Bgl29fZIzVntMJ_!!6000000008095-2-tps-1728-2368.png",
+			"sample_prompt_zh": "帮我把这些访谈记录和市场调研笔记整理成一份结构清晰的行业研究报告，要求结论先行、数据驱动。",
+			"sample_prompt_en": "Help me organize these interview notes and market research materials into a well-structured industry research report with conclusion-first and data-driven insights."
 		},
 		"tools": [
 			{
