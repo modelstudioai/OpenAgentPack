@@ -65,6 +65,14 @@ export default function TopBar({
 						>
 							资源中心
 						</button>
+						<button
+							className={`pill-control${view === "schedule" ? " active" : ""}`}
+							type="button"
+							aria-current={view === "schedule" ? "page" : undefined}
+							onClick={() => onNavigate("schedule")}
+						>
+							定时
+						</button>
 					</>
 				) : null}
 				{showSettings ? (

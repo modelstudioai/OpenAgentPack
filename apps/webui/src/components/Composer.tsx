@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { usePromptEditor } from "@/components/prompt-editor/PromptEditorProvider";
 import type { UiModel } from "@/lib/domain/model-api";
 import type { RoleCard } from "@/lib/playbooks/types";
+import type { SchedulePreset } from "@/lib/schedule";
 import {
 	AttachFilesButton,
 	ComposerFeeNotice,
@@ -11,6 +12,7 @@ import {
 	useFilePickerModal,
 } from "./ComposerInputShared";
 import ModelSelector from "./ModelSelector";
+import ScheduleButton from "./ScheduleButton";
 import TaskBox from "./TaskBox";
 import TaskRuntime from "./TaskRuntime";
 import { useSubmitTask } from "./useSubmitTask";
@@ -30,6 +32,7 @@ interface ComposerProps {
 	models: UiModel[];
 	onModelChange: (modelId: string) => void;
 	onMakeSame?: (input: { prompt: string; agentId?: string }) => void;
+	onOpenSchedule?: (preset?: SchedulePreset) => void;
 	canSubmit?: boolean;
 	ref?: React.Ref<ComposerHandle>;
 }
@@ -44,6 +47,7 @@ export default function Composer({
 	models,
 	onModelChange,
 	onMakeSame,
+	onOpenSchedule,
 	canSubmit = true,
 	ref,
 }: ComposerProps) {
@@ -136,6 +140,7 @@ export default function Composer({
 						<div className="composer-footer">
 							<div className="tool-buttons">
 								<AttachFilesButton onClick={openPicker} />
+								<ScheduleButton onOpenSchedule={onOpenSchedule} />
 							</div>
 							<div className="mode-buttons">
 								<ModelSelector models={models} value={model} onChange={onModelChange} />

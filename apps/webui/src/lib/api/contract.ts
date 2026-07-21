@@ -216,6 +216,27 @@ export type SaveAgentsConfigOptions = { body: AgentsConfig };
 
 export type AgentsConfigReady = { ready: boolean; provider?: AgentsConfigProvider };
 
+export type ManagedDeployment = {
+	id: string;
+	name: string;
+	playbookId: string;
+	provider: string;
+	prompt: string;
+	schedule: { expression: string; timezone: string };
+	status: string;
+	remoteId: string | null;
+};
+export type CreateDeploymentOptions = {
+	body: { name: string; playbookId: string; prompt: string; expression: string; timezone: string };
+};
+export type DeploymentPathOptions = { path: { id: string } };
+export type SetDeploymentPausedOptions = DeploymentPathOptions & { body: { paused: boolean } };
+export type ManagedDeploymentRun = {
+	name: string;
+	provider: string;
+	result: { run_id?: string; session_id: string | null; error?: { type: string; message: string } };
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API surface — the REST transport contract. All calls converge on the
 // snake_case @openagentpack/sdk data model. Some operations fan out to >1 call
@@ -303,4 +324,9 @@ export interface ApiTransport {
 	getConfig(): Promise<ApiResult<AgentsConfigSnapshot>>;
 	getConfigReady(): Promise<ApiResult<AgentsConfigReady>>;
 	saveConfig(options: SaveAgentsConfigOptions): Promise<ApiResult<AgentsConfig>>;
+	listDeployments(): Promise<ApiResult<{ deployments: ManagedDeployment[] }>>;
+	createDeployment(options: CreateDeploymentOptions): Promise<ApiResult<ManagedDeployment>>;
+	setDeploymentPaused(options: SetDeploymentPausedOptions): Promise<ApiResult<void>>;
+	runDeployment(options: DeploymentPathOptions): Promise<ApiResult<ManagedDeploymentRun>>;
+	deleteDeployment(options: DeploymentPathOptions): Promise<ApiResult<void>>;
 }
