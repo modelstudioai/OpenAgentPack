@@ -16,8 +16,8 @@ export type AgentRuntimeInput = ServerRuntimeInput & {
  * BackendRuntimeInput that core's scoped entries
  * (readProjectRuntime / writeProjectRuntime) consume directly.
  */
-export async function loadServerRuntimeConfig(): Promise<ServerRuntimeInput> {
-	const { configPath, projectName, config } = await buildRuntimeConfig();
+export async function loadServerRuntimeConfig(providerOverride?: string): Promise<ServerRuntimeInput> {
+	const { configPath, projectName, config } = await buildRuntimeConfig(providerOverride);
 	const stateScope = deriveWebUiStateScope();
 	const stateBackend = createWebUiStateBackend();
 	const statePath = stateBackend.getStatePath(stateScope);
@@ -37,8 +37,12 @@ export async function loadServerRuntimeConfig(): Promise<ServerRuntimeInput> {
  * and keep the scoped backend. Consumed by the *WithStateBackend plan/sync flows.
  * A `modelOverride` recompiles the agent decl with a switched model so a sync applies it.
  */
-export async function loadAgentRuntimeInput(agentId: string, modelOverride?: string): Promise<AgentRuntimeInput> {
-	const base = await loadServerRuntimeConfig();
+export async function loadAgentRuntimeInput(
+	agentId: string,
+	modelOverride?: string,
+	providerOverride?: string,
+): Promise<AgentRuntimeInput> {
+	const base = await loadServerRuntimeConfig(providerOverride);
 	const compiled = compileAgentRuntime(agentId, base.config, modelOverride);
 	return {
 		...base,
@@ -47,6 +51,11 @@ export async function loadAgentRuntimeInput(agentId: string, modelOverride?: str
 		agentId: compiled.agentId,
 		compiled,
 	};
+}
+
+/** Build a runtime input whose config contains a compiled playbook plus caller-owned resources. */
+export async function loadCompiledRuntimeInput(agentId: string, provider?: string): Promise<AgentRuntimeInput> {
+	return loadAgentRuntimeInput(agentId, undefined, provider);
 }
 
 /**

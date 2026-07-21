@@ -23,8 +23,8 @@ export function resolveRuntimeProvider(): string {
  * resolved from env via the SDK's central provider→env mapping so the var list lives in
  * one place (the registry) rather than being duplicated here.
  */
-export async function buildRuntimeConfig(): Promise<LoadedProjectConfig> {
-	const provider = resolveRuntimeProvider();
+export async function buildRuntimeConfig(providerOverride?: string): Promise<LoadedProjectConfig> {
+	const provider = providerOverride?.trim() || resolveRuntimeProvider();
 	const providerConfig = resolveProviderConfigFromEnv(provider);
 
 	const environment = getEnvironmentProfile(provider);

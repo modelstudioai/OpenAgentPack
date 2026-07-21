@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { jsonError } from "@/lib/http-error";
 import { agentsRoute } from "@/routes/agents";
 import { configRoute } from "@/routes/config";
+import { deploymentsRoute } from "@/routes/deployments";
 import { environmentsRoute } from "@/routes/environments";
 import { filesRoute } from "@/routes/files";
 import { modelsRoute } from "@/routes/models";
@@ -25,6 +26,7 @@ app.use(
 
 // Routes
 app.route("/api", configRoute);
+app.route("/api", deploymentsRoute);
 app.route("/api", agentsRoute);
 app.route("/api", environmentsRoute);
 app.route("/api", vaultsRoute);
