@@ -11,6 +11,8 @@ import type { SessionEventType } from "../../types/dto.ts";
 import type { ManagedSessionBindings } from "../../types/session.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
+import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
+import { permissionOverridesFromWire, resolveBuiltinTools, toPermissionPolicy } from "../../utils/tool-permissions.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { normalizeWireResourceName } from "../resource-naming.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
@@ -111,6 +113,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	const multiagent = raw.multiagent as Record<string, unknown> | undefined;
 
 	let builtinTools: string[] | undefined;
+	let builtinPermissions: Record<string, "allow" | "ask"> | undefined;
 	let allToolsEnabled = false;
 	if (tools?.length) {
 		const toolset = tools.find((t) => t.type === "agent_toolset_20260701");
@@ -119,9 +122,11 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 			const configs = (toolset.configs ?? []) as Array<{
 				name: string;
 				enabled?: boolean;
+				permission_policy?: unknown;
 			}>;
 			if (configs.length > 0) {
 				builtinTools = configs.filter((c) => c.enabled !== false).map((c) => c.name);
+				builtinPermissions = permissionOverridesFromWire(configs);
 			} else if (defaultConfig?.enabled) {
 				allToolsEnabled = true;
 			}
@@ -158,7 +163,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 
 	let toolsDecl: Record<string, unknown> | undefined;
 	if (builtinTools?.length) {
-		toolsDecl = { builtin: builtinTools };
+		toolsDecl = { builtin: builtinTools, permissions: builtinPermissions };
 	} else if (allToolsEnabled) {
 		toolsDecl = {
 			builtin: ["read", "write", "edit", "bash", "glob", "grep", "web_search", "web_fetch"],
@@ -237,18 +242,11 @@ export function mapAgent(
 
 	// Tools
 	if (decl.tools) {
-		const toolConfigs = decl.tools.builtin
-			.filter((toolName) => ARK_BUILTINS.has(toolName))
-			.map((toolName) => {
-				const permission = decl.tools?.permissions?.[toolName] ?? "allow";
-				return {
-					name: toolName,
-					enabled: true,
-					permission_policy: {
-						type: permission === "ask" ? "always_ask" : "always_allow",
-					},
-				};
-			});
+		const toolConfigs = resolveBuiltinTools(decl.tools, { supportedWireNames: ARK_BUILTINS }).map((tool) => ({
+			name: tool.wireName,
+			enabled: true,
+			permission_policy: toPermissionPolicy(tool.permission),
+		}));
 		body.tools = [
 			{
 				type: "agent_toolset_20260701",
@@ -437,7 +435,7 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 		resources.push({
 			type: "file",
 			file_id: f.file_id,
-			mount_path: f.mount_path,
+			mount_path: resolveSandboxMountPath("ark", f.mount_path),
 		});
 	if (resources.length) body.resources = resources;
 

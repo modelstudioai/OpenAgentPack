@@ -190,6 +190,18 @@ agents:
 | `allow` | 自动允许，Agent 使用时无需人工确认 |
 | `ask` | 每次使用前需要人工确认 |
 
+`tools.default_permission` 控制所有已启用内置工具的默认权限，省略时为 `allow`。
+`permissions` 只覆盖其中明确列出的工具；工具名匹配不区分大小写和分隔符，
+例如 `WebSearch` 与 `web_search` 等价。引用未在 `tools.builtin` 中启用的工具会在校验时报错。
+
+```yaml
+tools:
+  builtin: [Read, Bash, WebSearch]
+  default_permission: allow
+  permissions:
+    bash: ask
+```
+
 ## Drift Detection 与 Refresh
 
 `plan` 和 `apply` 默认会先刷新远端状态。对于支持完整 drift detection 的资源，OpenAgentPack 会读取远端可比较内容；如果有人绕过 OpenAgentPack 在控制台或 API 中修改了资源，`plan` 会显示 `Remote drift detected`。
@@ -517,7 +529,9 @@ Deployment 运行时可挂载的资源：
 |---------|------|------|
 | `file` | `file_id` / `source` / `mount_path` | 文件资源；`file_id` 引用已上传文件；`source` 为本地路径，Qoder 和 Claude 在 `apply` 时上传 |
 | `memory_store` | `memory_store` / `access` / `instructions` | 引用 Memory Store；`access` 为 `read_write`（默认）或 `read_only` |
-| `github_repository` | `url` / `checkout` / `mount_path` / `authorization_token` | 检出 Git 仓库（Qoder 和 Claude） |
+| `github_repository` | `url` / `checkout` / `mount_path` / `authorization_token` | 检出 Git 仓库（Qoder 和 Claude）。Qoder 的挂载路径必须以 `/data/` 开头；省略时自动传递 `/data/workspace/<仓库名>` |
+
+各 Provider 的挂载根目录是固定约束：Qoder 为 `/data`，Claude 为 `/workspace`，百炼和 Ark 为 `/mnt`。上传文件使用相对路径时，OpenAgentPack 会在目标 Provider 的根目录下解析；显式绝对路径必须已经位于对应根目录，并保持原样传递，前缀不匹配时直接报错，不做静默改写。GitHub Session 资源省略 `mount_path` 时，Qoder 自动使用 `/data/workspace/<仓库名>`，Claude 自动使用 `/workspace/<仓库名>`。
 
 ### 运行与查看
 

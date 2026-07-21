@@ -183,7 +183,7 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 				enabled: true,
 				permission_policy: { type: "always_ask" },
 			},
-			{ name: "Read", enabled: true },
+			{ name: "Read", enabled: true, permission_policy: { type: "always_allow" } },
 		]);
 	});
 
@@ -344,6 +344,18 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 });
 
 describe("Forward delivery validation and runtime isolation", () => {
+	test("rejects Agent session resources because Forward sessions cannot attach them", () => {
+		const config = forwardConfig();
+		config.agents!.assistant!.resources = [
+			{
+				type: "github_repository",
+				url: "https://github.com/acme/repo.git",
+				authorization_token: "secret",
+			},
+		];
+		const state = StateManager.initialize(tmpPath("forward-session-resources"));
+		expect(() => buildSessionBindings("assistant", config, "qoder", state)).toThrow(/managed delivery/);
+	});
 	test("rejects forward delivery on providers without the capability", () => {
 		const config = forwardConfig();
 		config.providers = { bailian: {} };

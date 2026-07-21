@@ -15,16 +15,16 @@ function bindings(overrides: Partial<SessionBindings> = {}): SessionBindings {
 }
 
 describe("qoder mapSession file resources", () => {
-	test("uploaded file mount_path is rewritten to /data/<basename>", () => {
-		const body = mapSession(bindings({ files: [{ file_id: "f1", mount_path: "/uploads/report.pdf" }] })) as {
+	test("uploaded file mount_path is prefixed with /data", () => {
+		const body = mapSession(bindings({ files: [{ file_id: "f1", mount_path: "uploads/report.pdf" }] })) as {
 			resources?: { type: string; file_id: string; mount_path: string }[];
 		};
 		const file = body.resources?.find((r) => r.type === "file");
-		expect(file?.mount_path).toBe("/data/report.pdf");
+		expect(file?.mount_path).toBe("/data/uploads/report.pdf");
 	});
 
 	test("mapper and resolveSandboxMountPath agree (single source of truth)", () => {
-		const sent = "/uploads/nested/x.txt";
+		const sent = "uploads/nested/x.txt";
 		const body = mapSession(bindings({ files: [{ file_id: "f1", mount_path: sent }] })) as {
 			resources?: { type: string; mount_path: string }[];
 		};

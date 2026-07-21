@@ -7,6 +7,7 @@ registerProvider({
 	name: "qoder",
 	configSchema: qoderConfigSchema,
 	capabilities: QODER_CAPABILITIES,
+	features: { tool_permissions: true, session_resources: ["github_repository"] },
 	createAdapter: (config, projectName) => {
 		const c = config as QoderConfig;
 		return new QoderAdapter(c.api_key, c.gateway, projectName, c.forward_gateway);

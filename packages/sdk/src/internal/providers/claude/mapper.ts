@@ -11,13 +11,21 @@ import type { SessionEventType } from "../../types/dto.ts";
 import type { ManagedSessionBindings } from "../../types/session.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
+import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
+import { permissionOverridesFromWire, resolveBuiltinTools, toPermissionPolicy } from "../../utils/tool-permissions.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
+import { mapGithubRepositorySessionResource, resolveGithubRepositoryMountPath } from "../session-resource-mapper.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
 
 // Claude's builtin tool vocabulary. Generic/bailian-native tool names not in this set
 // (e.g. `download_file`, which has no Claude equivalent) are dropped on the write path
 // rather than forwarded — the API rejects unknown tool names.
 const CLAUDE_BUILTINS = new Set(["read", "write", "edit", "bash", "glob", "grep", "web_search", "web_fetch"]);
+
+/** Claude rejects the otherwise-valid GitHub clone URL form ending in `.git`. */
+export function normalizeGithubRepositoryUrlForClaude(url: string): string {
+	return url.replace(/\.git\/?$/, "");
+}
 
 // --- Reverse mapping (remote -> agents.yaml decl), used by `agents sync` ---
 
@@ -119,6 +127,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 
 	// Reverse-map tools: extract builtin names from agent_toolset_20260401 configs
 	let builtinTools: string[] | undefined;
+	let builtinPermissions: Record<string, "allow" | "ask"> | undefined;
 	let allToolsEnabled = false;
 	if (tools?.length) {
 		const toolset = tools.find((t) => t.type === "agent_toolset_20260401");
@@ -127,9 +136,11 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 			const configs = (toolset.configs ?? []) as Array<{
 				name: string;
 				enabled?: boolean;
+				permission_policy?: unknown;
 			}>;
 			if (configs.length > 0) {
 				builtinTools = configs.filter((c) => c.enabled !== false).map((c) => c.name);
+				builtinPermissions = permissionOverridesFromWire(configs);
 			} else if (defaultConfig?.enabled) {
 				// All tools enabled by default, no specific configs listed
 				allToolsEnabled = true;
@@ -165,7 +176,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	// Resolve tools declaration
 	let toolsDecl: Record<string, unknown> | undefined;
 	if (builtinTools?.length) {
-		toolsDecl = { builtin: builtinTools };
+		toolsDecl = { builtin: builtinTools, permissions: builtinPermissions };
 	} else if (allToolsEnabled) {
 		toolsDecl = {
 			builtin: ["read", "write", "edit", "bash", "glob", "grep", "web_search", "web_fetch"],
@@ -239,18 +250,11 @@ export function mapAgent(
 
 	// Tools
 	if (decl.tools) {
-		const toolConfigs = decl.tools.builtin
-			.filter((toolName) => CLAUDE_BUILTINS.has(toolName))
-			.map((toolName) => {
-				const permission = decl.tools?.permissions?.[toolName] ?? "allow";
-				return {
-					name: toolName,
-					enabled: true,
-					permission_policy: {
-						type: permission === "ask" ? "always_ask" : "always_allow",
-					},
-				};
-			});
+		const toolConfigs = resolveBuiltinTools(decl.tools, { supportedWireNames: CLAUDE_BUILTINS }).map((tool) => ({
+			name: tool.wireName,
+			enabled: true,
+			permission_policy: toPermissionPolicy(tool.permission),
+		}));
 		body.tools = [
 			{
 				type: "agent_toolset_20260401",
@@ -379,7 +383,7 @@ function mapDeploymentResources(
 		} else if (r.type === "github_repository") {
 			const entry: Record<string, unknown> = {
 				type: "github_repository",
-				url: r.url,
+				url: normalizeGithubRepositoryUrlForClaude(r.url),
 			};
 			if (r.authorization_token) entry.authorization_token = r.authorization_token;
 			if (r.checkout?.branch) {
@@ -532,8 +536,16 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 		resources.push({
 			type: "file",
 			file_id: f.file_id,
-			mount_path: f.mount_path,
+			mount_path: resolveSandboxMountPath("claude", f.mount_path),
 		});
+	for (const resource of bindings.resources ?? []) {
+		resources.push(
+			mapGithubRepositorySessionResource(resource, {
+				mapUrl: normalizeGithubRepositoryUrlForClaude,
+				mapMountPath: (item) => resolveGithubRepositoryMountPath("claude", item),
+			}),
+		);
+	}
 	if (resources.length) body.resources = resources;
 
 	return body;

@@ -91,6 +91,11 @@ for (const providerDef of conformingProviders) {
 			}
 		});
 
+		test("fine-grained provider features are declared", () => {
+			expect(typeof providerDef.features.tool_permissions).toBe("boolean");
+			expect(Array.isArray(providerDef.features.session_resources)).toBe(true);
+		});
+
 		for (const kind of ALL_RESOURCE_KINDS) {
 			const mapping = RESOURCE_KIND_METHODS[kind];
 			if (mapping.skip) continue;

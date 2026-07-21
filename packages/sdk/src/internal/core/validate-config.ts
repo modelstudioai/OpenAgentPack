@@ -9,6 +9,7 @@ import { getProvider } from "../providers/registry.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
+import { providerMountPrefix } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
 
 export interface ValidateProjectConfigOptions {
@@ -226,6 +227,50 @@ export function collectProviderCapabilities(
 		for (const [name, agent] of Object.entries(config.agents ?? {})) {
 			if (agent.provider && agent.provider !== providerName) continue;
 			const delivery = agent.delivery?.[providerName]?.type ?? "managed";
+			const address: ResourceAddress = {
+				type: delivery === "forward" ? "template" : "agent",
+				name,
+				provider: providerName,
+			};
+			const asksForApproval =
+				agent.tools?.default_permission === "ask" ||
+				Object.values(agent.tools?.permissions ?? {}).some((permission) => permission === "ask");
+			if (asksForApproval && !def.features.tool_permissions) {
+				diagnostics.error(
+					`${providerName}.agent.tool_permissions.unsupported`,
+					`agent.${name}: provider '${providerName}' cannot enforce interactive tool permission 'ask'.`,
+					address,
+				);
+			}
+			for (const resource of agent.resources ?? []) {
+				if (!def.features.session_resources.includes(resource.type)) {
+					diagnostics.error(
+						`${providerName}.agent.session_resource.${resource.type}.unsupported`,
+						`agent.${name}: provider '${providerName}' does not support Session resource type '${resource.type}'.`,
+						address,
+					);
+				}
+				const mountPrefix = providerMountPrefix(providerName);
+				if (
+					mountPrefix &&
+					resource.mount_path &&
+					resource.mount_path !== mountPrefix &&
+					!resource.mount_path.startsWith(`${mountPrefix}/`)
+				) {
+					diagnostics.error(
+						`${providerName}.agent.session_resource.mount_path.invalid`,
+						`agent.${name}: ${providerName} Session resource mount_path must start with '${mountPrefix}/'.`,
+						address,
+					);
+				}
+			}
+			if (delivery === "forward" && agent.resources?.length) {
+				diagnostics.error(
+					`${providerName}.template.session_resources.unsupported`,
+					`agent.${name}: Forward delivery cannot attach Agent Session resources; use managed delivery.`,
+					address,
+				);
+			}
 			if (delivery === "forward" && !isSupported(caps, "template")) {
 				diagnostics.error(
 					`${providerName}.agent.delivery.forward.unsupported`,

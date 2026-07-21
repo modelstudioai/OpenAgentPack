@@ -7,6 +7,7 @@ registerProvider({
 	name: "ark",
 	configSchema: arkConfigSchema,
 	capabilities: ARK_CAPABILITIES,
+	features: { tool_permissions: true, session_resources: [] },
 	createAdapter: (config, projectName) => {
 		const c = config as ArkConfig;
 		return new ArkAdapter(c.api_key, projectName);

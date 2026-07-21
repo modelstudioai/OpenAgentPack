@@ -1,0 +1,32 @@
+version: "1"
+
+providers:
+  claude:
+    api_key: ${ANTHROPIC_API_KEY}
+
+defaults:
+  provider: claude
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  repository-reader:
+    description: "Read a private GitHub repository in a Claude managed Session"
+    model: claude-sonnet-4-6
+    instructions: |
+      Inspect the mounted repository without modifying it. Report the current
+      branch, latest commit, and top-level files.
+    environment: dev
+    tools:
+      builtin: [read, glob, grep, bash]
+      default_permission: allow
+    resources:
+      - type: github_repository
+        url: ${GITHUB_REPOSITORY_URL}
+        authorization_token: ${GITHUB_TOKEN}
+        mount_path: /workspace/repository

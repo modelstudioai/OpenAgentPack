@@ -14,7 +14,9 @@ import type { ManagedSessionBindings } from "../../types/session.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
+import { permissionOverridesFromWire, resolveBuiltinTools, toPermissionPolicy } from "../../utils/tool-permissions.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs, ResolvedTemplateRefs } from "../interface.ts";
+import { mapGithubRepositorySessionResource, resolveGithubRepositoryMountPath } from "../session-resource-mapper.ts";
 import { injectMetadata, secretPlaceholder, slug } from "../sync-mapping.ts";
 
 // Qoder's API expects builtin tool names in PascalCase. The configuration layer
@@ -179,13 +181,19 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	// Reverse-map tools: extract builtin names from agent_toolset_20260401 and
 	// normalize API-side PascalCase names back to the snake_case configuration names.
 	let builtinTools: string[] | undefined;
+	let builtinPermissions: Record<string, "allow" | "ask"> | undefined;
 	if (tools?.length) {
 		const toolset = tools.find((t) => t.type === "agent_toolset_20260401");
 		if (toolset && Array.isArray(toolset.enabled_tools)) {
 			builtinTools = (toolset.enabled_tools as string[]).map((t) => normalizeToolNameFromQoder(t));
 		} else if (toolset) {
-			const configs = (toolset.configs ?? []) as Array<{ name: string; enabled?: boolean }>;
+			const configs = (toolset.configs ?? []) as Array<{
+				name: string;
+				enabled?: boolean;
+				permission_policy?: unknown;
+			}>;
 			builtinTools = configs.filter((c) => c.enabled !== false).map((c) => normalizeToolNameFromQoder(c.name));
+			builtinPermissions = permissionOverridesFromWire(configs, normalizeToolNameFromQoder);
 		}
 	}
 
@@ -212,7 +220,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 		description: raw.description as string | undefined,
 		model: raw.model,
 		instructions: raw.system as string | undefined,
-		tools: builtinTools?.length ? { builtin: builtinTools } : undefined,
+		tools: builtinTools?.length ? { builtin: builtinTools, permissions: builtinPermissions } : undefined,
 		mcp_servers: mcpServerDecls,
 		skills: skillDecls,
 		metadata: stripAgentsMetadata(raw.metadata),
@@ -365,11 +373,14 @@ export function mapAgent(
 	}
 
 	if (decl.tools) {
-		const enabledTools = decl.tools.builtin.map((t) => normalizeToolNameForQoder(t));
 		body.tools = [
 			{
 				type: "agent_toolset_20260401",
-				enabled_tools: enabledTools,
+				configs: resolveBuiltinTools(decl.tools, { toWireName: normalizeToolNameForQoder }).map((tool) => ({
+					name: tool.wireName,
+					enabled: true,
+					permission_policy: toPermissionPolicy(tool.permission),
+				})),
 			},
 		];
 	} else {
@@ -441,19 +452,14 @@ export function mapForwardTemplate(
 	else body.metadata = decl.metadata ?? {};
 
 	if (decl.tools) {
-		const permissions = decl.tools.permissions ?? {};
 		body.tools = [
 			{
 				type: "agent_toolset_20260401",
-				configs: decl.tools.builtin.map((tool) => {
-					const normalized = normalizeToolNameForQoder(tool);
-					const policy = permissions[tool] ?? permissions[tool.toLowerCase()] ?? permissions[normalized];
-					return {
-						name: normalized,
-						enabled: true,
-						...(policy ? { permission_policy: { type: policy === "ask" ? "always_ask" : "always_allow" } } : {}),
-					};
-				}),
+				configs: resolveBuiltinTools(decl.tools, { toWireName: normalizeToolNameForQoder }).map((tool) => ({
+					name: tool.wireName,
+					enabled: true,
+					permission_policy: toPermissionPolicy(tool.permission),
+				})),
 			},
 		];
 	} else {
@@ -617,6 +623,13 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 	for (const id of bindings.memory_store_ids) resources.push({ type: "memory_store", memory_store_id: id });
 	for (const f of bindings.files ?? [])
 		resources.push({ type: "file", file_id: f.file_id, mount_path: resolveSandboxMountPath("qoder", f.mount_path) });
+	for (const resource of bindings.resources ?? []) {
+		resources.push(
+			mapGithubRepositorySessionResource(resource, {
+				mapMountPath: (item) => resolveGithubRepositoryMountPath("qoder", item),
+			}),
+		);
+	}
 	if (resources.length) body.resources = resources;
 
 	return body;

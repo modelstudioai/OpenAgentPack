@@ -22,6 +22,12 @@ export interface CapabilityEntry {
 
 export type ProviderCapabilities = Record<ResourceKind, CapabilityEntry>;
 
+/** Fine-grained behavior nested inside resource kinds, used for early config validation. */
+export interface ProviderFeatures {
+	tool_permissions: boolean;
+	session_resources: readonly "github_repository"[];
+}
+
 /**
  * The lowest supported/unsupported decision, derived from the capability matrix.
  * A kind is supported when its tier is `native` or `emulated`. This is the single
