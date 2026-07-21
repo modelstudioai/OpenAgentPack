@@ -5280,7 +5280,6 @@ dialog.case-modal-overlay {
 	width: 100%;
 	height: 240px;
 	border: 0;
-	pointer-events: none;
 }
 
 /* ── Lightbox (fullscreen media preview) ── */
