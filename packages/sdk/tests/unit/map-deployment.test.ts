@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { mapDeploymentToSession as mapBailianDeploymentToSession } from "../../src/internal/providers/bailian/mapper.ts";
-import { mapDeployment } from "../../src/internal/providers/claude/mapper.ts";
+import { mapDeployment, mapDeploymentUpdate } from "../../src/internal/providers/claude/mapper.ts";
 import type { ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
 import {
 	mapDeploymentToSession,
 	mapDeployment as mapQoderDeployment,
+	mapDeploymentUpdate as mapQoderDeploymentUpdate,
 } from "../../src/internal/providers/qoder/mapper.ts";
 import type { DeploymentDecl } from "../../src/internal/types/config.ts";
 
@@ -258,6 +259,42 @@ describe("Qoder mapDeployment", () => {
 		expect(body.schedule).toEqual({ type: "cron", expression: "0 9 * * *", timezone: "Asia/Shanghai" });
 		expect(body.vault_ids).toEqual(["vault_a"]);
 		expect(body.metadata).toEqual({ "agents.project": "myproj", "agents.resource": "daily-report" });
+	});
+
+	test("create carries environment variables and update explicitly clears removed fields", () => {
+		const configured = mapQoderDeployment(
+			"d",
+			{ agent: "x", initial_events: [{ type: "user.message", content: "run" }], environment_variables: "B=2;A=1" },
+			minimalRefs(),
+		) as Record<string, unknown>;
+		expect(configured.environment_variables).toBe("B=2;A=1");
+
+		const update = mapQoderDeploymentUpdate(
+			"d",
+			{ agent: "x", initial_events: [{ type: "user.message", content: "run" }] },
+			minimalRefs(),
+			undefined,
+			undefined,
+			{ stale: "value" },
+		) as Record<string, unknown>;
+		expect(update).toMatchObject({
+			vault_ids: [],
+			resources: [],
+			description: "",
+			environment_variables: null,
+			metadata: { stale: null },
+		});
+		expect(update.schedule).toBeUndefined();
+	});
+
+	test("Claude update explicitly clears removed optional fields", () => {
+		const update = mapDeploymentUpdate(
+			"d",
+			{ agent: "x", initial_events: [{ type: "user.message", content: "run" }] },
+			minimalRefs(),
+		) as Record<string, unknown>;
+		expect(update).toMatchObject({ vault_ids: [], resources: [], description: "" });
+		expect(update.schedule).toBeUndefined();
 	});
 });
 

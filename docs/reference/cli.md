@@ -120,7 +120,10 @@ Manage scheduled / triggered deployments.
 | Subcommand | Description |
 |------------|-------------|
 | `deployment list` | List deployments tracked in state. |
+| `deployment list --remote --provider <provider>` | List deployments from a native provider API; supports status, agent, archive, limit, and pagination filters. |
 | `deployment get <name>` | Show a deployment's status and resolved bindings. |
+| `deployment pause <name>` | Pause scheduled runs for a native deployment. |
+| `deployment unpause <name>` | Resume a paused native deployment. |
 | `deployment run <name>` | Trigger a deployment run (native on Qoder/Claude, emulated as a session on Bailian/Volcengine Ark). |
 
 ## `agents memory-store`

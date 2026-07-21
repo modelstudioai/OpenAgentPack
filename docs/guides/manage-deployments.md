@@ -58,9 +58,14 @@ A `file` with a local `source` is uploaded during `apply` (Files API) and the re
 
 ```bash
 agents deployment list                  # deployments tracked in state
+agents deployment list --remote --provider qoder --all
 agents deployment get <name>            # status + resolved bindings
+agents deployment pause <name>          # stop scheduled runs (native providers)
+agents deployment unpause <name>        # resume scheduled runs (native providers)
 agents deployment run <name>            # trigger a run
 ```
+
+Qoder deployments may also declare `environment_variables` as a semicolon- or newline-separated `KEY=VALUE` string. Qoder copies these variables into every Session created by that deployment; Claude does not support this extension.
 
 ## Native vs. emulated
 
