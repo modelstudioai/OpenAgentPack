@@ -1,9 +1,11 @@
-import { Download, ExternalLink, FileText, Loader2, Play } from "lucide-react";
+import { Code, Download, ExternalLink, FileText, Loader2, Play } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 import { useArtifactAccess } from "@/lib/artifact-access-context";
 import { artifactDisplayName } from "@/lib/artifact-file-name";
 import { getFileDownloadUrl } from "@/lib/domain/file-api";
-import type { Artifact, ArtifactSegment, DeliveredFile } from "@/lib/view/artifact";
+import { openHtmlArtifactInNewWindow } from "@/lib/hooks/useHtmlArtifactPreview";
+import type { Artifact, ArtifactSegment, DeliveredFile, DocumentSegment } from "@/lib/view/artifact";
+import { documentTypeLabel, resolveDocumentContent } from "@/lib/view/artifact";
 import { Lightbox } from "../Lightbox";
 
 function formatBytes(bytes?: number): string {
@@ -154,6 +156,29 @@ function InlineDeliveredFileCard({ file }: { file: DeliveredFile }) {
 	);
 }
 
+function InlineDocumentCard({ segment }: { segment: DocumentSegment }) {
+	const title = segment.title ?? documentTypeLabel(segment.mimeType);
+	const srcDoc = resolveDocumentContent(segment);
+	const openNew = (e: MouseEvent) => {
+		e.preventDefault();
+		void openHtmlArtifactInNewWindow("", srcDoc);
+	};
+
+	return (
+		<div className="inline-document-card">
+			<div className="inline-document-bar">
+				<Code size={14} />
+				<span className="inline-document-title">{title}</span>
+				<button type="button" className="inline-document-btn" onClick={openNew}>
+					<ExternalLink size={13} />
+					新窗口
+				</button>
+			</div>
+			<iframe className="inline-document-frame" srcDoc={srcDoc} title={title} sandbox="allow-scripts" />
+		</div>
+	);
+}
+
 // ---------------------------------------------------------------------------
 // 主组件
 // ---------------------------------------------------------------------------
@@ -213,6 +238,10 @@ export function InlineArtifactCard({ segments }: InlineArtifactCardProps) {
 						}
 					case "delivered_file":
 						return <InlineDeliveredFileCard key={segment.file.file_id} file={segment.file} />;
+					case "document":
+						return (
+							<InlineDocumentCard key={`doc:${segment.mimeType}:${segment.content.slice(0, 64)}`} segment={segment} />
+						);
 					case "text":
 						// 纯文本已在 assistant 消息气泡中渲染，不再重复
 						return null;

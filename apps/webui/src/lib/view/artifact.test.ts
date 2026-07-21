@@ -3,9 +3,11 @@ import type { SessionEvent } from "@openagentpack/sdk";
 import {
 	classifyUrl,
 	collectDeliveredFiles,
+	documentTypeLabel,
 	extractArtifacts,
 	lastAssistantText,
 	preferInlineMarkdownPreview,
+	resolveDocumentContent,
 } from "./artifact";
 
 function deliveredEvent(artifact: Record<string, unknown>): SessionEvent {
@@ -309,5 +311,158 @@ describe("collectDeliveredFiles", () => {
 				deliveredEvent({ filename: "no-id.html" }),
 			]),
 		).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Document segment extraction
+// ---------------------------------------------------------------------------
+
+/** Generate a realistic HTML document string of a given approximate length. */
+function makeHtmlDocument(minChars = 1200): string {
+	const body = `<h1>Report Title</h1>\n<p>${"This is a paragraph of report content with data-driven insights. ".repeat(
+		Math.ceil(minChars / 60),
+	)}</p>`;
+	return `<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="UTF-8"><title>Report</title></head>\n<body>\n${body}\n</body>\n</html>`;
+}
+
+/** Generate a Mermaid diagram of a given approximate length. */
+function makeMermaidDiagram(minChars = 600): string {
+	const nodes = Array.from({ length: Math.ceil(minChars / 50) }, (_, i) => `  N${i}["Node ${i} description text"]`);
+	const edges = Array.from({ length: nodes.length - 1 }, (_, i) => `  N${i} --> N${i + 1}`);
+	return `graph TD\n${nodes.join("\n")}\n${edges.join("\n")}`;
+}
+
+describe("document extraction", () => {
+	test("inline HTML document is extracted as a document segment", () => {
+		const html = makeHtmlDocument();
+		const input = `以下是报告：\n\n${html}`;
+		const { segments } = extractArtifacts(input);
+		const docs = segments.filter((s) => s.type === "document");
+		expect(docs).toHaveLength(1);
+		expect(docs[0]).toMatchObject({ type: "document", mimeType: "text/html" });
+		// The preamble text should survive as a text segment.
+		const texts = segments.filter((s) => s.type === "text");
+		expect(texts.some((s) => s.type === "text" && s.content.includes("以下是报告"))).toBe(true);
+	});
+
+	test("inline HTML document title is extracted from <title>", () => {
+		const html = makeHtmlDocument();
+		const input = html;
+		const { segments } = extractArtifacts(input);
+		const doc = segments.find((s) => s.type === "document");
+		expect(doc?.type === "document" ? doc.title : undefined).toBe("Report");
+	});
+
+	test("URLs inside an extracted HTML document are NOT extracted as artifacts", () => {
+		const html = makeHtmlDocument().replace(
+			"</head>",
+			'<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet"></head>',
+		);
+		const { segments } = extractArtifacts(html);
+		const artifacts = segments.filter((s) => s.type === "artifact" || s.type === "images");
+		expect(artifacts).toHaveLength(0);
+	});
+
+	test("short fenced HTML block stays as text (below threshold)", () => {
+		const input = [
+			"### 交付文件：`index.html`",
+			"",
+			"```html",
+			"<!DOCTYPE html>",
+			'<link rel="preconnect" href="https://fonts.googleapis.com">',
+			'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+			'<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">',
+			"```",
+			"",
+			"预览：https://preview.example.com/page",
+		].join("\n");
+		const { segments } = extractArtifacts(input);
+		// The fenced block is too short to be a document — stays as text.
+		expect(segments.some((s) => s.type === "text" && s.content.includes("fonts.googleapis.com"))).toBe(true);
+		expect(segments.every((s) => s.type !== "document")).toBe(true);
+	});
+
+	test("large fenced HTML block is extracted as a document segment", () => {
+		const htmlContent = makeHtmlDocument(1000);
+		const input = `Report:\n\n\`\`\`html\n${htmlContent}\n\`\`\`\n\nDone.`;
+		const { segments } = extractArtifacts(input);
+		const docs = segments.filter((s) => s.type === "document");
+		expect(docs).toHaveLength(1);
+		expect(docs[0]).toMatchObject({ type: "document", mimeType: "text/html" });
+		// The preamble and postamble should survive as text segments.
+		expect(segments.some((s) => s.type === "text" && s.content.includes("Report:"))).toBe(true);
+		expect(segments.some((s) => s.type === "text" && s.content.includes("Done."))).toBe(true);
+	});
+
+	test("fenced mermaid block is extracted as a document segment", () => {
+		const mermaid = makeMermaidDiagram(600);
+		const input = `Diagram:\n\n\`\`\`mermaid\n${mermaid}\n\`\`\`\n\nEnd.`;
+		const { segments } = extractArtifacts(input);
+		const docs = segments.filter((s) => s.type === "document");
+		expect(docs).toHaveLength(1);
+		expect(docs[0]).toMatchObject({ type: "document", mimeType: "text/mermaid" });
+	});
+
+	test("truncated inline HTML (no </html>) is still extracted as document", () => {
+		// Simulate a truncated HTML stream: starts with DOCTYPE but never closes.
+		const truncatedHtml = `<!DOCTYPE html>\n<html>\n<head><title>Partial</title></head>\n<body>\n${"<p>content</p>\n".repeat(80)}`;
+		const { segments } = extractArtifacts(truncatedHtml);
+		const docs = segments.filter((s) => s.type === "document");
+		expect(docs).toHaveLength(1);
+		expect(docs[0]).toMatchObject({ type: "document", mimeType: "text/html" });
+	});
+
+	test("truncated HTML with short preamble is extracted as document", () => {
+		// The common agent pattern: "以下是报告：\n\n<!DOCTYPE html>...(truncated)..."
+		const preamble = "以下是基于你提供的素材整理而成的 HTML 格式行业研究报告。\n\n";
+		const truncatedHtml = `<!DOCTYPE html>\n<html lang="zh-CN">\n<head><title>Report</title></head>\n<body>\n${"<p>报告内容段落。</p>\n".repeat(100)}`;
+		const input = preamble + truncatedHtml;
+		expect(input).not.toMatch(/<\/html>/i); // no closing tag = truncated
+		const { segments } = extractArtifacts(input);
+		const docs = segments.filter((s) => s.type === "document");
+		expect(docs).toHaveLength(1);
+		expect(docs[0]).toMatchObject({ type: "document", mimeType: "text/html" });
+		// Preamble survives as text.
+		const texts = segments.filter((s) => s.type === "text");
+		expect(texts.some((s) => s.type === "text" && s.content.includes("以下是基于"))).toBe(true);
+	});
+
+	test("preferInlineMarkdownPreview returns false when document segments exist", () => {
+		const html = makeHtmlDocument();
+		const input = `![img](https://x.com/1.png)\n\nLong text content here for testing.\n\n${html}`;
+		const { segments } = extractArtifacts(input);
+		expect(preferInlineMarkdownPreview(segments)).toBe(false);
+	});
+});
+
+describe("resolveDocumentContent", () => {
+	test("returns HTML content as-is", () => {
+		const html = "<!DOCTYPE html><html><body>Hello</body></html>";
+		const result = resolveDocumentContent({ type: "document", content: html, mimeType: "text/html" });
+		expect(result).toBe(html);
+	});
+
+	test("returns SVG content as-is", () => {
+		const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="50"/></svg>';
+		const result = resolveDocumentContent({ type: "document", content: svg, mimeType: "image/svg+xml" });
+		expect(result).toBe(svg);
+	});
+
+	test("wraps Mermaid content in an HTML shell with mermaid.js", () => {
+		const mermaid = "graph TD\n  A --> B";
+		const result = resolveDocumentContent({ type: "document", content: mermaid, mimeType: "text/mermaid" });
+		expect(result).toContain("mermaid.min.js");
+		expect(result).toContain('<pre class="mermaid">');
+		expect(result).toContain("graph TD");
+		expect(result).toContain("mermaid.initialize");
+	});
+});
+
+describe("documentTypeLabel", () => {
+	test("returns correct labels", () => {
+		expect(documentTypeLabel("text/html")).toBe("HTML 文档");
+		expect(documentTypeLabel("image/svg+xml")).toBe("SVG 图形");
+		expect(documentTypeLabel("text/mermaid")).toBe("Mermaid 图表");
 	});
 });
