@@ -1,5 +1,13 @@
 # @openagentpack/sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- 24e5370: Add a portable Memory Store and Memory lifecycle API across Qoder, Claude, and
+  Volcengine Ark, including provider capability differences, CLI commands,
+  declarative entry reconciliation, version history, and Ark batch creation.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @openagentpack/server
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [24e5370]
+  - @openagentpack/sdk@0.3.0
+
 ## 0.0.5
 
 ### Patch Changes
