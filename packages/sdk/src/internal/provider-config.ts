@@ -42,7 +42,14 @@ export function resolveActiveProvider(): ProviderConfigProvider {
 /** Whether the current process env has all required fields for the active provider. */
 export function areRuntimeCredentialsReady(): boolean {
 	const provider = resolveActiveProvider();
-	return AGENTS_PROVIDER_FIELDS[provider].every((field) => process.env[field.key]?.trim());
+	return AGENTS_PROVIDER_FIELDS[provider].every((field) => {
+		if (process.env[field.key]?.trim()) return true;
+		// bailian derives its endpoint from either workspace_id or base_url, so a
+		// configured BAILIAN_BASE_URL satisfies the workspace_id slot (mirrors the
+		// provider config schema's "at least one" rule).
+		if (field.key === "BAILIAN_WORKSPACE_ID") return Boolean(process.env.BAILIAN_BASE_URL?.trim());
+		return false;
+	});
 }
 
 function isProvider(value: string): value is ProviderConfigProvider {

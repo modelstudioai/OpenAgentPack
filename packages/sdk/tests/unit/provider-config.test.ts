@@ -126,6 +126,29 @@ describe("provider-config bootstrap", () => {
 		}
 	});
 
+	test("areRuntimeCredentialsReady accepts BAILIAN_BASE_URL in place of workspace_id", () => {
+		const prevProvider = process.env.AGENTS_PROVIDER;
+		const prevKey = process.env.DASHSCOPE_API_KEY;
+		const prevWs = process.env.BAILIAN_WORKSPACE_ID;
+		const prevBaseUrl = process.env.BAILIAN_BASE_URL;
+		process.env.AGENTS_PROVIDER = "bailian";
+		process.env.DASHSCOPE_API_KEY = "sk-x";
+		delete process.env.BAILIAN_WORKSPACE_ID;
+		process.env.BAILIAN_BASE_URL = "https://ws.cn-beijing.maas.aliyuncs.com/api/v1/agentstudio";
+		try {
+			expect(areRuntimeCredentialsReady()).toBe(true);
+		} finally {
+			if (prevProvider === undefined) delete process.env.AGENTS_PROVIDER;
+			else process.env.AGENTS_PROVIDER = prevProvider;
+			if (prevKey === undefined) delete process.env.DASHSCOPE_API_KEY;
+			else process.env.DASHSCOPE_API_KEY = prevKey;
+			if (prevWs === undefined) delete process.env.BAILIAN_WORKSPACE_ID;
+			else process.env.BAILIAN_WORKSPACE_ID = prevWs;
+			if (prevBaseUrl === undefined) delete process.env.BAILIAN_BASE_URL;
+			else process.env.BAILIAN_BASE_URL = prevBaseUrl;
+		}
+	});
+
 	test("applyProviderConfigToEnv respects force flag", () => {
 		const prevProvider = process.env.AGENTS_PROVIDER;
 		const prevKey = process.env.ARK_API_KEY;

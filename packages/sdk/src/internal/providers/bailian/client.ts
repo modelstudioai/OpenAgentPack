@@ -1,8 +1,9 @@
+import { UserError } from "../../errors.ts";
 import { BaseApiClient } from "../base-client.ts";
 
 export interface BailianClientConfig {
 	apiKey: string;
-	workspaceId: string;
+	workspaceId?: string;
 	baseUrl?: string;
 }
 
@@ -15,7 +16,13 @@ export class BailianClient extends BaseApiClient {
 	constructor(config: BailianClientConfig) {
 		super();
 		this.apiKey = config.apiKey;
-		this.baseUrl = config.baseUrl ?? `https://${config.workspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/agentstudio`;
+		if (config.baseUrl) {
+			this.baseUrl = config.baseUrl;
+		} else if (config.workspaceId) {
+			this.baseUrl = `https://${config.workspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/agentstudio`;
+		} else {
+			throw new UserError("bailian provider requires either base_url or workspace_id");
+		}
 	}
 
 	protected headers(): Record<string, string> {

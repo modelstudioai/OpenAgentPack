@@ -3,6 +3,15 @@
 // ./internal and are deliberately not exported — do not add internal-only symbols here.
 
 export { UserError } from "./internal/errors.ts";
+// Server-side HTTP errors thrown by provider clients. Exported so hosts (CLIs,
+// servers) can branch on them and surface statusCode/responseBody structurally
+// instead of parsing the message string.
+export { ApiError, ConflictError } from "./internal/providers/base-client.ts";
+
+// Transport seam: hosts install a fetch-compatible implementation to add
+// cross-cutting request concerns (tracking headers, logging) without touching
+// globalThis.fetch. Unset → provider clients use the global fetch as before.
+export { setDefaultFetch, type FetchLike } from "./internal/transport.ts";
 
 export type {
 	BackendRuntimeInput,
