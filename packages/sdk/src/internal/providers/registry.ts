@@ -91,13 +91,14 @@ export function buildProviders(
  * Environment variable mappings for each provider.
  * Used to construct a provider adapter without a agents.yaml config file.
  */
-const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required: boolean }>> = {
+const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required: boolean; placeholder?: boolean }>> = {
 	bailian: {
 		api_key: { env: ["DASHSCOPE_API_KEY", "BAILIAN_API_KEY"], required: true },
 		// Neither workspace_id nor base_url is required on its own; the config schema
 		// enforces "at least one" so a host can supply just base_url (BAILIAN_BASE_URL).
+		// base_url is the preferred placeholder emitted by `agents sync`.
 		workspace_id: { env: ["BAILIAN_WORKSPACE_ID"], required: false },
-		base_url: { env: ["BAILIAN_BASE_URL"], required: false },
+		base_url: { env: ["BAILIAN_BASE_URL"], required: false, placeholder: true },
 	},
 	qoder: {
 		api_key: { env: ["QODER_PAT", "QODER_API_KEY"], required: true },
@@ -115,15 +116,17 @@ const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required
 
 /**
  * Build a `providers` config block for a single provider using `${ENV}`
- * placeholders for its required fields. Used by `agents sync` to emit a providers
- * block without leaking resolved secrets when the original file is unavailable.
+ * placeholders. Emits fields that are either required for env resolution or
+ * explicitly marked as the provider's preferred placeholder (e.g. bailian's
+ * base_url). Used by `agents sync` to emit a providers block without leaking
+ * resolved secrets when the original file is unavailable.
  */
 export function placeholderProviderConfig(providerName: string): Record<string, string> {
 	const envMap = PROVIDER_ENV_VARS[providerName];
 	if (!envMap) return {};
 	const out: Record<string, string> = {};
-	for (const [field, { env, required }] of Object.entries(envMap)) {
-		if (required && env[0]) out[field] = `\${${env[0]}}`;
+	for (const [field, { env, required, placeholder }] of Object.entries(envMap)) {
+		if ((required || placeholder) && env[0]) out[field] = `\${${env[0]}}`;
 	}
 	return out;
 }
