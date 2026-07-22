@@ -205,6 +205,11 @@ describe("Qoder mapper", () => {
 		expect(qoderToEvent({ type: "agent.tool_result", content: "result text" }).type).toBe("tool_result");
 		expect(qoderToEvent({ type: "session.status_idle", stop_reason: "end_turn" }).status).toBe("idle");
 		expect(qoderToEvent({ type: "session.status_running" }).status).toBe("running");
+		// requires_action means the agent paused for tool execution; not truly terminal
+		expect(qoderToEvent({ type: "session.status_idle", stop_reason: "requires_action" }).status).toBe("running");
+		expect(qoderToEvent({ type: "session.status_idle", stop_reason: { type: "requires_action" } }).status).toBe(
+			"running",
+		);
 		expect(qoderToEvent({ type: "agent.thinking" }).type).toBe("thinking");
 		const error = qoderToEvent({ type: "session.error", error: "timeout" });
 		expect(error.type).toBe("error");

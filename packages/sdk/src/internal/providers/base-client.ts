@@ -104,6 +104,7 @@ export abstract class BaseApiClient {
 					boundary = buffer.indexOf("\n\n");
 
 					const dataLines: string[] = [];
+					let sseId: string | undefined;
 					for (const line of frame.split("\n")) {
 						if (line.startsWith(":")) continue;
 						if (line.startsWith("event:") && line.slice(6).trim() === "heartbeat") {
@@ -113,12 +114,19 @@ export abstract class BaseApiClient {
 						if (line.startsWith("data:")) {
 							dataLines.push(line.slice(5).trimStart());
 						}
+						if (line.startsWith("id:")) {
+							sseId = line.slice(3).trimStart();
+						}
 					}
 					if (dataLines.length === 0) continue;
 
 					const json = dataLines.join("\n");
 					try {
-						yield JSON.parse(json) as Record<string, unknown>;
+						const parsed = JSON.parse(json) as Record<string, unknown>;
+						if (sseId !== undefined && parsed.id === undefined) {
+							parsed.id = sseId;
+						}
+						yield parsed;
 					} catch {
 						// skip unparseable frames
 					}

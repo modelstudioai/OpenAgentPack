@@ -110,6 +110,7 @@ const TERMINAL_SESSION_STATUSES = new Set(["idle", "completed", "failed", "termi
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const POLL_INITIAL_INTERVAL_MS = 300;
 
 export function resolveAgentName(agents: Record<string, unknown> | undefined, agentName?: string): string {
 	if (agentName) return agentName;
@@ -255,8 +256,9 @@ export async function collectEventsUntilTerminal(
 	} = {},
 ): Promise<Omit<CollectedSessionEvents, "eventId">> {
 	const start = Date.now();
-	const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+	const maxPollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 	const pollTimeoutMs = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+	let currentIntervalMs = Math.min(POLL_INITIAL_INTERVAL_MS, maxPollIntervalMs);
 	let terminalStatus = "idle";
 	let result: ProviderSessionEventList | undefined;
 
@@ -274,7 +276,8 @@ export async function collectEventsUntilTerminal(
 				terminalStatus = terminalEvent.status;
 				break;
 			}
-			await delay(pollIntervalMs);
+			await delay(currentIntervalMs);
+			currentIntervalMs = Math.min(currentIntervalMs * 2, maxPollIntervalMs);
 		}
 	} else {
 		while (true) {
@@ -284,7 +287,8 @@ export async function collectEventsUntilTerminal(
 				terminalStatus = session.status;
 				break;
 			}
-			await delay(pollIntervalMs);
+			await delay(currentIntervalMs);
+			currentIntervalMs = Math.min(currentIntervalMs * 2, maxPollIntervalMs);
 		}
 
 		result = await adapter.listSessionEvents(sessionId, { limit: 100 });
@@ -537,13 +541,40 @@ function buildAgentNameByRemoteId(ctx: ProjectRuntimeContext, provider: string):
 }
 
 // Qoder: send first (returns event ID), then stream from that ID to avoid missing events.
+// When the provider closes the SSE connection mid-turn (e.g. after emitting a
+// `session.status_idle` with `stop_reason=requires_action` for tool execution),
+// we reconnect automatically until the stream delivers a true terminal status.
 async function* streamWithResume(
 	adapter: SessionWorkflowAdapter,
 	sessionId: string,
 	message: string,
 ): AsyncIterable<ProviderSessionEvent> {
 	const eventId = await adapter.sendSessionMessage(sessionId, message);
-	yield* adapter.streamSessionEvents(sessionId, eventId ? { after_id: eventId } : undefined);
+	let lastEventId: string | undefined = eventId;
+	let reachedTerminal = false;
+	let reconnectIntervalMs = POLL_INITIAL_INTERVAL_MS;
+	const start = Date.now();
+
+	while (!reachedTerminal) {
+		assertNotTimedOut(start, DEFAULT_POLL_TIMEOUT_MS);
+		for await (const event of adapter.streamSessionEvents(
+			sessionId,
+			lastEventId ? { after_id: lastEventId } : undefined,
+		)) {
+			if (event.id) lastEventId = event.id;
+			yield event;
+			if (event.type === "status" && isTerminalSessionStatus(event.status)) {
+				reachedTerminal = true;
+				break;
+			}
+		}
+		if (!reachedTerminal) {
+			// SSE closed without a terminal event — back off before reconnecting
+			// using exponential backoff capped at DEFAULT_POLL_INTERVAL_MS.
+			await delay(reconnectIntervalMs);
+			reconnectIntervalMs = Math.min(reconnectIntervalMs * 2, DEFAULT_POLL_INTERVAL_MS);
+		}
+	}
 }
 
 // Claude/Bailian: connect stream first, then send — provider pushes events immediately on send.
