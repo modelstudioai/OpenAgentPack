@@ -431,7 +431,7 @@
 		border-radius: 10px;
 	}
 
-	/* Schedule panel: active state shows text on mobile */
+	/* Deployment panel: active state shows text on mobile */
 	.tool-buttons .pill-btn.active {
 		width: auto;
 		padding: 0 10px;
@@ -448,8 +448,8 @@
 		display: none !important;
 	}
 
-	/* Schedule panel: bottom sheet on mobile */
-	.schedule-panel {
+	/* Deployment panel: bottom sheet on mobile */
+	.deploy-panel {
 		position: fixed;
 		bottom: 0;
 		left: 0;
@@ -465,40 +465,40 @@
 		z-index: 9999;
 	}
 
-	.schedule-panel.open {
+	.deploy-panel.open {
 		transform: translateX(0) translateY(0);
 	}
 
-	.schedule-panel-backdrop {
+	.deploy-panel-backdrop {
 		background: rgba(0, 0, 0, 0.4);
 		z-index: 9998;
 	}
 
-	.schedule-panel-header {
+	.deploy-panel-header {
 		padding: 20px 20px 14px;
 		font-size: 15px;
 	}
 
-	.schedule-panel-options {
+	.deploy-panel-options {
 		padding: 10px 12px;
 	}
 
-	.schedule-option {
+	.deploy-option {
 		padding: 14px 12px;
 		font-size: 15px;
 		border-bottom: 1px solid var(--line);
 		border-radius: 0;
 	}
 
-	.schedule-option:last-child {
+	.deploy-option:last-child {
 		border-bottom: none;
 	}
 
-	.schedule-panel-footer {
+	.deploy-panel-footer {
 		padding: 14px 20px 24px;
 	}
 
-	.schedule-footer-hint {
+	.deploy-footer-hint {
 		font-size: 13px;
 	}
 

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useImperativeHandle, useReducer, useRef, useSta
 import { usePromptEditor } from "@/components/prompt-editor/PromptEditorProvider";
 import suggestions from "@/data/suggestions.json";
 import type { UiModel } from "@/lib/domain/model-api";
-import type { SchedulePreset } from "@/lib/schedule";
+import type { TopBarView } from "@/lib/topbar-route";
 import {
 	AttachFilesButton,
 	ComposerFeeNotice,
@@ -12,8 +12,8 @@ import {
 	SelectedFilesStrip,
 	useFilePickerModal,
 } from "./ComposerInputShared";
+import DeploymentButton from "./DeploymentButton";
 import ModelSelector from "./ModelSelector";
-import ScheduleButton from "./ScheduleButton";
 import { useSubmitTask } from "./useSubmitTask";
 
 export interface BottomBarHandle {
@@ -30,8 +30,8 @@ interface BottomBarProps {
 	composerRef: React.RefObject<HTMLElement | null>;
 	onVisibilityChange: (visible: boolean) => void;
 	onMakeSame?: (input: { prompt: string; agentId?: string }) => void;
+	onNavigate?: (view: TopBarView) => void;
 	canSubmit?: boolean;
-	onOpenSchedule?: (preset?: SchedulePreset) => void;
 	ref?: React.Ref<BottomBarHandle>;
 }
 
@@ -63,7 +63,7 @@ export default function BottomBar({
 	onModelChange,
 	composerRef,
 	onVisibilityChange,
-	onOpenSchedule,
+	onNavigate,
 	ref,
 	canSubmit = true,
 }: BottomBarProps) {
@@ -216,7 +216,7 @@ export default function BottomBar({
 				<div className="bar-footer">
 					<div className="bar-tools">
 						<AttachFilesButton onClick={openPicker} />
-						<ScheduleButton onOpenSchedule={onOpenSchedule} />
+						<DeploymentButton prompt={inputValue} agentId={agentId} onNavigate={onNavigate} />
 					</div>
 					<div className="bar-mode-buttons">
 						<ModelSelector models={models} value={model} onChange={onModelChange} />

@@ -1,12 +1,12 @@
-export type TopBarView = "home" | "resources" | "schedule";
+export type TopBarView = "home" | "resources" | "deployments";
 
 const RESOURCES_SUFFIX = "/resources";
-const SCHEDULE_SUFFIX = "/schedule";
+const DEPLOYMENTS_SUFFIX = "/deployments";
 
 export function viewFromPathname(pathname: string): TopBarView {
 	const normalized = pathname.replace(/\/$/, "") || "/";
-	if (normalized === SCHEDULE_SUFFIX || normalized.endsWith(SCHEDULE_SUFFIX)) {
-		return "schedule";
+	if (normalized === DEPLOYMENTS_SUFFIX || normalized.endsWith(DEPLOYMENTS_SUFFIX)) {
+		return "deployments";
 	}
 	if (normalized === RESOURCES_SUFFIX || normalized.endsWith(RESOURCES_SUFFIX)) {
 		return "resources";
@@ -18,24 +18,26 @@ export function pathnameForView(view: TopBarView, pathname: string): string {
 	const normalized = pathname.replace(/\/$/, "") || "/";
 	const currentView = viewFromPathname(normalized);
 
-	if (view === "schedule") {
-		if (currentView === "schedule") return pathname;
-		if (normalized === "/") return SCHEDULE_SUFFIX;
-		if (currentView === "resources") return `${normalized.slice(0, -RESOURCES_SUFFIX.length) || "/"}${SCHEDULE_SUFFIX}`;
-		return `${normalized}${SCHEDULE_SUFFIX}`;
+	if (view === "deployments") {
+		if (currentView === "deployments") return pathname;
+		if (normalized === "/") return DEPLOYMENTS_SUFFIX;
+		if (currentView === "resources")
+			return `${normalized.slice(0, -RESOURCES_SUFFIX.length) || "/"}${DEPLOYMENTS_SUFFIX}`;
+		return `${normalized}${DEPLOYMENTS_SUFFIX}`;
 	}
 
 	if (view === "resources") {
 		if (currentView === "resources") return pathname;
 		if (normalized === "/") return RESOURCES_SUFFIX;
-		if (currentView === "schedule") return `${normalized.slice(0, -SCHEDULE_SUFFIX.length) || "/"}${RESOURCES_SUFFIX}`;
+		if (currentView === "deployments")
+			return `${normalized.slice(0, -DEPLOYMENTS_SUFFIX.length) || "/"}${RESOURCES_SUFFIX}`;
 		return `${normalized}${RESOURCES_SUFFIX}`;
 	}
 
 	if (currentView === "home") return pathname;
 	if (normalized === RESOURCES_SUFFIX) return "/";
-	if (normalized === SCHEDULE_SUFFIX) return "/";
-	if (currentView === "schedule") return normalized.slice(0, -SCHEDULE_SUFFIX.length) || "/";
+	if (normalized === DEPLOYMENTS_SUFFIX) return "/";
+	if (currentView === "deployments") return normalized.slice(0, -DEPLOYMENTS_SUFFIX.length) || "/";
 	return normalized.slice(0, -RESOURCES_SUFFIX.length) || "/";
 }
 
