@@ -11,7 +11,7 @@ import type {
 	ProviderSessionEventList,
 } from "../types/session-event.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
-import { preparePromptForProvider } from "../utils/sandbox-mount.ts";
+import { prepareInitialSessionPrompt } from "../utils/sandbox-mount.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider } from "./project-runtime.ts";
@@ -184,7 +184,7 @@ export async function startSessionRun(
 		agentName,
 		provider,
 		session,
-		events: streamMessageEvents(adapter, session.id, preparePromptForProvider(prompt, bindings.files, provider)),
+		events: streamMessageEvents(adapter, session.id, prepareInitialSessionPrompt(prompt, bindings, provider)),
 	};
 }
 
@@ -214,15 +214,12 @@ export async function startSessionRunPolling(
 	prompt: string,
 	options: SessionRuntimeRunOptions = {},
 ): Promise<CreatedSessionRun & CollectedSessionEvents> {
-	const run = await createSessionForAgent(ctx, options);
-	const adapter = getRuntimeProvider(ctx, run.provider);
-	const hintedPrompt = preparePromptForProvider(
-		prompt,
-		options.files?.map((f) => ({ mount_path: f.mountPath })),
-		run.provider,
-	);
-	const collected = await sendSessionMessageAndCollectEvents(adapter, run.session.id, hintedPrompt, options);
-	return { ...run, ...collected };
+	const { agentName, provider, adapter } = resolveSessionRuntime(ctx, options);
+	const bindings = buildSessionBindings(agentName, ctx.config, provider, ctx.state, options);
+	const session = await adapter.createSession(bindings);
+	const initialPrompt = prepareInitialSessionPrompt(prompt, bindings, provider);
+	const collected = await sendSessionMessageAndCollectEvents(adapter, session.id, initialPrompt, options);
+	return { agentName, provider, session, ...collected };
 }
 
 export async function sendSessionMessageAndCollectEvents(

@@ -1,11 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import type { SessionBindings } from "../../src/internal/types/session.ts";
 import {
 	composeFileMountHint,
+	prepareInitialSessionPrompt,
 	preparePromptForProvider,
 	prependFileHint,
 	resolveSandboxMountPath,
 	rewriteFileMentions,
 } from "../../src/internal/utils/sandbox-mount.ts";
+
+function bindings(resources: SessionBindings["resources"] = []): SessionBindings {
+	return {
+		agent_id: "agent_1",
+		environment_id: "env_1",
+		vault_ids: [],
+		memory_store_ids: [],
+		resources,
+	};
+}
 
 describe("resolveSandboxMountPath", () => {
 	test("uses each provider's fixed mount prefix and preserves subdirs", () => {
@@ -78,6 +90,19 @@ describe("rewriteFileMentions", () => {
 		expect(rewriteFileMentions(prompt, "bailian")).toBe("see /mnt/uploads/a.png here");
 	});
 
+	test("rewrites multiple sentinels with a linear scanner", () => {
+		const prompt = [`first ${"\u27E6file:uploads/a.png\u27E7"}`, `second ${"\u27E6file:uploads/b.png\u27E7"}`].join(
+			" and ",
+		);
+		expect(rewriteFileMentions(prompt, "qoder")).toBe("first /data/uploads/a.png and second /data/uploads/b.png");
+	});
+
+	test("leaves unterminated sentinels unchanged", () => {
+		const longTail = "x".repeat(10_000);
+		const prompt = `before ${"\u27E6file:uploads/a.png"}${longTail}`;
+		expect(rewriteFileMentions(prompt, "bailian")).toBe(prompt);
+	});
+
 	test("no sentinel → unchanged", () => {
 		expect(rewriteFileMentions("hello", "bailian")).toBe("hello");
 	});
@@ -89,5 +114,88 @@ describe("preparePromptForProvider", () => {
 		const out = preparePromptForProvider(prompt, [{ mount_path: "uploads/a.txt" }], "bailian");
 		expect(out).toContain("/mnt/uploads/a.txt");
 		expect(out).toContain("The user uploaded files");
+	});
+});
+
+describe("prepareInitialSessionPrompt", () => {
+	test("uses a single Git repository as the task working directory", () => {
+		const out = prepareInitialSessionPrompt(
+			"implement the feature",
+			bindings([
+				{
+					type: "github_repository",
+					url: "https://gitlab.example.com/team/repo.git",
+					authorization_token: "do-not-leak",
+				},
+			]),
+			"qoder",
+		);
+		expect(out).toContain("The Git working tree for this task is mounted at `/data/workspace/repo`.");
+		expect(out).toContain("Prefix every shell command with:\ncd -- '/data/workspace/repo' &&");
+		expect(out).toContain("Use absolute paths under `/data/workspace/repo` for non-shell file tools.");
+		expect(out).not.toContain("gitlab.example.com");
+		expect(out).not.toContain("do-not-leak");
+		expect(out.endsWith("implement the feature")).toBe(true);
+	});
+
+	test("derives repository names without regex query or fragment stripping", () => {
+		const out = prepareInitialSessionPrompt(
+			"inspect it",
+			bindings([
+				{
+					type: "github_repository",
+					url: "https://git.example.com/team/repo.git?token=abc#readme",
+					authorization_token: "do-not-leak",
+				},
+			]),
+			"qoder",
+		);
+		expect(out).toContain("`/data/workspace/repo`");
+		expect(out).not.toContain("token=abc");
+		expect(out).not.toContain("readme");
+	});
+
+	test("shell-quotes an explicit repository mount path", () => {
+		const out = prepareInitialSessionPrompt(
+			"inspect it",
+			bindings([
+				{
+					type: "github_repository",
+					url: "https://code.example.com/team/repo.git",
+					authorization_token: "secret",
+					mount_path: "/data/workspace/team's repo",
+				},
+			]),
+			"qoder",
+		);
+		expect(out).toContain(`cd -- '/data/workspace/team'"'"'s repo' &&`);
+	});
+
+	test("supports scp-like Git remotes without naming a single working directory when several are mounted", () => {
+		const out = prepareInitialSessionPrompt(
+			"coordinate the change",
+			bindings([
+				{
+					type: "github_repository",
+					url: "git@host.example.com:team/api.git",
+					authorization_token: "secret-a",
+				},
+				{
+					type: "github_repository",
+					url: "https://gitea.example.com/team/web.git",
+					authorization_token: "secret-b",
+					mount_path: "/data/projects/web",
+				},
+			]),
+			"qoder",
+		);
+		expect(out).toContain("- /data/workspace/api");
+		expect(out).toContain("- /data/projects/web");
+		expect(out).toContain("Choose the appropriate working tree");
+		expect(out).not.toContain(" as the working directory");
+	});
+
+	test("leaves prompts unchanged when the Session has no files or repositories", () => {
+		expect(prepareInitialSessionPrompt("hello", bindings(), "qoder")).toBe("hello");
 	});
 });

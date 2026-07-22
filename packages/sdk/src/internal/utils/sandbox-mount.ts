@@ -6,6 +6,7 @@
 // Pure string ops only (no `node:path`): this module ships to the browser via the SDK bundle.
 
 import { UserError } from "../errors.ts";
+import type { SessionBindings, SessionGithubRepositoryResource } from "../types/session.ts";
 
 const PROVIDER_MOUNT_PREFIXES: Readonly<Record<string, string>> = {
 	qoder: "/data",
@@ -18,6 +19,31 @@ function joinAbsolute(prefix: string, sub: string): string {
 	const left = prefix.replace(/\/+$/, "");
 	const right = sub.replace(/^\/+/, "");
 	return `${left}/${right}`;
+}
+
+/** Quote an arbitrary path as one POSIX shell word. */
+function quoteShellWord(value: string): string {
+	return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function stripUrlQueryAndFragment(value: string): string {
+	const queryIndex = value.indexOf("?");
+	const fragmentIndex = value.indexOf("#");
+	if (queryIndex === -1) {
+		return fragmentIndex === -1 ? value : value.slice(0, fragmentIndex);
+	}
+	if (fragmentIndex === -1) return value.slice(0, queryIndex);
+	return value.slice(0, Math.min(queryIndex, fragmentIndex));
+}
+
+function stripGitSuffix(value: string): string {
+	return value.toLowerCase().endsWith(".git") ? value.slice(0, -4) : value;
+}
+
+function lastRemotePathSegment(value: string): string {
+	const lastSlash = value.lastIndexOf("/");
+	const lastColon = value.lastIndexOf(":");
+	return value.slice(Math.max(lastSlash, lastColon) + 1).trim();
 }
 
 export function providerMountPrefix(provider: string): string | undefined {
@@ -45,6 +71,24 @@ export interface MountedFile {
 	mount_path: string;
 }
 
+/** Resolve the provider path used for a mounted Git repository. */
+export function resolveRepositoryMountPath(provider: string, resource: SessionGithubRepositoryResource): string {
+	const prefix = providerMountPrefix(provider);
+	if (!prefix) throw new UserError(`Provider '${provider}' has no declared mount path prefix.`);
+	if (resource.mount_path) {
+		if (resource.mount_path !== prefix && !resource.mount_path.startsWith(`${prefix}/`)) {
+			throw new UserError(`${provider} Git repository Session resource mount_path must start with '${prefix}/'.`);
+		}
+		return resource.mount_path;
+	}
+	// Accept URL remotes as well as scp-like SSH remotes such as git@host:team/repo.git.
+	const repositoryName = stripGitSuffix(lastRemotePathSegment(stripUrlQueryAndFragment(resource.url)));
+	if (!repositoryName) {
+		throw new UserError(`Cannot derive a ${provider} Git repository mount path from URL '${resource.url}'.`);
+	}
+	return provider === "qoder" ? `${prefix}/workspace/${repositoryName}` : `${prefix}/${repositoryName}`;
+}
+
 /**
  * Build an English hint listing the real sandbox paths of the uploaded files, so the model
  * knows where to read them. Returns "" when there are no files.
@@ -66,16 +110,61 @@ export function prependFileHint(prompt: string, files: MountedFile[] | undefined
 	return `${hint}\n\n${prompt}`;
 }
 
-const FILE_MENTION_SENTINEL_RE = /\u27E6file:(.+?)\u27E7/g;
+const FILE_MENTION_START = "\u27E6file:";
+const FILE_MENTION_END = "\u27E7";
 
 /** 将 prompt 内 ⟦file:mountPath⟧ 占位符替换为 provider 感知的真实 sandbox 路径 */
 export function rewriteFileMentions(prompt: string, provider: string): string {
-	return prompt.replace(FILE_MENTION_SENTINEL_RE, (_match, mountPath: string) =>
-		resolveSandboxMountPath(provider, mountPath),
-	);
+	let cursor = 0;
+	let rewritten = "";
+
+	while (cursor < prompt.length) {
+		const start = prompt.indexOf(FILE_MENTION_START, cursor);
+		if (start === -1) {
+			rewritten += prompt.slice(cursor);
+			break;
+		}
+		const mountPathStart = start + FILE_MENTION_START.length;
+		const end = prompt.indexOf(FILE_MENTION_END, mountPathStart);
+		if (end === -1) {
+			rewritten += prompt.slice(cursor);
+			break;
+		}
+		rewritten += prompt.slice(cursor, start);
+		rewritten += resolveSandboxMountPath(provider, prompt.slice(mountPathStart, end));
+		cursor = end + FILE_MENTION_END.length;
+	}
+
+	return rewritten;
 }
 
 /** 发送给 provider 前统一处理：先替换 mention 占位符，再 prepend 文件 hint */
 export function preparePromptForProvider(prompt: string, files: MountedFile[] | undefined, provider: string): string {
 	return prependFileHint(rewriteFileMentions(prompt, provider), files, provider);
+}
+
+/** Prepare only the first user message for a newly created Session. */
+export function prepareInitialSessionPrompt(prompt: string, bindings: SessionBindings, provider: string): string {
+	const prepared = preparePromptForProvider(prompt, bindings.files, provider);
+	const repositories = (bindings.resources ?? []).filter(
+		(resource): resource is SessionGithubRepositoryResource => resource.type === "github_repository",
+	);
+	if (repositories.length === 0) return prepared;
+
+	const paths = repositories.map((resource) => resolveRepositoryMountPath(provider, resource));
+	if (paths.length === 1) {
+		const path = paths[0]!;
+		return [
+			`The Git working tree for this task is mounted at \`${path}\`.`,
+			"Work only inside this directory unless the user explicitly requests otherwise.",
+			"Prefix every shell command with:",
+			`cd -- ${quoteShellWord(path)} &&`,
+			`Use absolute paths under \`${path}\` for non-shell file tools.`,
+			"",
+			prepared,
+		].join("\n");
+	}
+	const lines = ["Git working trees for this task are mounted at:", ...paths.map((path) => `- ${path}`)];
+	lines.push("Choose the appropriate working tree for the task before inspecting or modifying files.");
+	return `${lines.join("\n")}\n\n${prepared}`;
 }

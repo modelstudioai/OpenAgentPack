@@ -1,28 +1,11 @@
-import { UserError } from "../errors.ts";
 import type { SessionGithubRepositoryResource } from "../types/session.ts";
-import { providerMountPrefix } from "../utils/sandbox-mount.ts";
+import { resolveRepositoryMountPath } from "../utils/sandbox-mount.ts";
 
 export function resolveGithubRepositoryMountPath(provider: string, resource: SessionGithubRepositoryResource): string {
-	const prefix = providerMountPrefix(provider);
-	if (!prefix) throw new UserError(`Provider '${provider}' has no declared mount path prefix.`);
-	if (resource.mount_path) {
-		if (resource.mount_path !== prefix && !resource.mount_path.startsWith(`${prefix}/`)) {
-			throw new UserError(`${provider} GitHub Session resource mount_path must start with '${prefix}/'.`);
-		}
-		return resource.mount_path;
-	}
-	const repositoryName = new URL(resource.url).pathname
-		.split("/")
-		.filter(Boolean)
-		.at(-1)
-		?.replace(/\.git$/i, "");
-	if (!repositoryName) {
-		throw new UserError(`Cannot derive a ${provider} GitHub mount path from repository URL '${resource.url}'.`);
-	}
-	return provider === "qoder" ? `${prefix}/workspace/${repositoryName}` : `${prefix}/${repositoryName}`;
+	return resolveRepositoryMountPath(provider, resource);
 }
 
-/** Map the provider-neutral GitHub resource declaration to the shared CAS wire shape. */
+/** Map the provider-neutral Git repository declaration to the provider's legacy wire discriminator. */
 export function mapGithubRepositorySessionResource(
 	resource: SessionGithubRepositoryResource,
 	options: {
