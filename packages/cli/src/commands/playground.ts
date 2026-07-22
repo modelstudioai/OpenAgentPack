@@ -133,6 +133,54 @@ function openBrowser(url: string): void {
 	}
 }
 
+interface ExistingPlayground {
+	version: string;
+	pid: number;
+}
+
+/**
+ * Probe the target port for an already-running playground instance.
+ * Returns version + pid when the enriched `/health` response is present,
+ * `null` when the port is free or occupied by a non-playground process.
+ */
+async function probeExistingPlayground(port: number): Promise<ExistingPlayground | null> {
+	try {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 2000);
+		const res = await fetch(`http://localhost:${port}/health`, { signal: controller.signal });
+		clearTimeout(timeout);
+		if (!res.ok) return null;
+		const body = (await res.json()) as { playground?: { version?: string; pid?: number } };
+		if (body.playground?.pid) {
+			return { version: body.playground.version ?? "unknown", pid: body.playground.pid };
+		}
+	} catch {
+		// port not listening or not a playground — ignore
+	}
+	return null;
+}
+
+/**
+ * Kill an existing playground process (best-effort, SIGTERM) and wait briefly for the port to free.
+ * Returns true when the port appears released; false on timeout.
+ */
+async function replaceExistingPlayground(existing: ExistingPlayground, port: number): Promise<boolean> {
+	log.info(`Replacing playground v${existing.version} (pid ${existing.pid}) on port ${port}...`);
+	try {
+		process.kill(existing.pid, "SIGTERM");
+	} catch {
+		// already gone — that's fine
+		return true;
+	}
+	// Wait up to 3 s for the port to free (100 ms poll).
+	for (let i = 0; i < 30; i++) {
+		await new Promise((r) => setTimeout(r, 100));
+		const still = await probeExistingPlayground(port);
+		if (!still) return true;
+	}
+	return false;
+}
+
 export async function playgroundCommand(options: PlaygroundOptions): Promise<void> {
 	const port = options.port ? Number(options.port) : DEFAULT_PORT;
 	if (!Number.isInteger(port) || port <= 0) {
@@ -143,6 +191,28 @@ export async function playgroundCommand(options: PlaygroundOptions): Promise<voi
 		throw new Error(`Playground supports providers: ${supported}; received '${options.provider}'.`);
 	}
 
+	// --- Detect and replace stale playground on the target port ----
+	const version = cliVersion();
+	const existing = await probeExistingPlayground(port);
+	if (existing) {
+		if (existing.version === version) {
+			// Same version already running — just reuse it.
+			const url = `http://localhost:${port}`;
+			log.success(`Playground v${version} already running at ${url} (pid ${existing.pid})`);
+			if (options.open !== false) openBrowser(url);
+			return;
+		}
+		// Different version — replace the old instance so users always get the matching UI.
+		const freed = await replaceExistingPlayground(existing, port);
+		if (!freed) {
+			log.warn(
+				`Could not stop existing playground (pid ${existing.pid}) on port ${port}. ` +
+					`Kill it manually and retry, or use --port to pick another port.`,
+			);
+			return;
+		}
+	}
+
 	const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port) };
 	if (options.provider) {
 		// AGENTS_CLI_PROVIDER 在 playground bootstrap（config.json force）之后写回，保证 CLI 显式指定优先生效。
@@ -150,7 +220,7 @@ export async function playgroundCommand(options: PlaygroundOptions): Promise<voi
 		env.AGENTS_CLI_PROVIDER = options.provider;
 	}
 
-	const { cmd, args } = resolveLauncher(cliVersion());
+	const { cmd, args } = resolveLauncher(version);
 	if (cmd === "npx") log.info(`Fetching ${PLAYGROUND_PKG} (first run may take a moment)...`);
 
 	const child = spawn(cmd, args, { env, stdio: ["inherit", "pipe", "inherit"] });
