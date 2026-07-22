@@ -40,7 +40,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@hono/node-server": "^1.19.0",
+		"@hono/node-server": "^2.0.5",
 		"@hono/zod-openapi": "^1.4.0",
 		"@openagentpack/sdk": "workspace:*",
 		"hono": "^4.12.28",
