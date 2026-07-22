@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { resolveFetch } from "../transport.ts";
 import type { SkillDecl } from "../types/config.ts";
 import type { SkillFile } from "../types/skill-file.ts";
 import { collectFiles } from "../utils/collect-files.ts";
@@ -10,7 +11,7 @@ import type { ExecContext } from "./context.ts";
 // is read relative to configPath (zip, directory, or a single SKILL.md).
 export async function resolveSkillFiles(decl: SkillDecl, ctx: ExecContext): Promise<SkillFile[]> {
 	if (/^https?:\/\//i.test(decl.source)) {
-		const res = await fetch(decl.source);
+		const res = await resolveFetch()(decl.source);
 		if (!res.ok) throw new Error(`skill source 下载失败：${res.status} ${decl.source}`);
 		return extractSkillZipFiles(Buffer.from(await res.arrayBuffer()));
 	}
