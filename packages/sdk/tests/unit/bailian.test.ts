@@ -38,8 +38,19 @@ describe("bailianConfigSchema", () => {
 		expect(() => bailianConfigSchema.parse({ workspace_id: "ws-123" })).toThrow();
 	});
 
-	test("rejects config missing workspace_id", () => {
-		expect(() => bailianConfigSchema.parse({ api_key: "sk-abc" })).toThrow();
+	test("accepts base_url without workspace_id", () => {
+		const result = bailianConfigSchema.parse({
+			api_key: "sk-abc",
+			base_url: "https://custom.example.com/api/v1/agentstudio",
+		});
+		expect(result.workspace_id).toBeUndefined();
+		expect(result.base_url).toBe("https://custom.example.com/api/v1/agentstudio");
+	});
+
+	test("rejects config with neither workspace_id nor base_url", () => {
+		expect(() => bailianConfigSchema.parse({ api_key: "sk-abc" })).toThrow(
+			/either workspace_id or base_url is required/,
+		);
 	});
 });
 
@@ -328,7 +339,10 @@ describe("Bailian mapEnvironment", () => {
 
 	test("rejects 'limited' networking instead of silently widening it", () => {
 		const decl: EnvironmentDecl = {
-			config: { type: "cloud", networking: { type: "limited", allowed_hosts: ["api.github.com"] } },
+			config: {
+				type: "cloud",
+				networking: { type: "limited", allowed_hosts: ["api.github.com"] },
+			},
 		};
 		// The real API rejects non-unrestricted networking; silently dropping the
 		// restriction would widen a declared egress boundary, so we must throw.

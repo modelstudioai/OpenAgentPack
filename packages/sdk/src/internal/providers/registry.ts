@@ -51,6 +51,22 @@ export function allProviders(): ProviderDefinition[] {
 	return Array.from(registry.values());
 }
 
+/**
+ * Validate a raw provider config against its schema, mapping zod issues to a
+ * readable UserError. Providers call `.parse()`-style validation through here so
+ * config mistakes surface as `provider 'x' config invalid: field: message` lines
+ * instead of a raw ZodError JSON dump leaking to the host's stderr.
+ */
+function parseProviderConfig(def: ProviderDefinition, rawConfig: unknown): unknown {
+	const result = def.configSchema.safeParse(rawConfig);
+	if (result.success) return result.data;
+	const details = result.error.issues.map((issue) => {
+		const path = issue.path.join(".");
+		return path ? `${path}: ${issue.message}` : issue.message;
+	});
+	throw new UserError(`Provider '${def.name}' config invalid:\n${details.join("\n")}`);
+}
+
 export function buildProviders(
 	providersConfig: Record<string, unknown>,
 	projectName?: string,
@@ -62,7 +78,7 @@ export function buildProviders(
 		if (!def) {
 			throw new UserError(`Unknown provider '${name}'. Registered: ${Array.from(registry.keys()).join(", ")}`);
 		}
-		const parsed = def.configSchema.parse(rawConfig);
+		const parsed = parseProviderConfig(def, rawConfig);
 		const adapter = def.createAdapter(parsed, projectName);
 		validateProviderFacets(def, adapter);
 		adapters.set(name, adapter);
@@ -78,7 +94,9 @@ export function buildProviders(
 const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required: boolean }>> = {
 	bailian: {
 		api_key: { env: ["DASHSCOPE_API_KEY", "BAILIAN_API_KEY"], required: true },
-		workspace_id: { env: ["BAILIAN_WORKSPACE_ID"], required: true },
+		// Neither workspace_id nor base_url is required on its own; the config schema
+		// enforces "at least one" so a host can supply just base_url (BAILIAN_BASE_URL).
+		workspace_id: { env: ["BAILIAN_WORKSPACE_ID"], required: false },
 		base_url: { env: ["BAILIAN_BASE_URL"], required: false },
 	},
 	qoder: {
@@ -160,7 +178,7 @@ export function buildProviderFromEnv(providerName: string, projectName?: string)
 	}
 
 	const config = resolveProviderConfigFromEnv(providerName);
-	const parsed = def.configSchema.parse(config);
+	const parsed = parseProviderConfig(def, config);
 	const adapter = def.createAdapter(parsed, projectName);
 	validateProviderFacets(def, adapter);
 	return adapter;
