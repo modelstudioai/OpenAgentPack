@@ -551,6 +551,7 @@ export function toSessionEvent(raw: Record<string, unknown>): ProviderSessionEve
 	const type: SessionEventType = QODER_EVENT_MAP[rawType] ?? "unknown";
 
 	const event: ProviderSessionEvent = { type, raw_type: rawType, raw };
+	if (typeof raw.id === "string") event.id = raw.id;
 	if (typeof raw.role === "string") event.role = raw.role;
 
 	if (type === "message") {
@@ -567,12 +568,17 @@ export function toSessionEvent(raw: Record<string, unknown>): ProviderSessionEve
 	} else if (type === "status") {
 		// Only session-level idle/terminated are terminal; thread-level idle
 		// (session.thread_status_idle) is non-terminal and should not stop the stream.
+		// Additionally, session.status_idle with stop_reason "requires_action" means
+		// the agent paused for tool execution and will resume — treat it as non-terminal.
+		const stopReason = extractStopReason(raw.stop_reason);
 		if (rawType === "session.thread_status_idle") {
+			event.status = "running";
+		} else if (rawType === "session.status_idle" && stopReason === "requires_action") {
 			event.status = "running";
 		} else {
 			event.status = rawType.includes("idle") ? "idle" : rawType.includes("terminated") ? "terminated" : "running";
 		}
-		event.stop_reason = extractStopReason(raw.stop_reason);
+		event.stop_reason = stopReason;
 	} else if (type === "error") {
 		event.content = extractErrorMessage(raw);
 	}
