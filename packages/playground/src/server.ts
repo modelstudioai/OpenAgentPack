@@ -16,8 +16,21 @@ export const DEFAULT_PLAYGROUND_PORT = 4848;
 
 // Bundled webui build lives at <package>/web. This file ships to dist/bin/playground.js,
 // so the package root is two levels up from the emitted bundle.
-const webRoot = join(dirname(fileURLToPath(import.meta.url)), "../../web");
+const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const webRoot = join(pkgRoot, "web");
 const indexHtml = injectPlaygroundRuntimeMarker(readFileSync(join(webRoot, "index.html"), "utf8"));
+
+/** Read the playground package version once at startup (works for both source and published dist). */
+function readPlaygroundVersion(): string {
+	try {
+		const manifest = JSON.parse(readFileSync(join(pkgRoot, "package.json"), "utf8")) as { version?: string };
+		return manifest.version ?? "unknown";
+	} catch {
+		return "unknown";
+	}
+}
+
+const playgroundVersion = readPlaygroundVersion();
 
 function injectPlaygroundRuntimeMarker(html: string): string {
 	if (html.includes('name="agents-runtime"')) return html;
@@ -38,12 +51,23 @@ export async function startServer(): Promise<void> {
 	}
 
 	const root = new Hono();
-	// Server routes: /api/*, /health, /openapi.json (merged into the router).
+	// Playground-enriched health check — registered before the server routes so it takes
+	// precedence over the plain { status: "ok" } from apps/server. The `playground` field
+	// lets the CLI detect a stale instance on the target port and replace it automatically.
+	root.get("/health", (c) => c.json({ status: "ok", playground: { version: playgroundVersion, pid: process.pid } }));
+	// Server routes: /api/*, /openapi.json (merged into the router).
 	root.route("/", app);
 	// Always serve the injected shell for document routes — static middleware would otherwise
 	// return web/index.html without the playground runtime marker.
 	root.get("/", (c) => c.html(indexHtml));
 	root.get("/index.html", (c) => c.html(indexHtml));
+	// Static assets — bust browser caches across playground upgrades. The filenames are
+	// stable (`assets/index.js`, not hashed) because the console embed requires predictable
+	// paths, so we instruct browsers to revalidate on every navigation.
+	root.use("/assets/*", async (c, next) => {
+		await next();
+		c.header("Cache-Control", "no-cache");
+	});
 	root.use("/assets/*", serveStatic({ root: webRoot }));
 	// SPA fallback: any unmatched GET renders the shell so client routing works on reload.
 	root.get("*", (c) => c.html(indexHtml));
