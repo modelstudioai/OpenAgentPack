@@ -80,7 +80,7 @@ export class BailianAdapter implements ProviderAdapter {
 	private client: BailianClient;
 	private projectName: string;
 
-	constructor(apiKey: string, workspaceId: string, baseUrl?: string, projectName?: string) {
+	constructor(apiKey: string, workspaceId?: string, baseUrl?: string, projectName?: string) {
 		this.client = new BailianClient({ apiKey, workspaceId, baseUrl });
 		this.projectName = projectName ?? "";
 	}

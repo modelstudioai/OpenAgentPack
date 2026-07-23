@@ -1,3 +1,4 @@
+import { resolveFetch } from "../transport.ts";
 import type { RemoteResource } from "./interface.ts";
 
 export class ApiError extends Error {
@@ -34,7 +35,7 @@ export abstract class BaseApiClient {
 	}
 
 	async post(path: string, body: unknown): Promise<unknown> {
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers: this.headers(),
 			body: JSON.stringify(body),
@@ -44,7 +45,7 @@ export abstract class BaseApiClient {
 	}
 
 	async put(path: string, body: unknown): Promise<unknown> {
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "PUT",
 			headers: this.headers(),
 			body: JSON.stringify(body),
@@ -54,7 +55,7 @@ export abstract class BaseApiClient {
 	}
 
 	async delete(path: string): Promise<void> {
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "DELETE",
 			headers: this.headers(),
 		});
@@ -62,7 +63,7 @@ export abstract class BaseApiClient {
 	}
 
 	async get(path: string): Promise<unknown> {
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "GET",
 			headers: this.headers(),
 		});
@@ -71,7 +72,7 @@ export abstract class BaseApiClient {
 	}
 
 	async getBuffer(path: string): Promise<Buffer> {
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "GET",
 			headers: this.headers(),
 		});
@@ -81,7 +82,7 @@ export abstract class BaseApiClient {
 
 	async *sse(path: string, options?: { headers?: Record<string, string> }): AsyncGenerator<Record<string, unknown>> {
 		const controller = new AbortController();
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "GET",
 			headers: { ...this.headers(), Accept: "text/event-stream", ...options?.headers },
 			signal: controller.signal,
@@ -148,7 +149,7 @@ export abstract class BaseApiClient {
 		// boundary itself. Every provider's multipart headers are exactly its JSON
 		// headers minus Content-Type, so derive them here.
 		const { "Content-Type": _contentType, ...headers } = this.headers();
-		const res = await fetch(`${this.baseUrl}${path}`, {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers,
 			body: formData,

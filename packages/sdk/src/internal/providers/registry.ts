@@ -51,6 +51,22 @@ export function allProviders(): ProviderDefinition[] {
 	return Array.from(registry.values());
 }
 
+/**
+ * Validate a raw provider config against its schema, mapping zod issues to a
+ * readable UserError. Providers call `.parse()`-style validation through here so
+ * config mistakes surface as `provider 'x' config invalid: field: message` lines
+ * instead of a raw ZodError JSON dump leaking to the host's stderr.
+ */
+function parseProviderConfig(def: ProviderDefinition, rawConfig: unknown): unknown {
+	const result = def.configSchema.safeParse(rawConfig);
+	if (result.success) return result.data;
+	const details = result.error.issues.map((issue) => {
+		const path = issue.path.join(".");
+		return path ? `${path}: ${issue.message}` : issue.message;
+	});
+	throw new UserError(`Provider '${def.name}' config invalid:\n${details.join("\n")}`);
+}
+
 export function buildProviders(
 	providersConfig: Record<string, unknown>,
 	projectName?: string,
@@ -62,7 +78,7 @@ export function buildProviders(
 		if (!def) {
 			throw new UserError(`Unknown provider '${name}'. Registered: ${Array.from(registry.keys()).join(", ")}`);
 		}
-		const parsed = def.configSchema.parse(rawConfig);
+		const parsed = parseProviderConfig(def, rawConfig);
 		const adapter = def.createAdapter(parsed, projectName);
 		validateProviderFacets(def, adapter);
 		adapters.set(name, adapter);
@@ -75,11 +91,14 @@ export function buildProviders(
  * Environment variable mappings for each provider.
  * Used to construct a provider adapter without a agents.yaml config file.
  */
-const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required: boolean }>> = {
+const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required: boolean; placeholder?: boolean }>> = {
 	bailian: {
 		api_key: { env: ["DASHSCOPE_API_KEY", "BAILIAN_API_KEY"], required: true },
-		workspace_id: { env: ["BAILIAN_WORKSPACE_ID"], required: true },
-		base_url: { env: ["BAILIAN_BASE_URL"], required: false },
+		// Neither workspace_id nor base_url is required on its own; the config schema
+		// enforces "at least one" so a host can supply just base_url (BAILIAN_BASE_URL).
+		// base_url is the preferred placeholder emitted by `agents sync`.
+		workspace_id: { env: ["BAILIAN_WORKSPACE_ID"], required: false },
+		base_url: { env: ["BAILIAN_BASE_URL"], required: false, placeholder: true },
 	},
 	qoder: {
 		api_key: { env: ["QODER_PAT", "QODER_API_KEY"], required: true },
@@ -97,15 +116,17 @@ const PROVIDER_ENV_VARS: Record<string, Record<string, { env: string[]; required
 
 /**
  * Build a `providers` config block for a single provider using `${ENV}`
- * placeholders for its required fields. Used by `agents sync` to emit a providers
- * block without leaking resolved secrets when the original file is unavailable.
+ * placeholders. Emits fields that are either required for env resolution or
+ * explicitly marked as the provider's preferred placeholder (e.g. bailian's
+ * base_url). Used by `agents sync` to emit a providers block without leaking
+ * resolved secrets when the original file is unavailable.
  */
 export function placeholderProviderConfig(providerName: string): Record<string, string> {
 	const envMap = PROVIDER_ENV_VARS[providerName];
 	if (!envMap) return {};
 	const out: Record<string, string> = {};
-	for (const [field, { env, required }] of Object.entries(envMap)) {
-		if (required && env[0]) out[field] = `\${${env[0]}}`;
+	for (const [field, { env, required, placeholder }] of Object.entries(envMap)) {
+		if ((required || placeholder) && env[0]) out[field] = `\${${env[0]}}`;
 	}
 	return out;
 }
@@ -160,7 +181,7 @@ export function buildProviderFromEnv(providerName: string, projectName?: string)
 	}
 
 	const config = resolveProviderConfigFromEnv(providerName);
-	const parsed = def.configSchema.parse(config);
+	const parsed = parseProviderConfig(def, config);
 	const adapter = def.createAdapter(parsed, projectName);
 	validateProviderFacets(def, adapter);
 	return adapter;
