@@ -66,12 +66,12 @@ export default function TopBar({
 							资源中心
 						</button>
 						<button
-							className={`pill-control${view === "schedule" ? " active" : ""}`}
+							className={`pill-control${view === "deployments" ? " active" : ""}`}
 							type="button"
-							aria-current={view === "schedule" ? "page" : undefined}
-							onClick={() => onNavigate("schedule")}
+							aria-current={view === "deployments" ? "page" : undefined}
+							onClick={() => onNavigate("deployments")}
 						>
-							定时
+							定时任务
 						</button>
 					</>
 				) : null}

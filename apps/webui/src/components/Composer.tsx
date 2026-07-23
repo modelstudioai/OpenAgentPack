@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { usePromptEditor } from "@/components/prompt-editor/PromptEditorProvider";
 import type { UiModel } from "@/lib/domain/model-api";
 import type { RoleCard } from "@/lib/playbooks/types";
-import type { SchedulePreset } from "@/lib/schedule";
+import type { TopBarView } from "@/lib/topbar-route";
 import {
 	AttachFilesButton,
 	ComposerFeeNotice,
@@ -11,8 +11,8 @@ import {
 	SelectedFilesStrip,
 	useFilePickerModal,
 } from "./ComposerInputShared";
+import DeploymentButton from "./DeploymentButton";
 import ModelSelector from "./ModelSelector";
-import ScheduleButton from "./ScheduleButton";
 import TaskBox from "./TaskBox";
 import TaskRuntime from "./TaskRuntime";
 import { useSubmitTask } from "./useSubmitTask";
@@ -32,7 +32,7 @@ interface ComposerProps {
 	models: UiModel[];
 	onModelChange: (modelId: string) => void;
 	onMakeSame?: (input: { prompt: string; agentId?: string }) => void;
-	onOpenSchedule?: (preset?: SchedulePreset) => void;
+	onNavigate?: (view: TopBarView) => void;
 	canSubmit?: boolean;
 	ref?: React.Ref<ComposerHandle>;
 }
@@ -47,7 +47,7 @@ export default function Composer({
 	models,
 	onModelChange,
 	onMakeSame,
-	onOpenSchedule,
+	onNavigate,
 	canSubmit = true,
 	ref,
 }: ComposerProps) {
@@ -140,7 +140,7 @@ export default function Composer({
 						<div className="composer-footer">
 							<div className="tool-buttons">
 								<AttachFilesButton onClick={openPicker} />
-								<ScheduleButton onOpenSchedule={onOpenSchedule} />
+								<DeploymentButton prompt={inputValue} agentId={agentId} onNavigate={onNavigate} />
 							</div>
 							<div className="mode-buttons">
 								<ModelSelector models={models} value={model} onChange={onModelChange} />

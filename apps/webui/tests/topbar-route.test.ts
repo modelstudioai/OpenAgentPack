@@ -10,16 +10,16 @@ describe("viewFromPathname", () => {
 		expect(viewFromPathname("/resources")).toBe("resources");
 	});
 
-	test("/schedule is schedule", () => {
-		expect(viewFromPathname("/schedule")).toBe("schedule");
+	test("/deployments is deployments", () => {
+		expect(viewFromPathname("/deployments")).toBe("deployments");
 	});
 
 	test("nested resources path", () => {
 		expect(viewFromPathname("/cli_studio/resources")).toBe("resources");
 	});
 
-	test("nested schedule path", () => {
-		expect(viewFromPathname("/cli_studio/schedule")).toBe("schedule");
+	test("nested deployments path", () => {
+		expect(viewFromPathname("/cli_studio/deployments")).toBe("deployments");
 	});
 
 	test("trailing slash on resources", () => {
@@ -36,8 +36,8 @@ describe("pathnameForView", () => {
 		expect(pathnameForView("resources", "/")).toBe("/resources");
 	});
 
-	test("schedule from /", () => {
-		expect(pathnameForView("schedule", "/")).toBe("/schedule");
+	test("deployments from /", () => {
+		expect(pathnameForView("deployments", "/")).toBe("/deployments");
 	});
 
 	test("resources from nested host path", () => {
@@ -48,18 +48,18 @@ describe("pathnameForView", () => {
 		expect(pathnameForView("home", "/cli_studio/resources")).toBe("/cli_studio");
 	});
 
-	test("home from nested schedule path", () => {
-		expect(pathnameForView("home", "/cli_studio/schedule")).toBe("/cli_studio");
+	test("home from nested deployments path", () => {
+		expect(pathnameForView("home", "/cli_studio/deployments")).toBe("/cli_studio");
 	});
 
-	test("switches between resources and schedule", () => {
-		expect(pathnameForView("schedule", "/cli_studio/resources")).toBe("/cli_studio/schedule");
-		expect(pathnameForView("resources", "/cli_studio/schedule")).toBe("/cli_studio/resources");
+	test("switches between resources and deployments", () => {
+		expect(pathnameForView("deployments", "/cli_studio/resources")).toBe("/cli_studio/deployments");
+		expect(pathnameForView("resources", "/cli_studio/deployments")).toBe("/cli_studio/resources");
 	});
 
 	test("idempotent when already on target view", () => {
 		expect(pathnameForView("resources", "/cli_studio/resources")).toBe("/cli_studio/resources");
-		expect(pathnameForView("schedule", "/cli_studio/schedule")).toBe("/cli_studio/schedule");
+		expect(pathnameForView("deployments", "/cli_studio/deployments")).toBe("/cli_studio/deployments");
 		expect(pathnameForView("home", "/cli_studio")).toBe("/cli_studio");
 	});
 });

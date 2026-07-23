@@ -1539,8 +1539,8 @@ select.provision-dialog-input {
 	animation: spin 1s linear infinite;
 }
 
-/* ===== Schedule Panel ===== */
-.schedule-wrapper {
+/* ===== Deployment Panel ===== */
+.deploy-wrapper {
 	position: relative;
 }
 
@@ -1571,14 +1571,14 @@ select.provision-dialog-input {
 	background: rgba(255, 255, 255, 0.5);
 }
 
-.schedule-panel-backdrop {
+.deploy-panel-backdrop {
 	position: fixed;
 	inset: 0;
 	z-index: 998;
 	background: transparent;
 }
 
-.schedule-panel {
+.deploy-panel {
 	position: absolute;
 	z-index: 999;
 	top: calc(100% + 8px);
@@ -1598,13 +1598,13 @@ select.provision-dialog-input {
 		transform 0.18s ease;
 }
 
-.schedule-panel.open {
+.deploy-panel.open {
 	opacity: 1;
 	pointer-events: auto;
 	transform: translateY(0);
 }
 
-.schedule-panel-header {
+.deploy-panel-header {
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -1615,13 +1615,13 @@ select.provision-dialog-input {
 	border-bottom: 1px solid var(--line);
 }
 
-.schedule-panel-options {
+.deploy-panel-options {
 	display: flex;
 	flex-direction: column;
 	padding: 8px;
 }
 
-.schedule-option {
+.deploy-option {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -1636,25 +1636,25 @@ select.provision-dialog-input {
 	transition: background 0.12s;
 }
 
-.schedule-option:hover {
+.deploy-option:hover {
 	background: var(--soft);
 }
 
-.schedule-option.selected {
+.deploy-option.selected {
 	background: var(--cta);
 	color: var(--cta-fg);
 }
 
-.schedule-option.selected:hover {
+.deploy-option.selected:hover {
 	opacity: 0.9;
 }
 
-.schedule-panel-footer {
+.deploy-panel-footer {
 	padding: 10px 16px 14px;
 	border-top: 1px solid var(--line);
 }
 
-.schedule-footer-hint {
+.deploy-footer-hint {
 	font-size: 12px;
 	color: var(--muted-2);
 	line-height: 1.4;
@@ -2640,13 +2640,13 @@ select.provision-dialog-input {
 }
 
 /* BottomBar - 定时面板向上弹出 */
-.bottom-bar-expanded .schedule-panel {
+.bottom-bar-expanded .deploy-panel {
 	top: auto;
 	bottom: calc(100% + 8px);
 	transform: translateY(-6px);
 }
 
-.bottom-bar-expanded .schedule-panel.open {
+.bottom-bar-expanded .deploy-panel.open {
 	transform: translateY(0);
 }
 

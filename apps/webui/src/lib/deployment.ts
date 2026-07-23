@@ -1,6 +1,6 @@
-export type SchedulePreset = "daily" | "weekdays" | "weekly";
+export type DeploymentPreset = "daily" | "weekdays" | "weekly";
 
-export interface SchedulePresetValue {
+export interface DeploymentPresetValue {
 	time: string;
 	repeat: "每天" | "工作日" | "每周";
 }
@@ -9,7 +9,7 @@ export function localDateTime(date: Date): string {
 	return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-export function schedulePresetValue(preset: SchedulePreset, now = new Date()): SchedulePresetValue {
+export function deploymentPresetValue(preset: DeploymentPreset, now = new Date()): DeploymentPresetValue {
 	const date = new Date(now);
 	date.setHours(9, 0, 0, 0);
 	if (preset === "weekly") {

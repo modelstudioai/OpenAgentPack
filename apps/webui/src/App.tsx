@@ -2,13 +2,13 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import BottomBar, { type BottomBarHandle } from "@/components/BottomBar";
 import Composer, { type ComposerHandle } from "@/components/Composer";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import DeploymentCenter from "@/components/DeploymentCenter";
 import GlobalToastHost from "@/components/GlobalToastHost";
 import HeroGreeting from "@/components/HeroGreeting";
 import PromptDialog from "@/components/PromptDialog";
 import { PromptEditorProvider } from "@/components/prompt-editor/PromptEditorProvider";
 import RoleCards from "@/components/RoleCards";
 import ResourceCenter from "@/components/resource-center";
-import ScheduleCenter from "@/components/ScheduleCenter";
 import SettingsDialog from "@/components/SettingsDialog";
 import Showcase from "@/components/Showcase";
 import TopBar from "@/components/TopBar";
@@ -19,7 +19,6 @@ import { useAgentsConfigReady } from "@/lib/hooks/useAgentsConfigReady";
 import { getRoleCards } from "@/lib/playbooks";
 import type { RoleCard } from "@/lib/playbooks/types";
 import { isPlaygroundMode } from "@/lib/runtime-mode";
-import type { SchedulePreset } from "@/lib/schedule";
 import { useProviderConfigRevision } from "@/lib/store/provider-config-store";
 import { useTopBarView } from "@/lib/use-topbar-view";
 
@@ -75,12 +74,6 @@ export default function Home() {
 	const [models, setModels] = useState<UiModel[]>([]);
 	const [selectedModelsByAgent, setSelectedModelsByAgent] = useState<Record<string, string>>({});
 	const [warmProgress, setWarmProgress] = useState<WarmProgress | null>(null);
-	const [scheduleDraft, setScheduleDraft] = useState<{
-		key: number;
-		preset?: SchedulePreset;
-		prompt: string;
-		playbookId: string;
-	}>({ key: 0, prompt: "", playbookId: "" });
 	// Only read inside handlers (top composer vs. bottom bar routing), never rendered — a ref avoids
 	// re-rendering the whole page each time the bar scrolls in or out of view.
 	const bottomBarVisibleRef = useRef(false);
@@ -185,24 +178,10 @@ export default function Home() {
 		[activeAgentSlug],
 	);
 
-	const handleOpenSchedule = useCallback(
-		(preset?: SchedulePreset) => {
-			setScheduleDraft((current) => ({
-				key: current.key + 1,
-				preset,
-				prompt: inputValue,
-				playbookId: activeAgentSlug,
-			}));
-			setView("schedule");
-			window.scrollTo({ top: 0, behavior: "smooth" });
-		},
-		[activeAgentSlug, inputValue, setView],
-	);
-
 	return (
 		<PromptEditorProvider inputValue={inputValue} onInputChange={setInputValue}>
 			<GlobalToastHost />
-			{view === "resources" || view === "schedule" ? (
+			{view === "resources" || view === "deployments" ? (
 				<>
 					<div className="page-shell">
 						<WarmBanner progress={warmProgress} />
@@ -213,7 +192,7 @@ export default function Home() {
 							settingsOpen={settingsOpen}
 							onOpenSettings={() => setSettingsOpen(true)}
 						/>
-						{view === "resources" ? <ResourceCenter /> : <ScheduleCenter draft={scheduleDraft} />}
+						{view === "resources" ? <ResourceCenter /> : <DeploymentCenter />}
 					</div>
 					<ConfirmDialog />
 					<PromptDialog />
@@ -261,7 +240,7 @@ export default function Home() {
 										models={models}
 										onModelChange={handleModelChange}
 										onMakeSame={handleMakeSame}
-										onOpenSchedule={handleOpenSchedule}
+										onNavigate={setView}
 										canSubmit={canSubmit}
 									/>
 								</div>
@@ -282,7 +261,7 @@ export default function Home() {
 						composerRef={composerRef as React.RefObject<HTMLElement | null>}
 						onVisibilityChange={handleBottomBarVisibility}
 						onMakeSame={handleMakeSame}
-						onOpenSchedule={handleOpenSchedule}
+						onNavigate={setView}
 						canSubmit={canSubmit}
 					/>
 
