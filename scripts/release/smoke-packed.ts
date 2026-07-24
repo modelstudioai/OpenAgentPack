@@ -1,6 +1,11 @@
 /**
  * Pack the exact publish manifests, install them as an external npm consumer,
  * then exercise every public SDK entry point plus the CLI and Playground bins.
+ *
+ * `--sdk-only` restricts the run to the SDK package: pack/install only the sdk
+ * tarball (still with --engine-strict) and execute the SDK entry-point imports.
+ * This is the mode CI uses on Node versions below the cli/playground engines
+ * floor (>=22) to enforce the SDK's own >=18.17.0 engines contract.
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -18,6 +23,14 @@ import {
 
 const root = resolve(import.meta.dirname, "../..");
 
+export function isSdkOnly(argv: readonly string[]): boolean {
+	return argv.includes("--sdk-only");
+}
+
+export function smokePackages(sdkOnly: boolean): readonly (typeof PACKAGES)[number][] {
+	return sdkOnly ? PACKAGES.filter((pkg) => pkg === "sdk") : PACKAGES;
+}
+
 type PackedPackage = { filename: string };
 
 export function packedFilename(raw: string, pkg: string): string {
@@ -33,9 +46,9 @@ function run(command: string[], cwd: string, stdout: "inherit" | "pipe" = "inher
 	return stdout === "pipe" ? (result.stdout?.toString().trim() ?? "") : "";
 }
 
-function packPackages(destination: string): string[] {
+function packPackages(destination: string, packages: readonly (typeof PACKAGES)[number][]): string[] {
 	const versions = workspaceVersions();
-	return PACKAGES.map((pkg) => {
+	return packages.map((pkg) => {
 		const pkgDir = join(root, "packages", pkg);
 		let originalLicense: string | undefined;
 		let originalManifest: string | undefined;
@@ -104,6 +117,8 @@ async function smokePlayground(consumer: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+	const sdkOnly = isSdkOnly(process.argv.slice(2));
+	const packages = smokePackages(sdkOnly);
 	const temporaryRoot = mkdtempSync(join(tmpdir(), "openagentpack-consumer-"));
 	try {
 		const tarballsDir = join(temporaryRoot, "tarballs");
@@ -112,7 +127,7 @@ async function main(): Promise<void> {
 		mkdirSync(consumer);
 		writeFileSync(join(consumer, "package.json"), '{"name":"agents-package-smoke","private":true,"type":"module"}\n');
 
-		const tarballs = packPackages(tarballsDir);
+		const tarballs = packPackages(tarballsDir, packages);
 		run(
 			[
 				"npm",
@@ -126,7 +141,7 @@ async function main(): Promise<void> {
 			],
 			consumer,
 		);
-		for (const pkg of PACKAGES) {
+		for (const pkg of packages) {
 			const license = readFileSync(join(consumer, `node_modules/@openagentpack/${pkg}/LICENSE`), "utf8");
 			if (license !== readFileSync(join(root, "LICENSE"), "utf8")) {
 				throw new Error(`${pkg} package is missing the repository license`);
@@ -143,21 +158,23 @@ async function main(): Promise<void> {
 			consumer,
 		);
 
-		const expectedVersion = JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")) as {
-			version: string;
-		};
-		const cliVersion = run(
-			["node", join(consumer, "node_modules/@openagentpack/cli/dist/bin/agents.js"), "--version"],
-			consumer,
-			"pipe",
-		);
-		if (cliVersion !== expectedVersion.version) {
-			throw new Error(`Packed CLI version mismatch: expected ${expectedVersion.version}, received ${cliVersion}`);
-		}
+		if (!sdkOnly) {
+			const expectedVersion = JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")) as {
+				version: string;
+			};
+			const cliVersion = run(
+				["node", join(consumer, "node_modules/@openagentpack/cli/dist/bin/agents.js"), "--version"],
+				consumer,
+				"pipe",
+			);
+			if (cliVersion !== expectedVersion.version) {
+				throw new Error(`Packed CLI version mismatch: expected ${expectedVersion.version}, received ${cliVersion}`);
+			}
 
-		await smokePlayground(consumer);
+			await smokePlayground(consumer);
+		}
 		const nodeVersion = run(["node", "--version"], consumer, "pipe");
-		console.log(`✓ Packed packages install and run under ${nodeVersion}`);
+		console.log(`✓ Packed ${sdkOnly ? "SDK package installs" : "packages install"} and run under ${nodeVersion}`);
 	} finally {
 		rmSync(temporaryRoot, { recursive: true, force: true });
 	}
