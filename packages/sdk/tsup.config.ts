@@ -15,5 +15,7 @@ export default defineConfig({
 		},
 	},
 	clean: true,
-	target: "esnext",
+	// Keep the emitted syntax parseable by Node 18.17 (the package's engines
+	// floor): esnext would let future syntax (e.g. `using`) leak into dist.
+	target: "es2022",
 });

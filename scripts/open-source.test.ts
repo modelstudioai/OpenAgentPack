@@ -53,11 +53,16 @@ describe("open-source repository invariants", () => {
 	});
 
 	test("public packages require a maintained Node.js baseline", () => {
-		for (const pkg of ["sdk", "playground", "cli"]) {
+		const nodeBaselines: Record<string, string> = {
+			sdk: ">=18.17.0",
+			playground: ">=22",
+			cli: ">=22",
+		};
+		for (const [pkg, expectedNodeRange] of Object.entries(nodeBaselines)) {
 			const manifest = JSON.parse(readFileSync(resolve(root, `packages/${pkg}/package.json`), "utf8")) as {
 				engines?: { node?: string };
 			};
-			expect(manifest.engines?.node).toBe(">=22");
+			expect(manifest.engines?.node).toBe(expectedNodeRange);
 		}
 	});
 

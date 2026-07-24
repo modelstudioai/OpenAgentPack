@@ -52,12 +52,23 @@ jobs:
         run: bun scripts/verify.ts full --step "${{ matrix.step }}"
 
   package-compatibility:
-    name: Package compatibility / Node ${{ matrix.node }}
+    name: Package compatibility / Node ${{ matrix.node }}${{ matrix.scope == 'sdk' && ' (sdk-only)' || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        node: [22, 24]
+        include:
+          # Full consumer smoke (sdk + playground + cli) on the repo baseline.
+          - node: 22
+            scope: all
+          - node: 24
+            scope: all
+          # SDK-only smoke on the sdk engines floor (>=18.17.0): cli/playground
+          # require Node >=22, so only the sdk tarball is installed and imported.
+          - node: 18.17.0
+            scope: sdk
+          - node: 20
+            scope: sdk
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -68,8 +79,14 @@ jobs:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
       - run: bun install --frozen-lockfile
-      - run: bun scripts/verify.ts release --step build-packages
-      - run: bun scripts/verify.ts release --step package-smoke
+      - if: matrix.scope == 'all'
+        run: |
+          bun scripts/verify.ts release --step build-packages
+          bun scripts/verify.ts release --step package-smoke
+      - if: matrix.scope == 'sdk'
+        run: |
+          bun run build:sdk
+          bun scripts/release/smoke-packed.ts --sdk-only
 
   gate:
     name: Gate

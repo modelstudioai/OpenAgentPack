@@ -20,7 +20,7 @@
 		"url": "https://github.com/modelstudioai/OpenAgentPack/issues"
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=18.17.0"
 	},
 	"type": "module",
 	"main": "./dist/index.js",
