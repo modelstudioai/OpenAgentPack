@@ -65,7 +65,7 @@ jobs:
             scope: all
           # SDK-only smoke on the sdk engines floor (>=18.17.0): cli/playground
           # require Node >=22, so only the sdk tarball is installed and imported.
-          - node: 18
+          - node: 18.17.0
             scope: sdk
           - node: 20
             scope: sdk
@@ -79,11 +79,14 @@ jobs:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
       - run: bun install --frozen-lockfile
-      - run: bun scripts/verify.ts release --step build-packages
       - if: matrix.scope == 'all'
-        run: bun scripts/verify.ts release --step package-smoke
+        run: |
+          bun scripts/verify.ts release --step build-packages
+          bun scripts/verify.ts release --step package-smoke
       - if: matrix.scope == 'sdk'
-        run: bun scripts/release/smoke-packed.ts --sdk-only
+        run: |
+          bun run build:sdk
+          bun scripts/release/smoke-packed.ts --sdk-only
 
   gate:
     name: Gate
