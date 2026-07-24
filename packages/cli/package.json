@@ -1,6 +1,6 @@
 {
 	"name": "@openagentpack/cli",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Open Agent Pack — Declaratively manage AI agent infrastructure",
 	"license": "Apache-2.0",
 	"keywords": [
