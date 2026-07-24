@@ -1,6 +1,6 @@
 {
 	"name": "@openagentpack/playground",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "OpenAgentPack Playground — one-command local web UI for OpenAgentPack",
 	"license": "Apache-2.0",
 	"keywords": [
