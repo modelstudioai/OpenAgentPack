@@ -329,6 +329,32 @@ export function collectProviderCapabilities(
 			}
 		}
 
+		if (providerName === "bailian") {
+			// Bailian deployments are native, but their payload is narrower than the
+			// provider-neutral declaration: initial_events carry messages only, and
+			// resources accept files only. Surface what gets dropped.
+			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+				if (deployment.provider && deployment.provider !== providerName) continue;
+				const addr: ResourceAddress = { type: "deployment", name, provider: providerName };
+
+				if (deployment.initial_events?.some((event) => event.type === "user.define_outcome")) {
+					diagnostics.warning(
+						`${providerName}.deployment.define_outcome_unsupported`,
+						"Outcome rubrics (user.define_outcome) are dropped from the Bailian deployment payload; the run executes without rubric grading.",
+						addr,
+					);
+				}
+
+				if (deployment.resources?.some((resource) => resource.type === "github_repository")) {
+					diagnostics.warning(
+						`${providerName}.deployment.github_repository_unsupported`,
+						"Bailian deployment resources accept files only; github_repository resources are dropped. Clone the repository inside the session instead.",
+						addr,
+					);
+				}
+			}
+		}
+
 		if (providerName !== "qoder") {
 			for (const [name, env] of Object.entries(config.environments ?? {})) {
 				// External references are never sent to the provider API, so a

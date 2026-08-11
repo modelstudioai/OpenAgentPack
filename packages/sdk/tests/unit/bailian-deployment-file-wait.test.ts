@@ -3,20 +3,21 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BailianAdapter } from "../../src/internal/providers/bailian/adapter.ts";
-import type { DeploymentContext } from "../../src/internal/providers/interface.ts";
+import type { ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
+import type { DeploymentDecl } from "../../src/internal/types/config.ts";
 
-// A freshly uploaded file lands in `checking`; binding it to a session (bindSessionFiles)
-// rejects an unavailable source with "源文件不可用". The emulated deployment run must poll the
-// Files API to `available` before POST /sessions, just like the skill-upload path. This locks
-// in that ordering so the bind never races the content audit again.
+// A freshly uploaded file lands in `checking`; attaching it to a deployment before the
+// content audit finishes is rejected downstream. createDeployment must poll the Files API
+// to `available` before POST /deployments, just like the skill-upload path. This locks in
+// that ordering so the deployment never references a file the audit hasn't cleared.
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-describe("BailianAdapter emulated deployment file upload", () => {
-	test("waits for the uploaded file to become available before creating the session", async () => {
+describe("BailianAdapter deployment file upload", () => {
+	test("waits for the uploaded file to become available before creating the deployment", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "agents-dep-"));
 		writeFileSync(join(dir, "report-template.md"), "# template");
 
@@ -38,35 +39,32 @@ describe("BailianAdapter emulated deployment file upload", () => {
 				fileStatus = "available";
 				return Response.json({ id: "file_x", filename: "report-template.md", status });
 			}
-			if (method === "POST" && path.endsWith("/sessions")) {
-				return Response.json({ id: "sesn_1" });
-			}
-			if (method === "POST" && path.endsWith("/sessions/sesn_1/events")) {
-				return Response.json({ id: "evt_1" });
+			if (method === "POST" && path.endsWith("/deployments")) {
+				return Response.json({ id: "depl_1", type: "deployment" });
 			}
 			throw new Error(`unexpected ${method} ${path}`);
 		}) as typeof fetch;
 
 		const adapter = new BailianAdapter("sk-test", "ws-test", "https://bailian.test/api/v1/agentstudio");
-		const ctx: DeploymentContext = {
-			id: null,
-			name: "daily-report",
-			decl: {
-				agent: "reporter",
-				initial_events: [{ type: "user.message", content: "go" }],
-				resources: [{ type: "file", source: "report-template.md", mount_path: "/data/report-template.md" }],
-			},
-			refs: { agent_id: "agent_1", environment_id: "env_1", vault_ids: [], memory_store_ids: {} },
-			basePath: join(dir, "agents.yaml"),
+		const decl: DeploymentDecl = {
+			agent: "reporter",
+			initial_events: [{ type: "user.message", content: "go" }],
+			resources: [{ type: "file", source: "report-template.md", mount_path: "/mnt/report-template.md" }],
+		};
+		const refs: ResolvedDeploymentRefs = {
+			agent_id: "agent_1",
+			environment_id: "env_1",
+			vault_ids: [],
+			memory_store_ids: {},
 		};
 
-		const res = await adapter.runDeployment(ctx);
-		expect(res.session_id).toBe("sesn_1");
+		const res = await adapter.createDeployment("daily-report", decl, refs, join(dir, "agents.yaml"));
+		expect(res.id).toBe("depl_1");
 
 		const pollIdx = calls.indexOf("GET /api/v1/agentstudio/files/file_x");
-		const sessionIdx = calls.indexOf("POST /api/v1/agentstudio/sessions");
+		const deployIdx = calls.indexOf("POST /api/v1/agentstudio/deployments");
 		expect(pollIdx).toBeGreaterThanOrEqual(0);
-		expect(sessionIdx).toBeGreaterThanOrEqual(0);
-		expect(pollIdx).toBeLessThan(sessionIdx);
+		expect(deployIdx).toBeGreaterThanOrEqual(0);
+		expect(pollIdx).toBeLessThan(deployIdx);
 	});
 });

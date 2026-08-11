@@ -147,7 +147,7 @@ Beta 用户可以安装 `@openagentpack/cli@beta`；固定版本及切回稳定�
 | MCP Server | native | native | native | native |
 | Memory Store | unsupported | native | native | native |
 | Multi-Agent | unsupported | unsupported | native | native |
-| Deployment | emulated | native | native | emulated |
+| Deployment | native | native | native | emulated |
 | Session | native | native | native | native |
 
 完整能力矩阵与各 Provider 差异见 [Provider 参考](./docs/reference/providers.zh-CN.md)。

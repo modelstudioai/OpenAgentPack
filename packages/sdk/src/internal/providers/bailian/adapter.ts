@@ -38,6 +38,8 @@ import type {
 	ComparableRemoteResource,
 	DeploymentContext,
 	DeploymentInfo,
+	DeploymentListFilter,
+	DeploymentListResult,
 	DeploymentRunResult,
 	DriftSupport,
 	ExportedResource,
@@ -63,9 +65,9 @@ import {
 	fileToDecl,
 	mapAgent,
 	mapCredential,
-	mapDeploymentToSession,
+	mapDeployment,
+	mapDeploymentUpdate,
 	mapEnvironment,
-	mapInitialEvents,
 	mapSendMessage,
 	mapSession,
 	mapVault,
@@ -95,6 +97,7 @@ export class BailianAdapter implements ProviderAdapter {
 		skill: "/skills",
 		vault: "/vaults",
 		file: "/files",
+		deployment: "/deployments",
 	};
 
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
@@ -549,76 +552,130 @@ export class BailianAdapter implements ProviderAdapter {
 		await this.client.delete(`/vaults/${vaultId}/credentials/${credentialId}`);
 	}
 
-	// --- Deployment (emulated) ---
+	// --- Deployment ---
 
 	async createDeployment(
-		_name: string,
-		_decl: DeploymentDecl,
-		_refs: ResolvedDeploymentRefs,
-		_basePath: string,
+		name: string,
+		decl: DeploymentDecl,
+		refs: ResolvedDeploymentRefs,
+		basePath: string,
 	): Promise<RemoteResource> {
-		return { id: null, type: "deployment" };
+		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
+		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
+		const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
+		return toRemoteResource(res);
 	}
 
 	async updateDeployment(
-		_id: string,
-		_name: string,
-		_decl: DeploymentDecl,
-		_refs: ResolvedDeploymentRefs,
-		_basePath: string,
+		id: string,
+		name: string,
+		decl: DeploymentDecl,
+		refs: ResolvedDeploymentRefs,
+		basePath: string,
 	): Promise<RemoteResource> {
-		return { id: null, type: "deployment" };
+		// Deployments used to be emulated here, so state rows written before native
+		// support carry `remote_id: null`. An update against one has nothing to PATCH —
+		// materialize it remotely instead of failing on an empty path segment.
+		if (!id) return this.createDeployment(name, decl, refs, basePath);
+
+		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
+		const current = (await this.client.get(`/deployments/${id}`)) as Record<string, unknown>;
+		if (current.schedule && !decl.schedule) {
+			throw new UserError(
+				`Deployment '${name}' cannot remove its schedule through the documented Bailian update API; archive and recreate it as a manual deployment.`,
+			);
+		}
+		const body = mapDeploymentUpdate(
+			name,
+			decl,
+			refs,
+			this.projectName,
+			uploaded,
+			current.metadata as Record<string, unknown> | undefined,
+		);
+		const res = (await this.client.post(`/deployments/${id}`, body)) as Record<string, unknown>;
+		return toRemoteResource(res);
 	}
 
-	async deleteDeployment(_id: string): Promise<void> {
-		// Emulated: no remote object to delete.
+	async deleteDeployment(id: string): Promise<void> {
+		await this.client.post(`/deployments/${id}/archive`, {});
 	}
 
 	async runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult> {
-		const fileIds: string[] = [];
-		for (const r of ctx.decl.resources ?? []) {
-			if (r.type === "file") {
-				if (r.file_id) {
-					fileIds.push(r.file_id);
-				} else if (r.source) {
-					fileIds.push(await this.uploadSessionFile(r.source, ctx.basePath));
-				}
-			}
+		if (!ctx.id) {
+			throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
 		}
-
-		const body = mapDeploymentToSession(ctx.decl, ctx.refs, fileIds);
-		const sessionRes = (await this.client.post("/sessions", body)) as Record<string, unknown>;
-		const sessionId = sessionRes.id as string;
-
-		const eventsBody = mapInitialEvents(ctx.decl.initial_events);
-		const input = (eventsBody as { input: unknown[] }).input;
-		if (input.length) {
-			await this.client.post(`/sessions/${sessionId}/events`, eventsBody);
-		}
-
-		return { session_id: sessionId };
-	}
-
-	async getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
-		const plan = mapDeploymentToSession(ctx.decl, ctx.refs, []);
+		const res = (await this.client.post(`/deployments/${ctx.id}/run`, {})) as Record<string, unknown>;
 		return {
-			id: ctx.id,
-			status: "emulated (local)",
-			schedule: ctx.decl.schedule,
-			attributes: { materialization_plan: plan },
+			run_id: res.id as string | undefined,
+			session_id: (res.session_id as string | null) ?? null,
+			error: (res.error as { type: string; message: string } | null | undefined) ?? undefined,
 		};
 	}
 
-	private async uploadSessionFile(source: string, basePath: string): Promise<string> {
+	async getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
+		if (!ctx.id) {
+			throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
+		}
+		const res = (await this.client.get(`/deployments/${ctx.id}`)) as Record<string, unknown>;
+		return toDeploymentInfo(res);
+	}
+
+	async listDeployments(filter?: DeploymentListFilter): Promise<DeploymentListResult> {
+		const params = new URLSearchParams();
+		if (filter?.agent_id) params.set("agent_id", filter.agent_id);
+		if (filter?.status) params.set("status", filter.status);
+		if (filter?.include_archived) params.set("include_archived", "true");
+		if (filter?.limit) params.set("limit", String(filter.limit));
+		if (filter?.page) params.set("page", filter.page);
+		if (filter?.created_at_gte) params.set("created_at[gte]", filter.created_at_gte);
+		if (filter?.created_at_lte) params.set("created_at[lte]", filter.created_at_lte);
+		const query = params.toString();
+		const res = (await this.client.get(`/deployments${query ? `?${query}` : ""}`)) as Record<string, unknown>;
+		// The list response carries no `has_more`; a non-null `next_page` cursor is the signal.
+		const nextPage = (res.next_page as string | null | undefined) ?? undefined;
+		return {
+			deployments: ((res.data as Record<string, unknown>[] | undefined) ?? []).map(toDeploymentInfo),
+			has_more: nextPage != null,
+			next_page: nextPage,
+		};
+	}
+
+	async pauseDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
+		return this.setDeploymentPaused(ctx, true);
+	}
+
+	async unpauseDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
+		return this.setDeploymentPaused(ctx, false);
+	}
+
+	private async setDeploymentPaused(ctx: DeploymentContext, paused: boolean): Promise<DeploymentInfo> {
+		if (!ctx.id) throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
+		const action = paused ? "pause" : "unpause";
+		const res = (await this.client.post(`/deployments/${ctx.id}/${action}`, {})) as Record<string, unknown>;
+		return toDeploymentInfo(res);
+	}
+
+	private async uploadDeploymentFiles(decl: DeploymentDecl, basePath: string): Promise<Map<string, string>> {
+		const uploaded = new Map<string, string>();
+		for (const resource of decl.resources ?? []) {
+			if (resource.type === "file" && !resource.file_id && resource.source && !uploaded.has(resource.source)) {
+				uploaded.set(resource.source, await this.uploadDeploymentFile(resource.source, basePath));
+			}
+		}
+		return uploaded;
+	}
+
+	private async uploadDeploymentFile(source: string, basePath: string): Promise<string> {
 		const fullPath = resolve(dirname(basePath), source);
 		const content = readFileSync(fullPath);
 		const formData = new FormData();
 		formData.append("file", new File([new Uint8Array(content)], basename(fullPath)));
 		const res = (await this.client.postFormData("/files", formData)) as Record<string, unknown>;
 		const fileId = res.id as string;
-		// A fresh upload lands in `checking` while content audit runs; binding it to the
-		// session (bindSessionFiles) rejects an unavailable source with "源文件不可用". Wait
-		// for `available` before materializing the session, mirroring the skill path.
+		// A fresh upload lands in `checking` while content audit runs; attaching an
+		// unavailable source is rejected downstream. Wait for `available` before the
+		// deployment references it, mirroring the skill path.
 		await this.waitForFileAvailable(fileId);
 		return fileId;
 	}
@@ -749,6 +806,19 @@ export class BailianAdapter implements ProviderAdapter {
 
 function isArchivedAgent(raw: Record<string, unknown>): boolean {
 	return typeof raw.archived_at === "string" && raw.archived_at.trim().length > 0;
+}
+
+function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
+	const schedule = res.schedule as Record<string, unknown> | null | undefined;
+	return {
+		id: (res.id as string | undefined) ?? null,
+		status: (res.status as string) ?? "unknown",
+		paused_reason: (res.paused_reason as DeploymentInfo["paused_reason"] | null | undefined) ?? undefined,
+		schedule: schedule
+			? { expression: schedule.expression as string, timezone: schedule.timezone as string | undefined }
+			: undefined,
+		attributes: res,
+	};
 }
 
 export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo {

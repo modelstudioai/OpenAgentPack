@@ -137,3 +137,32 @@ test("rejects Claude GitHub Session mount paths outside /workspace", () => {
 
 	expect(diagnostics.some((item) => item.code === "claude.agent.session_resource.mount_path.invalid")).toBe(true);
 });
+
+test("warns on Bailian deployment payload drops but not on a native schedule", () => {
+	const config: ProjectConfig = {
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		environments: { dev: { config: { type: "cloud" } } },
+		agents: {
+			reporter: { model: "qwen3.7-max", instructions: "report", environment: "dev", tools: { builtin: ["read"] } },
+		},
+		deployments: {
+			"daily-report": {
+				agent: "reporter",
+				schedule: { expression: "0 9 * * *", timezone: "UTC" },
+				initial_events: [
+					{ type: "user.message", content: "go" },
+					{ type: "user.define_outcome", description: "quality gate", rubric: "must have a summary" },
+				],
+				resources: [{ type: "github_repository", url: "https://github.com/acme/repo.git" }],
+			},
+		},
+	};
+
+	const diagnostics = validateProjectConfig(config);
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.define_outcome_unsupported")).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.github_repository_unsupported")).toBe(true);
+	// Schedule is native on Bailian now — the emulated schedule warning must not fire.
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.schedule_unsupported")).toBe(false);
+});

@@ -73,12 +73,14 @@ Qoder deployments may also declare `environment_variables` as a semicolon- or ne
 |----------|:--------------:|----------------------------|
 | Claude | native | schedules server-side through the deployments API |
 | Qoder | native | creates a deployment run and associated session |
-| Bailian, Ark | emulated | expands into a one-shot session at run time |
+| Bailian | native | triggers a server-side run through the deployments API |
+| Ark | emulated | expands into a one-shot session at run time |
 
-On the emulated providers, scheduling and outcome rubrics are **not** enforced server-side — use external cron/CI for always-on or scheduled runs.
+On Ark (the emulated provider), scheduling and outcome rubrics are **not** enforced server-side — use external cron/CI for always-on or scheduled runs. On Bailian, `user.define_outcome` events and `github_repository` resources are dropped from the deployment payload and surface a warning on plan.
 
 ## Examples
 
 - Native deployment + outcome rubric: [`examples/claude/deployment/`](../../examples/claude/deployment/)
 - Native deployment + memory store: [`examples/qoder/deployment/`](../../examples/qoder/deployment/)
-- Emulated deployment + file resources: [`examples/bailian/deployment/`](../../examples/bailian/deployment/) and [`examples/ark/deployment/`](../../examples/ark/deployment/)
+- Native deployment + file resources: [`examples/bailian/deployment/`](../../examples/bailian/deployment/)
+- Emulated deployment + file resources: [`examples/ark/deployment/`](../../examples/ark/deployment/)

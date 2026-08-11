@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BailianAdapter } from "../../src/internal/providers/bailian/adapter.ts";
-import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
+import type {
+	DeploymentContext,
+	ResolvedAgentRefs,
+	ResolvedDeploymentRefs,
+} from "../../src/internal/providers/interface.ts";
 import type { AgentDecl, DeploymentDecl, EnvironmentDecl, SkillDecl } from "../../src/internal/types/config.ts";
 import type { SessionBindings } from "../../src/internal/types/session.ts";
 import type { SkillFile } from "../../src/internal/types/skill-file.ts";
@@ -183,7 +190,7 @@ describe("BailianAdapter e2e", () => {
 		});
 
 		test("returns null for unmapped resource types", async () => {
-			const result = await makeAdapter().findResource("deployment", "any");
+			const result = await makeAdapter().findResource("memory_store", "any");
 			expect(result).toBeNull();
 		});
 
@@ -747,158 +754,259 @@ describe("BailianAdapter e2e", () => {
 		});
 	});
 
-	// ---- Deployment (emulated) ----
+	// ---- Deployment (native) ----
 
-	describe("Deployment (emulated)", () => {
+	describe("Deployment (native)", () => {
 		const deploymentDecl: DeploymentDecl = {
 			agent: "helper",
 			initial_events: [{ type: "user.message", content: "Please analyze the data." }],
 			description: "Analysis task",
+			schedule: { expression: "0 9 * * *", timezone: "UTC" },
 		};
 		const deployRefs: ResolvedDeploymentRefs = {
 			agent_id: "agent_xxx",
 			environment_id: "env_yyy",
-			vault_ids: [],
+			vault_ids: ["vlt_1"],
 			memory_store_ids: {},
 		};
+		const DEPLOYMENT_RESPONSE = {
+			id: "depl_new",
+			type: "deployment",
+			name: "deploy-1",
+			status: "active",
+		};
 
-		test("createDeployment returns null id (emulated)", async () => {
+		test("createDeployment posts the deployment body", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: DEPLOYMENT_RESPONSE }]);
+			cleanup = restore;
+
 			const result = await makeAdapter().createDeployment("deploy-1", deploymentDecl, deployRefs, "/fake/path");
-			expect(result.id).toBeNull();
+
+			expect(calls).toHaveLength(1);
+			expect(calls[0]!.url).toBe(`${BASE}/deployments`);
+			expect(calls[0]!.method).toBe("POST");
+			const body = calls[0]!.body as Record<string, unknown>;
+			expect(body.name).toBe("deploy-1");
+			expect(body.agent).toEqual({ id: "agent_xxx" });
+			expect(body.environment_id).toBe("env_yyy");
+			expect(body.description).toBe("Analysis task");
+			expect(body.vault_ids).toEqual(["vlt_1"]);
+			expect(body.schedule).toEqual({ type: "cron", expression: "0 9 * * *", timezone: "UTC" });
+			expect(body.initial_events).toEqual([
+				{ role: "user", type: "message", content: [{ type: "text", text: "Please analyze the data." }] },
+			]);
+			// Project name is stamped onto metadata for resource ownership tracking.
+			expect((body.metadata as Record<string, unknown>)["agents.project"]).toBe("test-project");
+			expect(result.id).toBe("depl_new");
 			expect(result.type).toBe("deployment");
 		});
 
-		test("updateDeployment returns null id (emulated)", async () => {
+		test("createDeployment pins agent version when resolved", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: DEPLOYMENT_RESPONSE }]);
+			cleanup = restore;
+
+			await makeAdapter().createDeployment(
+				"deploy-1",
+				deploymentDecl,
+				{ ...deployRefs, agent_version: 12 },
+				"/fake/path",
+			);
+			expect((calls[0]!.body as Record<string, unknown>).agent).toEqual({ id: "agent_xxx", version: 12 });
+		});
+
+		test("createDeployment uploads file resources and waits for availability first", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "bailian-depl-"));
+			writeFileSync(join(dir, "report.md"), "# template");
+			const declWithFile: DeploymentDecl = {
+				agent: "helper",
+				initial_events: [{ type: "user.message", content: "analyze" }],
+				resources: [{ type: "file", source: "./report.md", mount_path: "/mnt/report.md" }],
+			};
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "file_up", status: "checking" } },
+				{ status: 200, body: { id: "file_up", status: "available" } },
+				{ status: 200, body: { ...DEPLOYMENT_RESPONSE, id: "depl_files" } },
+			]);
+			cleanup = restore;
+
+			const result = await makeAdapter().createDeployment(
+				"deploy-1",
+				declWithFile,
+				deployRefs,
+				join(dir, "agents.yaml"),
+			);
+			expect(result.id).toBe("depl_files");
+
+			expect(calls[0]!.url).toBe(`${BASE}/files`);
+			expect(calls[0]!.method).toBe("POST");
+			expect(calls[1]!.url).toBe(`${BASE}/files/file_up`);
+			expect(calls[2]!.url).toBe(`${BASE}/deployments`);
+			const body = calls[2]!.body as Record<string, unknown>;
+			expect((body.resources as any[])[0]).toEqual({
+				type: "file",
+				file_id: "file_up",
+				mount_path: "/mnt/report.md",
+			});
+		});
+
+		test("updateDeployment reads current then posts to the id", async () => {
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "depl_xxx", schedule: { type: "cron", expression: "0 9 * * *" } } },
+				{ status: 200, body: { ...DEPLOYMENT_RESPONSE, id: "depl_xxx" } },
+			]);
+			cleanup = restore;
+
 			const result = await makeAdapter().updateDeployment(
-				"deploy_xxx",
+				"depl_xxx",
 				"deploy-1",
 				deploymentDecl,
 				deployRefs,
 				"/fake/path",
 			);
-			expect(result.id).toBeNull();
-			expect(result.type).toBe("deployment");
+
+			expect(calls[0]!.url).toBe(`${BASE}/deployments/depl_xxx`);
+			expect(calls[0]!.method).toBe("GET");
+			expect(calls[1]!.url).toBe(`${BASE}/deployments/depl_xxx`);
+			expect(calls[1]!.method).toBe("POST");
+			expect(result.id).toBe("depl_xxx");
 		});
 
-		test("deleteDeployment is a no-op", async () => {
-			const { calls, restore } = mockFetch([]);
+		test("updateDeployment rejects removing an existing schedule", async () => {
+			const { restore } = mockFetch([
+				{ status: 200, body: { id: "depl_xxx", schedule: { type: "cron", expression: "0 9 * * *" } } },
+			]);
 			cleanup = restore;
 
-			await makeAdapter().deleteDeployment("deploy_xxx");
-			expect(calls).toHaveLength(0);
+			const manualDecl: DeploymentDecl = { agent: "helper", initial_events: [] };
+			expect(
+				makeAdapter().updateDeployment("depl_xxx", "deploy-1", manualDecl, deployRefs, "/fake/path"),
+			).rejects.toThrow(/cannot remove its schedule/);
 		});
 
-		test("runDeployment creates session and sends events", async () => {
+		test("updateDeployment materializes a never-applied (null-id) deployment via create", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: DEPLOYMENT_RESPONSE }]);
+			cleanup = restore;
+
+			const result = await makeAdapter().updateDeployment("", "deploy-1", deploymentDecl, deployRefs, "/fake/path");
+
+			expect(calls).toHaveLength(1);
+			expect(calls[0]!.url).toBe(`${BASE}/deployments`);
+			expect(calls[0]!.method).toBe("POST");
+			expect(result.id).toBe("depl_new");
+		});
+
+		test("deleteDeployment archives the deployment", async () => {
 			const { calls, restore } = mockFetch([
-				{ status: 200, body: { ...SESSION_RESPONSE, id: "sesn_new" } },
-				{
-					status: 200,
-					body: {
-						data: [
-							{
-								object: "message",
-								status: "completed",
-								id: "msg_001",
-								type: "message",
-								role: "user",
-							},
-						],
-					},
-				},
+				{ status: 200, body: { id: "depl_xxx", archived_at: "2026-07-28T03:00:00Z" } },
+			]);
+			cleanup = restore;
+
+			await makeAdapter().deleteDeployment("depl_xxx");
+			expect(calls).toHaveLength(1);
+			expect(calls[0]!.url).toBe(`${BASE}/deployments/depl_xxx/archive`);
+			expect(calls[0]!.method).toBe("POST");
+		});
+
+		test("runDeployment triggers a server-side run", async () => {
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "drun_1", type: "deployment_run", session_id: null, status: "running" } },
 			]);
 			cleanup = restore;
 
 			const result = await makeAdapter().runDeployment({
-				id: null,
+				id: "depl_xxx",
 				name: "analysis",
 				decl: deploymentDecl,
-				refs: deployRefs,
-				basePath: "/fake/project.yaml",
-			});
-
-			expect(calls).toHaveLength(2);
-
-			// Call 1: create session
-			expect(calls[0]!.url).toBe(`${BASE}/sessions`);
-			expect(calls[0]!.method).toBe("POST");
-			const sessionBody = calls[0]!.body as Record<string, unknown>;
-			expect(sessionBody.agent).toBe("agent_xxx");
-			expect(sessionBody.environment_id).toBe("env_yyy");
-			expect(sessionBody.title).toBe("Analysis task");
-
-			// Call 2: send initial events
-			expect(calls[1]!.url).toBe(`${BASE}/sessions/sesn_new/events`);
-			expect(calls[1]!.method).toBe("POST");
-			const eventsBody = calls[1]!.body as { input: any[] };
-			expect(eventsBody.input).toHaveLength(1);
-			expect(eventsBody.input[0].role).toBe("user");
-			expect(eventsBody.input[0].type).toBe("message");
-			expect(eventsBody.input[0].content).toEqual([{ type: "text", text: "Please analyze the data." }]);
-
-			expect(result.session_id).toBe("sesn_new");
-		});
-
-		test("runDeployment skips events POST when no supported events", async () => {
-			const declNoEvents: DeploymentDecl = {
-				agent: "helper",
-				initial_events: [{ type: "user.define_outcome", description: "test" }],
-			};
-			const { calls, restore } = mockFetch([{ status: 200, body: SESSION_RESPONSE }]);
-			cleanup = restore;
-
-			await makeAdapter().runDeployment({
-				id: null,
-				name: "analysis",
-				decl: declNoEvents,
 				refs: deployRefs,
 				basePath: "/fake/project.yaml",
 			});
 
 			expect(calls).toHaveLength(1);
+			expect(calls[0]!.url).toBe(`${BASE}/deployments/depl_xxx/run`);
+			expect(calls[0]!.method).toBe("POST");
+			expect(result.run_id).toBe("drun_1");
+			expect(result.session_id).toBeNull();
 		});
 
-		test("runDeployment uploads file resources before creating session", async () => {
-			const declWithFile: DeploymentDecl = {
-				agent: "helper",
-				initial_events: [{ type: "user.message", content: "analyze" }],
-				resources: [{ type: "file", file_id: "file_existing" }],
-			};
+		test("runDeployment rejects a deployment with no remote id", async () => {
+			expect(
+				makeAdapter().runDeployment({
+					id: null,
+					name: "analysis",
+					decl: deploymentDecl,
+					refs: deployRefs,
+					basePath: "/fake/project.yaml",
+				}),
+			).rejects.toThrow(/no remote id/);
+		});
+
+		test("getDeployment reads the remote deployment", async () => {
 			const { calls, restore } = mockFetch([
-				{ status: 200, body: { ...SESSION_RESPONSE, id: "sesn_with_files" } },
-				{ status: 200, body: { data: [] } },
+				{
+					status: 200,
+					body: {
+						id: "depl_xxx",
+						status: "active",
+						schedule: { type: "cron", expression: "0 9 * * *", timezone: "UTC" },
+					},
+				},
 			]);
 			cleanup = restore;
 
-			const result = await makeAdapter().runDeployment({
-				id: null,
-				name: "analysis",
-				decl: declWithFile,
-				refs: deployRefs,
-				basePath: "/fake/project.yaml",
-			});
-
-			const sessionBody = calls[0]!.body as Record<string, unknown>;
-			expect((sessionBody.resources as any[])[0]).toEqual({
-				type: "file",
-				file_id: "file_existing",
-			});
-			expect(result.session_id).toBe("sesn_with_files");
-		});
-
-		test("getDeployment returns emulated info", async () => {
 			const result = await makeAdapter().getDeployment({
-				id: "deploy_local",
+				id: "depl_xxx",
 				name: "analysis",
 				decl: deploymentDecl,
 				refs: deployRefs,
 				basePath: "/fake/project.yaml",
 			});
 
-			expect(result.id).toBe("deploy_local");
-			expect(result.status).toBe("emulated (local)");
-			const plan = result.attributes!.materialization_plan as Record<string, unknown>;
-			expect(plan.agent).toBe("agent_xxx");
-			expect(plan.environment_id).toBe("env_yyy");
+			expect(calls[0]!.url).toBe(`${BASE}/deployments/depl_xxx`);
+			expect(calls[0]!.method).toBe("GET");
+			expect(result.id).toBe("depl_xxx");
+			expect(result.status).toBe("active");
+			expect(result.schedule).toEqual({ expression: "0 9 * * *", timezone: "UTC" });
+		});
+
+		test("listDeployments forwards filters and derives has_more from next_page", async () => {
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { data: [{ id: "depl_1", status: "active" }], next_page: "cursor_2" } },
+			]);
+			cleanup = restore;
+
+			const result = await makeAdapter().listDeployments({ agent_id: "agent_xxx", status: "active", limit: 50 });
+
+			const url = new URL(calls[0]!.url);
+			expect(url.pathname).toBe("/api/v1/agentstudio/deployments");
+			expect(url.searchParams.get("agent_id")).toBe("agent_xxx");
+			expect(url.searchParams.get("status")).toBe("active");
+			expect(url.searchParams.get("limit")).toBe("50");
+			expect(result.deployments).toHaveLength(1);
+			expect(result.has_more).toBe(true);
+			expect(result.next_page).toBe("cursor_2");
+		});
+
+		test("pauseDeployment and unpauseDeployment hit their endpoints", async () => {
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "depl_xxx", status: "paused" } },
+				{ status: 200, body: { id: "depl_xxx", status: "active" } },
+			]);
+			cleanup = restore;
+
+			const ctx: DeploymentContext = {
+				id: "depl_xxx",
+				name: "analysis",
+				decl: deploymentDecl,
+				refs: deployRefs,
+				basePath: "/fake/project.yaml",
+			};
+			const paused = await makeAdapter().pauseDeployment(ctx);
+			const active = await makeAdapter().unpauseDeployment(ctx);
+
+			expect(calls[0]!.url).toBe(`${BASE}/deployments/depl_xxx/pause`);
+			expect(calls[1]!.url).toBe(`${BASE}/deployments/depl_xxx/unpause`);
+			expect(paused.status).toBe("paused");
+			expect(active.status).toBe("active");
 		});
 	});
 
