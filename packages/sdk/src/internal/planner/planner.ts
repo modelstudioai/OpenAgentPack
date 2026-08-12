@@ -10,7 +10,7 @@ import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { ResourceAddress, StateFile } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
 import { getResourceDeclaration } from "./declaration.ts";
-import { computeResourceHash } from "./hasher.ts";
+import { computeReplacementFingerprint, computeResourceHash } from "./hasher.ts";
 import { buildReadinessBaseline, classifyReadinessImpact, diffReadinessBaseline } from "./plan-semantics.ts";
 
 export interface PlanOptions {
@@ -218,7 +218,90 @@ export async function buildPlan(
 		});
 	}
 
+	coalesceChannelRenames(actions, config, state);
 	return { actions, diagnostics: diagnostics.getAll() };
+}
+
+/**
+ * A YAML key is a resource address, but changing that key should not force a
+ * remote Channel replacement when the old and new declarations form one
+ * unambiguous same-type pair. Retaining the remote id is especially important
+ * for messaging providers that allow a credential set to belong to only one
+ * Channel at a time.
+ */
+function coalesceChannelRenames(actions: PlannedAction[], config: ProjectConfig, state: StateFile): void {
+	const creates = actions.filter((action) => action.action === "create" && action.address.type === "channel");
+	const deletes = actions.filter((action) => action.action === "delete" && action.address.type === "channel");
+	const stateByAddress = new Map(state.resources.map((resource) => [addressKey(resource.address), resource]));
+	const matchedDeletes = new Set<PlannedAction>();
+
+	for (const create of creates) {
+		const desiredType = config.channels?.[create.address.name]?.type;
+		if (!desiredType) continue;
+		const desiredFingerprint = computeReplacementFingerprint(create.address, config);
+		const candidates = deletes.filter((deletion) => {
+			if (matchedDeletes.has(deletion) || deletion.address.provider !== create.address.provider) return false;
+			const prior = stateByAddress.get(addressKey(deletion.address));
+			const snapshot = prior?.remote_snapshot as { channel_type?: unknown } | undefined;
+			if (snapshot?.channel_type !== desiredType) return false;
+			return !prior?.replacement_fingerprint || prior.replacement_fingerprint === desiredFingerprint;
+		});
+		if (candidates.length !== 1) continue;
+
+		const deletion = candidates[0]!;
+		const prior = stateByAddress.get(addressKey(deletion.address));
+		const competingCreates = creates.filter(
+			(candidate) =>
+				candidate !== create &&
+				candidate.address.provider === create.address.provider &&
+				config.channels?.[candidate.address.name]?.type === desiredType &&
+				(!prior?.replacement_fingerprint ||
+					computeReplacementFingerprint(candidate.address, config) === prior.replacement_fingerprint),
+		);
+		if (competingCreates.length > 0) continue;
+
+		create.action = "update";
+		create.previousAddress = deletion.address;
+		create.before = deletion.before;
+		create.driftKind = "local";
+		create.reason = `Channel key renamed from '${deletion.address.name}' (remote resource retained)`;
+		protectRenamedChannelDependencies(actions, stateByAddress, deletion, create);
+		matchedDeletes.add(deletion);
+	}
+
+	for (let index = actions.length - 1; index >= 0; index--) {
+		if (matchedDeletes.has(actions[index]!)) actions.splice(index, 1);
+	}
+}
+
+/** Do not delete the old Identity/Template when the Channel migration that releases it fails. */
+function protectRenamedChannelDependencies(
+	actions: PlannedAction[],
+	stateByAddress: Map<string, StateFile["resources"][number]>,
+	deletion: PlannedAction,
+	replacement: PlannedAction,
+): void {
+	const prior = stateByAddress.get(addressKey(deletion.address));
+	const snapshot = prior?.remote_snapshot as { identity_id?: unknown; template_id?: unknown } | undefined;
+	const referencedIds = new Set(
+		[snapshot?.identity_id, snapshot?.template_id].filter((id): id is string => typeof id === "string"),
+	);
+	if (referencedIds.size === 0) return;
+
+	for (const action of actions) {
+		if (
+			action.action !== "delete" ||
+			(action.address.type !== "identity" && action.address.type !== "template") ||
+			action.address.provider !== replacement.address.provider
+		) {
+			continue;
+		}
+		const dependency = stateByAddress.get(addressKey(action.address));
+		if (!dependency?.remote_id || !referencedIds.has(dependency.remote_id)) continue;
+		if (!action.dependencies.some((address) => addressKey(address) === addressKey(replacement.address))) {
+			action.dependencies.push(replacement.address);
+		}
+	}
 }
 
 /** Keep the old delivery resource alive when creating its new materialization fails. */

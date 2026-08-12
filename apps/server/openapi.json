@@ -1300,6 +1300,33 @@
 																			},
 																			"required": ["type", "name", "provider"]
 																		},
+																		"previousAddress": {
+																			"type": "object",
+																			"properties": {
+																				"type": {
+																					"type": "string",
+																					"enum": [
+																						"environment",
+																						"vault",
+																						"memory_store",
+																						"skill",
+																						"agent",
+																						"template",
+																						"deployment",
+																						"file",
+																						"identity",
+																						"channel"
+																					]
+																				},
+																				"name": {
+																					"type": "string"
+																				},
+																				"provider": {
+																					"type": "string"
+																				}
+																			},
+																			"required": ["type", "name", "provider"]
+																		},
 																		"reason": {
 																			"type": "string"
 																		},

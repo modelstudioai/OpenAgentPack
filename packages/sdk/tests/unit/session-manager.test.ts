@@ -77,6 +77,7 @@ function makeState(): StateManager {
 describe("buildSessionBindings", () => {
 	test("inherits environment, vault, memory_stores from agent declaration", () => {
 		const config = makeConfig();
+		config.agents!.researcher!.environment_variables = { FEATURE_FLAG: "on" };
 		const state = makeState();
 		const bindings = buildSessionBindings("researcher", config, "qoder", state);
 
@@ -85,6 +86,7 @@ describe("buildSessionBindings", () => {
 		expect(bindings.environment_id).toBe("env_dev");
 		expect(bindings.vault_ids).toEqual(["vault_s1"]);
 		expect(bindings.memory_store_ids).toEqual(["ms_docs"]);
+		expect(bindings.environment_variables).toEqual({ FEATURE_FLAG: "on" });
 	});
 
 	test("inherits provider-neutral session resources from the agent declaration", () => {

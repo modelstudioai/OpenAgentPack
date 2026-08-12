@@ -37,6 +37,8 @@ export interface SessionCreateOptions {
 	title?: string;
 	provider?: string;
 	metadata?: Record<string, string>;
+	/** Session-level environment variables. Currently supported by Qoder. */
+	environmentVariables?: Record<string, string>;
 }
 
 export function resolveSessionProvider(agentName: string, config: ProjectConfig, overrideProvider?: string): string {
@@ -71,6 +73,10 @@ export function buildSessionBindings(
 		throw new UserError(`Agent '${agentName}' not found in config. Available agents: ${available || "(none)"}`);
 	}
 	const sessionResources = options.resources ?? agent.resources;
+	const environmentVariables = options.environmentVariables ?? agent.environment_variables;
+	if (environmentVariables && provider !== "qoder") {
+		throw new UserError("Session environment variables are supported only by Qoder.");
+	}
 	const providerFeatures = getProvider(provider)?.features;
 	for (const resource of sessionResources ?? []) {
 		if (!providerFeatures?.session_resources.includes(resource.type)) {
@@ -102,6 +108,7 @@ export function buildSessionBindings(
 			files: (options.files ?? []).map((file) => ({ file_id: file.fileId, mount_path: file.mountPath })),
 			title: options.title,
 			metadata: options.metadata,
+			environment_variables: environmentVariables,
 		};
 	}
 
@@ -157,6 +164,7 @@ export function buildSessionBindings(
 		resources: sessionResources,
 		title: options.title,
 		metadata: options.metadata,
+		environment_variables: environmentVariables,
 	};
 }
 

@@ -100,6 +100,14 @@ describe("Qoder mapSession", () => {
 		expect(body.metadata).toEqual({ team: "eng" });
 	});
 
+	test("serializes environment variables using Qoder's managed Session string format", () => {
+		const body = mapQoderSession({
+			...minimalBindings(),
+			environment_variables: { FEATURE_FLAG: "on", LOG_LEVEL: "debug" },
+		}) as Record<string, unknown>;
+		expect(body.environment_variables).toBe("FEATURE_FLAG=on;LOG_LEVEL=debug");
+	});
+
 	test("tunnel_id is omitted when not provided", () => {
 		const bindings = minimalBindings();
 		const body = mapQoderSession(bindings) as Record<string, unknown>;
