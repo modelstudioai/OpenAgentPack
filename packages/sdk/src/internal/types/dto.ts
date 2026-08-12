@@ -44,6 +44,8 @@ export type PlanReadinessImpact = z.infer<typeof PlanReadinessImpactSchema>;
 export const PlannedActionSchema = z.object({
 	action: ActionTypeSchema,
 	address: ResourceAddressSchema,
+	/** Existing state address to retain when this action is an inferred logical rename. */
+	previousAddress: ResourceAddressSchema.optional(),
 	reason: z.string(),
 	driftKind: DriftKindSchema.optional(),
 	readinessImpact: PlanReadinessImpactSchema.optional(),

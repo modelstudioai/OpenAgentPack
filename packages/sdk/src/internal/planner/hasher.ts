@@ -51,6 +51,14 @@ export async function computeResourceHash(
 	return contentHash(decl);
 }
 
+/** Stable, non-reversible identity hint for resources whose YAML key may change. */
+export function computeReplacementFingerprint(address: ResourceAddress, config: ProjectConfig): string | undefined {
+	if (address.type !== "channel") return undefined;
+	const decl = config.channels?.[address.name];
+	if (!decl) return undefined;
+	return contentHash({ channel_type: decl.type, credentials: decl.credentials ?? {} });
+}
+
 function resolveChannelReferenceIds(
 	decl: { agent: string; identity?: string },
 	config: ProjectConfig,
