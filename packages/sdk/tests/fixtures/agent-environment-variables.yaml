@@ -1,0 +1,16 @@
+version: "1"
+
+providers:
+  qoder:
+    api_key: test-token
+
+defaults:
+  provider: qoder
+
+agents:
+  assistant:
+    model: auto
+    instructions: Test environment variable parsing.
+    environment_variables:
+      FEATURE_FLAG: "on"
+      RETRY_COUNT: "3"
