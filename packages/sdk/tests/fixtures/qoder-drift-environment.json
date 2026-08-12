@@ -6,7 +6,17 @@
 		"type": "cloud",
 		"networking": {
 			"type": "unrestricted"
-		}
+		},
+		"packages": {
+			"type": "packages",
+			"apt": ["curl"],
+			"npm": [],
+			"pip": [],
+			"cargo": [],
+			"gem": [],
+			"go": []
+		},
+		"setup_script": "set -euo pipefail\necho ready"
 	},
 	"metadata": {
 		"agents.project": "tmp",

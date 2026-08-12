@@ -59,9 +59,15 @@ environments:
       packages:
         apt: [git, curl]
         npm: [typescript]
+      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/ready || date -u > /data/workspace/.openagentpack/ready
 ```
 
 Reference an environment from an agent with `environment: dev`.
+
+Qoder supports `config.setup_script` for both cloud and self-hosted environments. It runs the script with `/bin/bash -lc` after declared packages are installed. The UTF-8 limit is 64 KB and the timeout is 10 minutes; a non-zero exit prevents the Session from starting. The script runs once per sandbox and runs again when that sandbox is rebuilt, so make it idempotent. Do not embed credentials—use vaults or environment-backed secret references. Other providers currently reject `setup_script` rather than silently ignoring it.
 
 ## Instructions
 

@@ -32,6 +32,10 @@ environments:
       packages:
         apt: [git, curl]
         pip: [requests]
+      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/ready || printf 'ready\n' > /data/workspace/.openagentpack/ready
     metadata:
       team: platform
 

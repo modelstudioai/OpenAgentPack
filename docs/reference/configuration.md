@@ -133,6 +133,7 @@ environments:
       type: cloud | self_hosted
       networking: { ... }
       packages: { ... }
+      setup_script: <string>
     metadata: { <key>: <string> }
 ```
 
@@ -145,7 +146,12 @@ environments:
 | `config.networking.allow_package_managers` | boolean | no | Allow package managers. |
 | `config.networking.allowed_hosts` | string[] | no | Allow-list for `limited` networks. |
 | `config.packages.apt` \| `pip` \| `npm` \| `cargo` \| `gem` \| `go` | string[] | no | Preinstalled packages. |
+| `config.setup_script` | string | no | Sandbox setup script. Qoder runs it with `/bin/bash -lc` after package installation; maximum UTF-8 size is 64 KB. Other providers currently reject this field. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
+
+Qoder accepts only `apt`, `npm`, and `pip` in package requests. Its API may return empty `cargo`, `gem`, and `go` arrays as reserved response fields, but declaring non-empty values for them is rejected locally. Setup scripts run while a new sandbox is prepared, time out after 10 minutes, and a non-zero exit prevents the Session from starting. Keep scripts idempotent and use vault-backed credentials instead of embedding secrets.
+
+For a managed Qoder `self_hosted` environment, `config` accepts only `type` and optional `setup_script`; networking and packages belong to cloud environments. External `environment_id` references remain unmanaged.
 
 ## Tunnel (Qoder BYOC)
 

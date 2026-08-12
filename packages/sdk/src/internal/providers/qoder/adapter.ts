@@ -316,14 +316,10 @@ export class QoderAdapter implements ProviderAdapter {
 
 	private normalizeRemote(type: ResourceType, raw: Record<string, unknown>): unknown {
 		if (type === "environment") {
-			const config = (raw.config ?? {}) as Record<string, unknown>;
+			const normalized = envToDecl(raw);
 			return compactDeep({
 				description: raw.description,
-				config: {
-					type: config.type ?? "cloud",
-					networking: config.networking,
-					packages: config.packages,
-				},
+				config: normalized.config,
 				metadata: stripAgentsMetadata(raw.metadata),
 			});
 		}
@@ -386,8 +382,15 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource> {
-		const body = mapEnvironment(name, decl, this.projectName);
-		const res = (await this.client.put(`/environments/${id}`, body)) as Record<string, unknown>;
+		const body = mapEnvironment(name, decl, this.projectName) as Record<string, unknown>;
+		const current = (await this.client.get(`/environments/${id}`)) as Record<string, unknown>;
+		const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
+		const metadata = { ...((body.metadata ?? {}) as Record<string, string | null>) };
+		for (const key of Object.keys(currentMetadata)) {
+			if (!key.startsWith("agents.") && !(key in metadata)) metadata[key] = null;
+		}
+		body.metadata = metadata;
+		const res = (await this.client.post(`/environments/${id}`, body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
 

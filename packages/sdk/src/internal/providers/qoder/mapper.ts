@@ -43,12 +43,24 @@ export function normalizeToolNameFromQoder(name: string): string {
 		.toLowerCase();
 }
 
+function normalizeEnvironmentPackages(value: unknown): Record<string, string[]> | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const raw = value as Record<string, unknown>;
+	const packages: Record<string, string[]> = {};
+	for (const key of ["apt", "npm", "pip"] as const) {
+		if (Array.isArray(raw[key]) && raw[key].length > 0) packages[key] = raw[key] as string[];
+	}
+	return Object.keys(packages).length > 0 ? packages : undefined;
+}
+
 export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName: string): unknown {
 	const envType = decl.config.type ?? "cloud";
 	const config: Record<string, unknown> = { type: envType };
 	if (decl.config.networking) config.networking = decl.config.networking;
 	else if (envType === "cloud") config.networking = { type: "unrestricted" };
-	if (decl.config.packages) config.packages = decl.config.packages;
+	const packages = normalizeEnvironmentPackages(decl.config.packages);
+	if (packages) config.packages = packages;
+	if (decl.config.setup_script !== undefined) config.setup_script = decl.config.setup_script;
 	return {
 		name,
 		description: decl.description ?? "",
@@ -158,7 +170,8 @@ export function envToDecl(raw: Record<string, unknown>): Record<string, unknown>
 		config: {
 			type: config.type ?? "cloud",
 			networking: config.networking,
-			packages: config.packages,
+			packages: normalizeEnvironmentPackages(config.packages),
+			setup_script: config.setup_script,
 		},
 		metadata: stripAgentsMetadata(raw.metadata),
 	}) as Record<string, unknown>;
