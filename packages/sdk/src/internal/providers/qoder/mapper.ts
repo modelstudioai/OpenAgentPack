@@ -479,6 +479,7 @@ export function mapForwardTemplate(
 	if (refs.tunnel_id) body.tunnel_id = refs.tunnel_id;
 	if (projectName) body.metadata = injectMetadata(decl.metadata, projectName, name);
 	else body.metadata = decl.metadata ?? {};
+	if (decl.environment_variables) body.environment_variables = decl.environment_variables;
 
 	if (decl.tools) {
 		body.tools = [
@@ -650,6 +651,11 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 	if (bindings.tunnel_id) body.tunnel_id = bindings.tunnel_id;
 	if (bindings.title) body.title = bindings.title;
 	if (bindings.metadata) body.metadata = bindings.metadata;
+	if (bindings.environment_variables) {
+		body.environment_variables = Object.entries(bindings.environment_variables)
+			.map(([key, value]) => `${key}=${value}`)
+			.join(";");
+	}
 	if (bindings.vault_ids.length) body.vault_ids = bindings.vault_ids;
 	// Memory stores and user-uploaded files share the `resources` array (vaults are separate
 	// via `vault_ids`). Every entry needs a non-empty `type`; file shape mirrors qoder's

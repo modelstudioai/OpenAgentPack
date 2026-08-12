@@ -255,6 +255,7 @@ const agentSchema = z.object({
 	resources: z.array(sessionGithubRepoResourceSchema).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
+	environment_variables: z.record(z.string().min(1), z.string()).optional(),
 	delivery: z.record(z.string(), agentDeliverySchema).optional(),
 });
 
