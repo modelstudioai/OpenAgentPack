@@ -22,6 +22,8 @@ interface CommonSessionBindings {
 	resources?: SessionResource[];
 	title?: string;
 	metadata?: Record<string, string>;
+	/** Provider-neutral representation; Qoder maps it to each Session API's wire shape. */
+	environment_variables?: Record<string, string>;
 }
 
 export interface ManagedSessionBindings extends CommonSessionBindings {
