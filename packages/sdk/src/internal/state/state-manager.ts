@@ -47,6 +47,7 @@ export class StateManager implements IStateManager {
 				desired_readiness_baseline: r.desired_readiness_baseline as ResourceState["desired_readiness_baseline"],
 				remote_hash: r.remote_hash as string | undefined,
 				remote_snapshot: r.remote_snapshot,
+				replacement_fingerprint: r.replacement_fingerprint as string | undefined,
 				drift_paths: r.drift_paths as string[] | undefined,
 				drift_status: r.drift_status as ResourceState["drift_status"],
 			}));
