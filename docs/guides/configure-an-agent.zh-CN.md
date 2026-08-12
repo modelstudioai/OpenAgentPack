@@ -95,6 +95,10 @@ environments:
       packages:
         apt: [git, curl]
         npm: [typescript]
+      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/ready || date -u > /data/workspace/.openagentpack/ready
     metadata:
       team: platform
 ```
@@ -121,6 +125,14 @@ packages:
   gem: [bundler]
   go: [golang.org/x/tools/gopls@latest]
 ```
+
+Qoder 请求目前只支持 `apt`、`npm` 和 `pip`。`cargo`、`gem`、`go` 是 Qoder 响应中的保留字段，不能在投向 Qoder 的配置中声明非空值；如有需要，可通过 `setup_script` 安装。
+
+### 启动脚本（Qoder）
+
+Qoder 的 cloud 与 self-hosted Environment 都支持 `config.setup_script`。依赖包安装完成后，脚本会通过 `/bin/bash -lc` 执行；UTF-8 最大 64 KB，超时 10 分钟，非零退出会导致 Session 启动失败。脚本在同一 sandbox 中只执行一次，sandbox 重建后会再次执行，因此必须保持幂等。不要把令牌或密码写入脚本，应使用 Vault 或环境变量引用。其他 Provider 当前会明确拒绝 `setup_script`，不会静默忽略。
+
+受管理的 Qoder `self_hosted` Environment，其 `config` 只能包含 `type` 和可选的 `setup_script`；网络与预装包配置仅适用于 cloud Environment。带 `environment_id` 的外部引用仍不由 OpenAgentPack 修改。
 
 ---
 

@@ -4,10 +4,13 @@ import { join } from "node:path";
 import { executePlan } from "../../src/internal/executor/executor.ts";
 import { buildDependencyGraph } from "../../src/internal/graph/dependency.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
+import { ConflictError } from "../../src/internal/providers/base-client.ts";
 import type { ProviderAdapter } from "../../src/internal/providers/interface.ts";
 import { QoderAdapter } from "../../src/internal/providers/qoder/adapter.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { ProjectConfig } from "../../src/internal/types/config.ts";
+import type { ExecutionPlan } from "../../src/internal/types/plan.ts";
+import { contentHash } from "../../src/internal/utils/hash.ts";
 import "../../src/internal/providers/all.ts";
 
 function config(): ProjectConfig {
@@ -57,6 +60,113 @@ describe("Identity and Channel declarations", () => {
 		const actions = plan.actions.map((action) => `${action.address.type}.${action.address.name}`);
 		expect(actions.indexOf("identity.chen")).toBeLessThan(actions.indexOf("channel.dingtalk"));
 		expect(actions.indexOf("template.assistant")).toBeLessThan(actions.indexOf("channel.dingtalk"));
+	});
+
+	test("plans an unambiguous Channel key rename as an in-place update", async () => {
+		const desired = config();
+		desired.channels = { "chimp-dingtalk": desired.channels!.dingtalk! };
+		const plan = await buildPlan(desired, {
+			resources: [
+				{
+					address: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+					remote_id: "channel_existing",
+					content_hash: "old-hash",
+					remote_snapshot: { channel_type: "dingtalk" },
+				},
+			],
+		});
+
+		const channelActions = plan.actions.filter((action) => action.address.type === "channel");
+		expect(channelActions).toEqual([
+			expect.objectContaining({
+				action: "update",
+				address: { type: "channel", name: "chimp-dingtalk", provider: "qoder" },
+				previousAddress: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+			}),
+		]);
+	});
+
+	test("does not guess a Channel rename when more than one same-type destination exists", async () => {
+		const desired = config();
+		desired.channels = {
+			"chimp-dingtalk": desired.channels!.dingtalk!,
+			"ops-dingtalk": { ...desired.channels!.dingtalk!, name: "Ops DingTalk" },
+		};
+		const plan = await buildPlan(desired, {
+			resources: [
+				{
+					address: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+					remote_id: "channel_existing",
+					content_hash: "old-hash",
+					remote_snapshot: { channel_type: "dingtalk" },
+				},
+			],
+		});
+
+		const channelActions = plan.actions.filter((action) => action.address.type === "channel");
+		expect(channelActions.map((action) => action.action)).toEqual(["create", "create", "delete"]);
+		expect(channelActions.every((action) => action.previousAddress === undefined)).toBe(true);
+	});
+
+	test("uses a stored credential fingerprint to identify a Channel rename among multiple destinations", async () => {
+		const desired = config();
+		desired.channels = {
+			"chimp-dingtalk": desired.channels!.dingtalk!,
+			"ops-dingtalk": {
+				...desired.channels!.dingtalk!,
+				credentials: { client_id: "ops-client", client_secret: "ops-secret" },
+			},
+		};
+		const plan = await buildPlan(desired, {
+			resources: [
+				{
+					address: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+					remote_id: "channel_existing",
+					content_hash: "old-hash",
+					remote_snapshot: { channel_type: "dingtalk" },
+					replacement_fingerprint: contentHash({
+						channel_type: "dingtalk",
+						credentials: { client_id: "client", client_secret: "secret" },
+					}),
+				},
+			],
+		});
+
+		const renamed = plan.actions.find((action) => action.address.name === "chimp-dingtalk");
+		expect(renamed).toMatchObject({
+			action: "update",
+			previousAddress: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+		});
+		expect(plan.actions.find((action) => action.address.name === "ops-dingtalk")?.action).toBe("create");
+	});
+
+	test("keeps the old Channel dependencies when its in-place rename fails", async () => {
+		const desired = config();
+		desired.channels = { "chimp-dingtalk": desired.channels!.dingtalk! };
+		const plan = await buildPlan(desired, {
+			resources: [
+				{
+					address: { type: "identity", name: "byoc", provider: "qoder" },
+					remote_id: "idn_old",
+					content_hash: "old-identity-hash",
+				},
+				{
+					address: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+					remote_id: "channel_existing",
+					content_hash: "old-channel-hash",
+					remote_snapshot: { channel_type: "dingtalk", identity_id: "idn_old" },
+				},
+			],
+		});
+
+		const identityDelete = plan.actions.find(
+			(action) => action.action === "delete" && action.address.type === "identity" && action.address.name === "byoc",
+		);
+		expect(identityDelete?.dependencies).toContainEqual({
+			type: "channel",
+			name: "chimp-dingtalk",
+			provider: "qoder",
+		});
 	});
 
 	test("keeps unsupported Provider capabilities isolated", async () => {
@@ -111,6 +221,188 @@ describe("Identity and Channel declarations", () => {
 		const deletePlan = await buildPlan(ctx.config, state.getStateFile());
 		await executePlan(deletePlan, ctx);
 		expect(calls).toEqual([]);
+	});
+
+	test("executes an inferred Channel rename against the existing remote id and migrates state", async () => {
+		const desired = config();
+		desired.channels = { "chimp-dingtalk": desired.channels!.dingtalk! };
+		const state = StateManager.initialize(join(tmpdir(), `channel-rename-${crypto.randomUUID()}.json`));
+		state.setResource({
+			address: { type: "identity", name: "chen", provider: "qoder" },
+			remote_id: "idn_existing",
+			content_hash: "identity-hash",
+		});
+		state.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_existing",
+			content_hash: "template-hash",
+		});
+		state.setResource({
+			address: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+			remote_id: "channel_existing",
+			content_hash: "channel-hash",
+		});
+		const calls: string[] = [];
+		const provider = {
+			name: "qoder",
+			findResource: async () => null,
+			updateChannel: async (id: string) => {
+				calls.push(`update:${id}`);
+				return { id, type: "channel" };
+			},
+			createChannel: async () => {
+				calls.push("create");
+				return { id: "unexpected", type: "channel" };
+			},
+			deleteChannel: async () => calls.push("delete"),
+		} as unknown as ProviderAdapter;
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "update",
+					address: { type: "channel", name: "chimp-dingtalk", provider: "qoder" },
+					previousAddress: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+					reason: "Channel key renamed",
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const result = await executePlan(plan, {
+			config: desired,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state,
+		});
+
+		expect(result.partial).toBe(false);
+		expect(calls).toEqual(["update:channel_existing"]);
+		expect(state.getResource({ type: "channel", name: "byoc-dingtalk", provider: "qoder" })).toBeUndefined();
+		expect(state.getResource({ type: "channel", name: "chimp-dingtalk", provider: "qoder" })).toMatchObject({
+			remote_id: "channel_existing",
+			replacement_fingerprint: expect.any(String),
+		});
+	});
+
+	test("skips deleting the old Identity when an inferred Channel rename fails", async () => {
+		const desired = config();
+		desired.channels = { "chimp-dingtalk": desired.channels!.dingtalk! };
+		const state = StateManager.initialize(join(tmpdir(), `channel-rename-failure-${crypto.randomUUID()}.json`));
+		for (const resource of [
+			{
+				address: { type: "identity" as const, name: "chen", provider: "qoder" },
+				remote_id: "idn_new",
+				content_hash: "new-identity-hash",
+			},
+			{
+				address: { type: "template" as const, name: "assistant", provider: "qoder" },
+				remote_id: "tmpl_existing",
+				content_hash: "template-hash",
+			},
+			{
+				address: { type: "identity" as const, name: "byoc", provider: "qoder" },
+				remote_id: "idn_old",
+				content_hash: "old-identity-hash",
+			},
+			{
+				address: { type: "channel" as const, name: "byoc-dingtalk", provider: "qoder" },
+				remote_id: "channel_existing",
+				content_hash: "channel-hash",
+			},
+		]) {
+			state.setResource(resource);
+		}
+		const calls: string[] = [];
+		const provider = {
+			name: "qoder",
+			updateChannel: async () => {
+				calls.push("update-channel");
+				throw new Error("update failed");
+			},
+			createChannel: async () => ({ id: "unexpected", type: "channel" }),
+			deleteIdentity: async () => calls.push("delete-identity"),
+		} as unknown as ProviderAdapter;
+		const channelAddress = { type: "channel" as const, name: "chimp-dingtalk", provider: "qoder" };
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "update",
+					address: channelAddress,
+					previousAddress: { type: "channel", name: "byoc-dingtalk", provider: "qoder" },
+					reason: "Channel key renamed",
+					dependencies: [],
+				},
+				{
+					action: "delete",
+					address: { type: "identity", name: "byoc", provider: "qoder" },
+					reason: "removed",
+					dependencies: [channelAddress],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const result = await executePlan(plan, {
+			config: desired,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state,
+		});
+
+		expect(result.results.map((item) => item.status)).toEqual(["failed", "skipped"]);
+		expect(calls).toEqual(["update-channel"]);
+		expect(state.getResource({ type: "identity", name: "byoc", provider: "qoder" })?.remote_id).toBe("idn_old");
+	});
+
+	test("reports a Qoder credential conflict as credential ownership instead of a reserved name", async () => {
+		const desired = config();
+		const state = StateManager.initialize(join(tmpdir(), `channel-conflict-${crypto.randomUUID()}.json`));
+		state.setResource({
+			address: { type: "identity", name: "chen", provider: "qoder" },
+			remote_id: "idn_existing",
+			content_hash: "identity-hash",
+		});
+		state.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_existing",
+			content_hash: "template-hash",
+		});
+		const provider = {
+			name: "qoder",
+			findResource: async () => null,
+			createChannel: async () => {
+				throw new ConflictError(
+					409,
+					JSON.stringify({
+						error: { code: "CHANNEL_CREDENTIAL_CONFLICT", message: "Credential is already in use." },
+					}),
+					"Qoder API",
+				);
+			},
+			updateChannel: async () => ({ id: "unexpected", type: "channel" }),
+		} as unknown as ProviderAdapter;
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "create",
+					address: { type: "channel", name: "dingtalk", provider: "qoder" },
+					reason: "missing",
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+
+		const result = await executePlan(plan, {
+			config: desired,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state,
+		});
+
+		expect(result.results[0]?.error?.message).toContain("credentials are already used by another Channel");
+		expect(result.results[0]?.error?.message).not.toContain("recently deleted");
 	});
 });
 

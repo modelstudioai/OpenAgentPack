@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import { UserError } from "../errors.ts";
 import { computeComparableDesiredHash } from "../planner/comparable.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
-import { computeResourceHash } from "../planner/hasher.ts";
+import { computeReplacementFingerprint, computeResourceHash } from "../planner/hasher.ts";
 import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { ApiError, ConflictError } from "../providers/base-client.ts";
 import { readComparableIfSupported } from "../providers/drift-support.ts";
@@ -229,8 +229,8 @@ async function executeAction(action: PlannedAction, provider: ResourceExecAdapte
 			resource: action.address,
 			message: `update ${action.address.type}.${action.address.name} (${action.address.provider}) — not found remotely, recreating`,
 		});
-		ctx.state.removeResource(action.address);
-		return executeActionInner({ ...action, action: "create" }, provider, ctx);
+		ctx.state.removeResource(action.previousAddress ?? action.address);
+		return executeActionInner({ ...action, action: "create", previousAddress: undefined }, provider, ctx);
 	}
 }
 
@@ -317,7 +317,8 @@ async function executeActionInner(
 	}
 
 	const isUpdate = action.action === "update";
-	const existingId = isUpdate ? ctx.state.getResource(address)?.remote_id : undefined;
+	const priorAddress = action.previousAddress ?? address;
+	const existingId = isUpdate ? ctx.state.getResource(priorAddress)?.remote_id : undefined;
 
 	let result: RemoteResource;
 
@@ -652,7 +653,7 @@ async function executeActionInner(
 
 	// The externally-managed marker is sticky: it survives applies and is only
 	// cleared by removing the resource from state (`agents state rm` / destroy).
-	const priorResource = ctx.state.getResource(address);
+	const priorResource = ctx.state.getResource(priorAddress);
 	ctx.state.setResource({
 		address,
 		remote_id: result.id,
@@ -669,9 +670,11 @@ async function executeActionInner(
 		desired_readiness_baseline: buildReadinessBaseline(getResourceDeclaration(address, ctx.config)),
 		remote_hash: remoteHash,
 		remote_snapshot: remoteSnapshot,
+		replacement_fingerprint: computeReplacementFingerprint(address, ctx.config),
 		drift_paths: [],
 		drift_status: remoteHash ? "in_sync" : undefined,
 	});
+	if (action.previousAddress) ctx.state.removeResource(action.previousAddress);
 	return adopted;
 }
 
@@ -719,6 +722,16 @@ async function adoptOnConflict(
 // command, so fail with actionable guidance instead of the raw wire error.
 function nameReservedError(err: unknown, address: ResourceAddress, searchName: string): UserError {
 	const detail = err instanceof ApiError ? err.message : String(err);
+	if (
+		address.type === "channel" &&
+		err instanceof ApiError &&
+		err.responseBody.includes("CHANNEL_CREDENTIAL_CONFLICT")
+	) {
+		return new UserError(
+			`${address.provider} rejected channel.${address.name} because its credentials are already used by another Channel. ` +
+				`Keep the existing Channel address so it can be updated in place, remove the old Channel first, or use a different credential set. (${detail})`,
+		);
+	}
 	return new UserError(
 		`${address.provider} reported ${address.type} "${searchName}" already exists, but it could not be found remotely to adopt. ` +
 			`This usually means it was recently deleted and the provider still reserves the name. ` +

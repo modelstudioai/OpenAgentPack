@@ -17,6 +17,10 @@ const packagesSchema = z.object({
 	go: z.array(z.string()).optional(),
 });
 
+const setupScriptSchema = z.string().refine((value) => new TextEncoder().encode(value).byteLength <= 64 * 1024, {
+	message: "setup_script must not exceed 65536 UTF-8 bytes",
+});
+
 const environmentSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
@@ -27,6 +31,7 @@ const environmentSchema = z.object({
 		type: z.enum(["cloud", "self_hosted"]),
 		networking: networkingSchema.optional(),
 		packages: packagesSchema.optional(),
+		setup_script: setupScriptSchema.optional(),
 	}),
 	metadata: z.record(z.string(), z.string()).optional(),
 });
@@ -255,6 +260,7 @@ const agentSchema = z.object({
 	resources: z.array(sessionGithubRepoResourceSchema).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
+	environment_variables: z.record(z.string().min(1), z.string()).optional(),
 	delivery: z.record(z.string(), agentDeliverySchema).optional(),
 });
 

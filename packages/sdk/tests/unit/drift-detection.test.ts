@@ -112,9 +112,36 @@ describe("Qoder comparable fixtures", () => {
 			config: {
 				type: "cloud",
 				networking: { type: "unrestricted" },
+				packages: { apt: ["curl"] },
+				setup_script: "set -euo pipefail\necho ready",
 			},
 			metadata: { cma_test: "drift-validation" },
 		});
+	});
+
+	test("setup_script converges and changes or removal remain visible to drift comparison", () => {
+		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+		const desired = adapter.normalizeDesiredResource("environment", "dev", {
+			config: { type: "cloud", setup_script: "echo ready" },
+		});
+		const matching = adapter.normalizeRemote("environment", {
+			description: "",
+			config: {
+				type: "cloud",
+				networking: { type: "unrestricted" },
+				packages: { type: "packages", apt: [], npm: [], pip: [], cargo: [] },
+				setup_script: "echo ready",
+			},
+			metadata: { "agents.project": "tmp", "agents.resource": "dev" },
+		});
+		const changed = adapter.normalizeRemote("environment", {
+			config: { type: "cloud", networking: { type: "unrestricted" }, setup_script: "echo changed" },
+		});
+		const removed = adapter.normalizeDesiredResource("environment", "dev", { config: { type: "cloud" } });
+
+		expect(matching).toEqual(desired);
+		expect(changed).not.toEqual(desired);
+		expect(removed).not.toEqual(matching);
 	});
 });
 

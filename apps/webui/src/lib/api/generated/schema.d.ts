@@ -731,6 +731,22 @@ export interface paths {
 											name: string;
 											provider: string;
 										};
+										previousAddress?: {
+											/** @enum {string} */
+											type:
+												| "environment"
+												| "vault"
+												| "memory_store"
+												| "skill"
+												| "agent"
+												| "template"
+												| "deployment"
+												| "file"
+												| "identity"
+												| "channel";
+											name: string;
+											provider: string;
+										};
 										reason: string;
 										/** @enum {string} */
 										driftKind?: "none" | "local" | "remote" | "both";

@@ -27,6 +27,23 @@ providers:
 
 A `deployment run` on Qoder creates a native Deployment Run and associated Session. Cron schedules run server-side.
 
+## Runtime environment variables
+
+Declare `environment_variables` on an Agent to inject variables into its Qoder runtime:
+
+```yaml
+agents:
+  assistant:
+    model: { qoder: auto }
+    instructions: Help the user.
+    environment: dev
+    environment_variables:
+      FEATURE_FLAG: "on"
+      LOG_LEVEL: debug
+```
+
+OpenAgentPack maps this to each Qoder API's native shape: a top-level object on Forward Templates, `config.environment_variables` on Forward Sessions, and the required `KEY=VALUE;...` string on managed Sessions. Other providers reject this Qoder-specific field during validation.
+
 ## Tool naming
 
 Qoder uses PascalCase tool names natively (`Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Write`, `Edit`, `Bash`). Write tools **lowercase** in config and OpenAgentPack converts them automatically when applying to Qoder — this keeps the same config portable to Bailian, Claude, and Volcengine Ark.
@@ -61,6 +78,12 @@ environments:
       type: cloud
       networking:
         type: unrestricted
+      packages:
+        npm: ["pnpm@9"]
+      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/ready || printf 'ready\n' > /data/workspace/.openagentpack/ready
 
 agents:
   assistant:
@@ -72,6 +95,8 @@ agents:
     tools:
       builtin: [read, glob, grep, web_search, web_fetch]
 ```
+
+Qoder runs `setup_script` after package installation with `/bin/bash -lc`. Scripts are limited to 64 KB of UTF-8 text and 10 minutes, and a non-zero exit prevents Session startup. Make them idempotent because they run again whenever the sandbox is rebuilt. Use vaults for credentials; never place secrets directly in a script. Qoder package declarations accept `apt`, `npm`, and `pip` only.
 
 ## What Qoder uniquely supports
 
