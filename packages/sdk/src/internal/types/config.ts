@@ -175,6 +175,8 @@ export interface AgentDecl {
 	resources?: SessionResourceDecl[];
 	multiagent?: MultiagentDecl;
 	metadata?: Record<string, string>;
+	/** Qoder runtime environment variables. Forward delivery stores these as Template defaults. */
+	environment_variables?: Record<string, string>;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
 	delivery?: Record<ProviderName, AgentDeliveryDecl>;
 }

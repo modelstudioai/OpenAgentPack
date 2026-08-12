@@ -252,6 +252,7 @@ agents:
     skills: [ <string> | { type, skill_id, version? } ]
     vault: <string>
     memory_stores: [ <string> ]
+    environment_variables: { <key>: <string> }  # Qoder only
     resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
     metadata: { <key>: <string> }
@@ -272,6 +273,7 @@ agents:
 | `skills[]` | string \| AgentSkillRef | no | Skill name or `{ type: "official"\|"custom", skill_id, version? }`. |
 | `vault` | string | no | Vault name. |
 | `memory_stores` | string[] | no | Bound memory stores. |
+| `environment_variables` | map<string,string> | no | Qoder runtime variables. Managed Sessions use Qoder's `KEY=VALUE;...` wire format; Forward Templates store the map as defaults and Forward Sessions send it under `config.environment_variables`. |
 | `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
 | `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |

@@ -379,6 +379,13 @@ export function collectProviderCapabilities(
 				}
 			}
 			for (const [name, agent] of Object.entries(config.agents ?? {})) {
+				if (agent.environment_variables && (!agent.provider || agent.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.agent.environment_variables.unsupported`,
+						`agent.${name}: environment_variables is supported only by Qoder; remove it or pin this agent to qoder.`,
+						{ type: "agent", name, provider: providerName },
+					);
+				}
 				if (agent.tunnel && (!agent.provider || agent.provider === providerName)) {
 					diagnostics.error(
 						`${providerName}.agent.tunnel.unsupported`,

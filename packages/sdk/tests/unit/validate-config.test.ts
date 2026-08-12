@@ -58,6 +58,24 @@ test("validates tunnel references and limits tunnels to Qoder", () => {
 	expect(diagnostics.some((d) => d.code === "claude.agent.tunnel.unsupported")).toBe(true);
 });
 
+test("limits Agent environment variables to Qoder", () => {
+	const config: ProjectConfig = {
+		version: "1",
+		providers: { claude: {} },
+		defaults: { provider: "claude" },
+		agents: {
+			assistant: {
+				model: "claude",
+				instructions: "test",
+				environment_variables: { FEATURE_FLAG: "on" },
+			},
+		},
+	};
+
+	const diagnostics = validateProjectConfig(config);
+	expect(diagnostics.some((d) => d.code === "claude.agent.environment_variables.unsupported")).toBe(true);
+});
+
 test("rejects tool approval and GitHub Session resources on unsupported providers", () => {
 	const config: ProjectConfig = {
 		version: "1",
