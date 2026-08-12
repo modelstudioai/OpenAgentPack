@@ -27,6 +27,23 @@ providers:
 
 A `deployment run` on Qoder creates a native Deployment Run and associated Session. Cron schedules run server-side.
 
+## Runtime environment variables
+
+Declare `environment_variables` on an Agent to inject variables into its Qoder runtime:
+
+```yaml
+agents:
+  assistant:
+    model: { qoder: auto }
+    instructions: Help the user.
+    environment: dev
+    environment_variables:
+      FEATURE_FLAG: "on"
+      LOG_LEVEL: debug
+```
+
+OpenAgentPack maps this to each Qoder API's native shape: a top-level object on Forward Templates, `config.environment_variables` on Forward Sessions, and the required `KEY=VALUE;...` string on managed Sessions. Other providers reject this Qoder-specific field during validation.
+
 ## Tool naming
 
 Qoder uses PascalCase tool names natively (`Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Write`, `Edit`, `Bash`). Write tools **lowercase** in config and OpenAgentPack converts them automatically when applying to Qoder — this keeps the same config portable to Bailian, Claude, and Volcengine Ark.

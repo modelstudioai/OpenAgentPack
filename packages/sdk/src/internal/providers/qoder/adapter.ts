@@ -797,6 +797,9 @@ export class QoderAdapter implements ProviderAdapter {
 			};
 			if (bindings.title) body.title = bindings.title;
 			if (bindings.metadata) body.metadata = bindings.metadata;
+			if (bindings.environment_variables) {
+				body.config = { environment_variables: bindings.environment_variables };
+			}
 			if (bindings.files?.length) {
 				body.resources = bindings.files.map((file) => ({
 					type: "file",

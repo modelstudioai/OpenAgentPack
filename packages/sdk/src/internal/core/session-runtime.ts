@@ -154,6 +154,7 @@ export async function createSessionForAgent(
 		resources: options.resources,
 		title: options.title,
 		metadata: options.metadata,
+		environmentVariables: options.environmentVariables,
 	});
 	const session = await adapter.createSession(bindings);
 	return { agentName, provider, session };
@@ -178,6 +179,7 @@ export async function startSessionRun(
 		resources: options.resources,
 		title: options.title,
 		metadata: options.metadata,
+		environmentVariables: options.environmentVariables,
 	});
 	const session = await adapter.createSession(bindings);
 	return {

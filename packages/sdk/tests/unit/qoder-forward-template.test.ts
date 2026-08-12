@@ -51,6 +51,7 @@ function forwardConfig(): ProjectConfig {
 				vault: "mcp",
 				tools: { builtin: ["Bash", "Read"], permissions: { bash: "ask" } },
 				mcp_servers: [{ name: "coop", type: "http", url: "https://mcp.example.test/mcp" }],
+				environment_variables: { BASE_MODE: "support" },
 				delivery: { qoder: { type: "forward" } },
 			},
 		},
@@ -163,6 +164,7 @@ describe("Qoder Forward Template declaration", () => {
 describe("Qoder Forward Template mapping and lifecycle", () => {
 	test("maps BYOC bindings and tool permissions", () => {
 		const decl = forwardConfig().agents!.assistant!;
+		decl.environment_variables = { BASE_MODE: "support" };
 		const body = mapForwardTemplate("assistant", decl, {
 			environment_id: "env_byoc",
 			tunnel_id: "tnl_internal",
@@ -176,6 +178,7 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 			tunnel_id: "tnl_internal",
 			vault_ids: ["vault_mcp"],
 			mcp_servers: [{ name: "coop", type: "http", url: "https://mcp.example.test/mcp" }],
+			environment_variables: { BASE_MODE: "support" },
 		});
 		expect(body.tools[0].configs).toEqual([
 			{
@@ -305,6 +308,7 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 			template_id: "tmpl_1",
 			identity_id: "idn_zhang",
 			title: "Forward test",
+			environment_variables: { API_KEY: "secret", REGION: "cn-hangzhou" },
 		});
 		const eventId = await adapter.sendSessionMessage(created.id, "hello");
 		const listed = await adapter.listSessionEvents(created.id, { limit: 100 });
@@ -316,6 +320,7 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		expect(calls.find((call) => call.path === "/sessions")?.body).toMatchObject({
 			identity_id: "idn_zhang",
 			template_id: "tmpl_1",
+			config: { environment_variables: { API_KEY: "secret", REGION: "cn-hangzhou" } },
 		});
 		expect(eventId).toBe("evt_user");
 		expect(listed.events[0]).toMatchObject({ type: "tool_use", tool_name: "search" });
