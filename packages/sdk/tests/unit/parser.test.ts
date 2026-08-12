@@ -79,3 +79,12 @@ test("rejects environment setup scripts over 64 KiB by UTF-8 byte length", () =>
 	expect(result.success).toBe(false);
 	if (!result.success) expect(result.error.issues[0]?.message).toContain("65536 UTF-8 bytes");
 });
+
+test("preserves Agent environment variables from YAML", async () => {
+	const { config, errors } = await loadConfig(resolve(FIXTURES, "agent-environment-variables.yaml"));
+	expect(errors).toEqual([]);
+	expect(config.agents?.assistant?.environment_variables).toEqual({
+		FEATURE_FLAG: "on",
+		RETRY_COUNT: "3",
+	});
+});
