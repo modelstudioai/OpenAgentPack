@@ -155,3 +155,67 @@ test("rejects Claude GitHub Session mount paths outside /workspace", () => {
 
 	expect(diagnostics.some((item) => item.code === "claude.agent.session_resource.mount_path.invalid")).toBe(true);
 });
+
+test("allows setup_script on Qoder and rejects unsupported writable package declarations", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { qoder: { api_key: "test" } },
+		defaults: { provider: "qoder" },
+		environments: {
+			dev: {
+				config: {
+					type: "cloud",
+					setup_script: "echo ready",
+					packages: { apt: ["curl"], cargo: ["ripgrep"] },
+				},
+			},
+		},
+	});
+
+	expect(diagnostics.some((item) => item.code === "qoder.environment.setup_script.unsupported")).toBe(false);
+	expect(diagnostics.find((item) => item.code === "qoder.environment.packages.unsupported")?.message).toContain(
+		"cargo",
+	);
+});
+
+test("rejects setup_script on unsupported managed providers but ignores external references", () => {
+	const managed = validateProjectConfig({
+		version: "1",
+		providers: { claude: { api_key: "test" } },
+		defaults: { provider: "claude" },
+		environments: { dev: { config: { type: "cloud", setup_script: "echo ready" } } },
+	});
+	const external = validateProjectConfig({
+		version: "1",
+		providers: { claude: { api_key: "test" } },
+		defaults: { provider: "claude" },
+		environments: {
+			dev: { environment_id: "env_external", config: { type: "cloud", setup_script: "echo inert" } },
+		},
+	});
+
+	expect(managed.some((item) => item.code === "claude.environment.setup_script.unsupported")).toBe(true);
+	expect(external.some((item) => item.code === "claude.environment.setup_script.unsupported")).toBe(false);
+});
+
+test("rejects networking and packages on managed Qoder self_hosted environments", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { qoder: { api_key: "test" } },
+		defaults: { provider: "qoder" },
+		environments: {
+			byoc: {
+				config: {
+					type: "self_hosted",
+					networking: { type: "unrestricted" },
+					packages: { apt: ["curl"] },
+					setup_script: "echo ready",
+				},
+			},
+		},
+	});
+
+	expect(
+		diagnostics.find((item) => item.code === "qoder.environment.self_hosted.config.unsupported")?.message,
+	).toContain("only config.type and config.setup_script");
+});

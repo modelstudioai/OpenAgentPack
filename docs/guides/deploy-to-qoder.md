@@ -78,6 +78,12 @@ environments:
       type: cloud
       networking:
         type: unrestricted
+      packages:
+        npm: ["pnpm@9"]
+      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/ready || printf 'ready\n' > /data/workspace/.openagentpack/ready
 
 agents:
   assistant:
@@ -89,6 +95,8 @@ agents:
     tools:
       builtin: [read, glob, grep, web_search, web_fetch]
 ```
+
+Qoder runs `setup_script` after package installation with `/bin/bash -lc`. Scripts are limited to 64 KB of UTF-8 text and 10 minutes, and a non-zero exit prevents Session startup. Make them idempotent because they run again whenever the sandbox is rebuilt. Use vaults for credentials; never place secrets directly in a script. Qoder package declarations accept `apt`, `npm`, and `pip` only.
 
 ## What Qoder uniquely supports
 

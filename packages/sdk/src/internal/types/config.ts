@@ -61,6 +61,8 @@ export interface EnvironmentConfig {
 	type: "cloud" | "self_hosted";
 	networking?: NetworkingConfig;
 	packages?: PackagesConfig;
+	/** Shell script executed by supported providers while preparing a sandbox. */
+	setup_script?: string;
 }
 
 export interface TunnelDecl {
