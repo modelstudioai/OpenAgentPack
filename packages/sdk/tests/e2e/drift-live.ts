@@ -88,6 +88,12 @@ environments:
       type: cloud
       networking:
         type: unrestricted
+      packages:
+        apt: [curl]
+      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/live-ready || printf 'ready\\n' > /data/workspace/.openagentpack/live-ready
     metadata:
       cma_test: drift-validation
 
@@ -112,6 +118,79 @@ agents:
 		agentId = state.resources.find((r: any) => r.address.type === "agent")?.remote_id;
 		envId = state.resources.find((r: any) => r.address.type === "environment")?.remote_id;
 		if (!agentId || !envId) throw new Error("missing qoder ids");
+
+		const originalEnvironment = await api(base, `/environments/${envId}`, headers);
+		const originalConfig = originalEnvironment.config as Record<string, unknown>;
+		const originalSetupScript = originalConfig.setup_script;
+		if (typeof originalSetupScript !== "string" || !originalSetupScript.includes("live-ready")) {
+			throw new Error(`qoder setup_script was not preserved after create: ${JSON.stringify(originalConfig)}`);
+		}
+		await api(base, `/environments/${envId}`, headers, {
+			method: "POST",
+			body: JSON.stringify({
+				config: {
+					type: originalConfig.type,
+					networking: originalConfig.networking,
+					packages: { apt: ["curl"] },
+					setup_script: "set -euo pipefail\necho drifted",
+				},
+				metadata: { live_extra: "remove-me" },
+			}),
+		});
+		const environmentPlan = await runAgents(["plan", "-f", configPath, "--json"]);
+		if (environmentPlan.exitCode !== 0) throw new Error(environmentPlan.stderr || environmentPlan.stdout);
+		const environmentPlanJson = JSON.parse(environmentPlan.stdout);
+		const environmentAction = environmentPlanJson.actions.find((a: any) => a.address.type === "environment");
+		if (
+			environmentAction?.action !== "update" ||
+			!environmentAction.changedPaths?.includes("config.setup_script") ||
+			!environmentAction.changedPaths?.includes("metadata.live_extra")
+		) {
+			throw new Error(`qoder environment drift was not detected: ${JSON.stringify(environmentAction)}`);
+		}
+		const reconcileEnvironment = await runAgents(["apply", "-f", configPath, "-y"]);
+		if (reconcileEnvironment.exitCode !== 0) {
+			throw new Error(reconcileEnvironment.stderr || reconcileEnvironment.stdout);
+		}
+		const reconciledEnvironment = await api(base, `/environments/${envId}`, headers);
+		const reconciledConfig = reconciledEnvironment.config as Record<string, unknown>;
+		const reconciledMetadata = reconciledEnvironment.metadata as Record<string, unknown>;
+		if (reconciledConfig.setup_script !== originalSetupScript || "live_extra" in reconciledMetadata) {
+			throw new Error("qoder setup_script or metadata did not converge after apply");
+		}
+		const convergedPlan = await runAgents(["plan", "-f", configPath, "--json"]);
+		if (convergedPlan.exitCode !== 0) throw new Error(convergedPlan.stderr || convergedPlan.stdout);
+		const convergedPlanJson = JSON.parse(convergedPlan.stdout);
+		const remainingEnvironmentAction = convergedPlanJson.actions.find(
+			(a: any) => a.address.type === "environment" && a.action !== "no-op",
+		);
+		if (remainingEnvironmentAction) {
+			throw new Error(
+				`qoder environment still drifted after reconciliation: ${JSON.stringify(remainingEnvironmentAction)}`,
+			);
+		}
+		const originalYaml = await readFile(configPath, "utf8");
+		const setupBlock = `      setup_script: |
+        set -euo pipefail
+        install -d /data/workspace/.openagentpack
+        test -f /data/workspace/.openagentpack/live-ready || printf 'ready\\n' > /data/workspace/.openagentpack/live-ready
+`;
+		if (!originalYaml.includes(setupBlock)) throw new Error("live config setup_script block was not found");
+		await Bun.write(configPath, originalYaml.replace(setupBlock, ""));
+		const removeSetupScript = await runAgents(["apply", "-f", configPath, "-y"]);
+		if (removeSetupScript.exitCode !== 0) throw new Error(removeSetupScript.stderr || removeSetupScript.stdout);
+		const withoutSetupScript = await api(base, `/environments/${envId}`, headers);
+		if ("setup_script" in (withoutSetupScript.config as Record<string, unknown>)) {
+			throw new Error("qoder setup_script was not removed after apply");
+		}
+		await Bun.write(configPath, originalYaml);
+		const restoreSetupScript = await runAgents(["apply", "-f", configPath, "-y"]);
+		if (restoreSetupScript.exitCode !== 0) throw new Error(restoreSetupScript.stderr || restoreSetupScript.stdout);
+		const restoredSetupScript = await api(base, `/environments/${envId}`, headers);
+		if ((restoredSetupScript.config as Record<string, unknown>).setup_script !== originalSetupScript) {
+			throw new Error("qoder setup_script was not restored after apply");
+		}
+		console.log("qoder live environment setup_script=create/read/update/drift/reconcile passed");
 
 		const before = await api(base, `/agents/${agentId}`, headers);
 		await api(base, `/agents/${agentId}`, headers, {
