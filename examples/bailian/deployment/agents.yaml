@@ -26,30 +26,33 @@ agents:
     tools:
       builtin: [read, glob, grep, web_search]
 
-# Deployment is EMULATED on Bailian (no native deployment primitive):
-#   - `agents apply` records local state only (remote_id = null)
-#   - `agents deployment run daily-report` expands it into a Session, uploads the
-#     file resource, and replays the initial_events.
-# `schedule` and `define_outcome` are NOT enforced server-side and will surface
-# warning diagnostics on plan. Use external cron/CI for scheduled runs.
+# Deployment is NATIVE on Bailian (real /deployments API):
+#   - `agents apply` creates the remote Deployment (state records its remote_id)
+#   - `schedule` runs server-side (cron + timezone)
+#   - `agents deployment run daily-report` triggers a server-side run
+#   - `agents deployment pause/unpause daily-report` toggles scheduled runs
+# `define_outcome` events and `github_repository` resources are NOT part of the
+# deployment payload and surface warning diagnostics on plan; only file resources
+# are uploaded (at apply time) and mounted into each run's Session.
 deployments:
   daily-report:
     agent: reporter
-    description: "Daily report (emulated -> Session on run)"
+    description: "Daily report (native Bailian deployment)"
     schedule:
       expression: "0 9 * * *"
       timezone: UTC
     initial_events:
       - type: user.message
         content: "Summarize yesterday's commits and generate the daily report."
-      # define_outcome is accepted in config but filtered out on Bailian (no
-      # server-side outcome evaluation); kept here for cross-provider parity.
+      # define_outcome is accepted in config but dropped from the Bailian
+      # deployment payload (no server-side outcome evaluation); kept here for
+      # cross-provider parity.
       - type: user.define_outcome
         description: "Daily report quality gate"
         rubric: "Must include an executive summary and at least three key metrics."
         max_iterations: 3
     resources:
-      # Local file uploaded at `deployment run` time and mounted into the Session.
+      # Local file uploaded at `apply` time and mounted into each run's Session.
       - type: file
         source: ./data/report-template.md
-        mount_path: /data/report-template.md
+        mount_path: /mnt/report-template.md

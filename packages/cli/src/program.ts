@@ -328,7 +328,7 @@ deploymentCmd
 
 deploymentCmd
 	.command("run <name>")
-	.description("Trigger a deployment run (native on Qoder/Claude, emulated on Bailian/Ark)")
+	.description("Trigger a deployment run (native on Bailian/Qoder/Claude, emulated on Ark)")
 	.addOption(configFileOption())
 	.addOption(providerOption("Target provider"))
 	.action(withResolvedConfigFile(deploymentRunCommand));

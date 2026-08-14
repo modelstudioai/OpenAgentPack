@@ -15,7 +15,7 @@ OpenAgentPack targets multiple agent platforms behind one declarative config. Ea
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
 | Memory Store | unsupported | native | native | native | Qoder, Claude (beta), and Ark adapters implement the complete upstream lifecycle. |
 | Multi-Agent | unsupported | unsupported | native | native | Coordinator topology is available on Claude and Volcengine Ark. |
-| Deployment | emulated | native | native | emulated | Qoder and Claude use native deployments; Bailian and Ark expand a deployment into a session at `run` time. |
+| Deployment | native | native | native | emulated | Bailian, Qoder, and Claude use native deployments; Ark expands a deployment into a session at `run` time. |
 | Session | native | native | native | native | Runtime sessions are native on every provider. |
 
 - **native** — the provider supports the feature directly.
@@ -32,7 +32,7 @@ The resource matrix above answers whether a declaration can be applied. The tabl
 |------------------|:-------:|:-----:|:------:|:--------------:|----------------------|
 | List agents, environments, and vaults | yes | yes | yes | yes | Powers resource discovery in the Web UI. |
 | Export resources to YAML (`sync`) | yes | yes | yes | limited | Ark cannot enumerate skills, so skill export is skipped. |
-| Full drift comparison | Environment, Agent | Environment, Agent | no | no | Other supported resources degrade to existence checks; emulated deployments are local state. |
+| Full drift comparison | Environment, Agent | Environment, Agent | no | no | Other supported resources degrade to existence checks; deployment content is never compared. |
 | List uploaded files | yes | yes | yes | yes | File upload, metadata lookup, and deletion are also implemented by all adapters. |
 | Resolve artifact download URL | no | yes | no | no | Qoder exposes a short-lived file content URL. |
 | List skills | yes | yes | yes | no | Ark supports lookup by ID, but its adapter cannot enumerate skills. |
@@ -46,7 +46,7 @@ The resource matrix above answers whether a declaration can be applied. The tabl
 
 ### Notable provider-specific behavior
 
-- **Bailian:** skill upload uses the Files API and supports scan-status polling; agent updates create provider-side versions. Official MCP servers are referenced by name.
+- **Bailian:** skill upload uses the Files API and supports scan-status polling; agent updates create provider-side versions. Official MCP servers are referenced by name. Deployments are native, with server-side cron schedules, manual runs, and pause/unpause.
 - **Qoder:** tool names are translated from the lowercase config vocabulary to PascalCase. Session sends return a cursor, enabling resumable event consumption. Deployments are native and support manual or scheduled runs.
 - **Claude:** deployments are native, including their server-side lifecycle. It is currently the only adapter that downloads remote skill packages during `sync`.
 - **Volcengine Ark:** skills are create + get + attach only in the API behavior verified by this project. Updates re-upload a new skill; list and in-place update are unavailable; deletion is best-effort. Deployment is emulated as a session.

@@ -40,6 +40,7 @@ import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { ApiError, toRemoteResource } from "../base-client.ts";
+import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
 	ComparableRemoteResource,
 	DeploymentContext,
@@ -669,8 +670,12 @@ export class QoderAdapter implements ProviderAdapter {
 	): Promise<RemoteResource> {
 		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
 		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
-		const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
-		return toRemoteResource(res);
+		try {
+			const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
+			return toRemoteResource(res);
+		} catch (error) {
+			preserveDeploymentFilesOnConflict(error, uploaded);
+		}
 	}
 
 	async updateDeployment(
@@ -679,8 +684,9 @@ export class QoderAdapter implements ProviderAdapter {
 		decl: DeploymentDecl,
 		refs: ResolvedDeploymentRefs,
 		basePath: string,
+		preparedFiles?: ReadonlyMap<string, string>,
 	): Promise<RemoteResource> {
-		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
+		const uploaded = preparedFiles ? new Map(preparedFiles) : await this.uploadDeploymentFiles(decl, basePath);
 		const current = (await this.client.get(`/deployments/${id}`)) as Record<string, unknown>;
 		if (current.schedule && !decl.schedule) {
 			throw new UserError(

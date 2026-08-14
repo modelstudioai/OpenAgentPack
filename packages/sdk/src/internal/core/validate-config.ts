@@ -9,7 +9,7 @@ import { getProvider } from "../providers/registry.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
-import { providerMountPrefix } from "../utils/sandbox-mount.ts";
+import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
 
 export interface ValidateProjectConfigOptions {
@@ -364,6 +364,83 @@ export function collectProviderCapabilities(
 			}
 		}
 
+		if (providerName === "bailian") {
+			// Bailian deployments are native, but their payload is narrower than the
+			// provider-neutral declaration: initial_events carry messages only, and
+			// resources accept files only. Surface what gets dropped.
+			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+				if (deployment.provider && deployment.provider !== providerName) continue;
+				const addr: ResourceAddress = {
+					type: "deployment",
+					name,
+					provider: providerName,
+				};
+
+				if (deployment.initial_events?.some((event) => event.type === "user.define_outcome")) {
+					diagnostics.warning(
+						`${providerName}.deployment.define_outcome_unsupported`,
+						"Outcome rubrics (user.define_outcome) are dropped from the Bailian deployment payload; the run executes without rubric grading.",
+						addr,
+					);
+				}
+				if (
+					!deployment.initial_events?.some((event) => event.type === "user.message" || event.type === "system.message")
+				) {
+					diagnostics.error(
+						`${providerName}.deployment.initial_events.message_required`,
+						`deployment.${name}: Bailian requires at least one user.message or system.message initial event; user.define_outcome events are dropped.`,
+						addr,
+					);
+				}
+
+				if (deployment.resources?.some((resource) => resource.type === "github_repository")) {
+					diagnostics.warning(
+						`${providerName}.deployment.github_repository_unsupported`,
+						"Bailian deployment resources accept files only; github_repository resources are dropped. Clone the repository inside the session instead.",
+						addr,
+					);
+				}
+
+				const mountPrefix = providerMountPrefix(providerName);
+				const normalizedMountPaths = new Set<string>();
+				for (const resource of deployment.resources ?? []) {
+					if (resource.type !== "file") continue;
+					if (!resource.mount_path?.trim()) {
+						diagnostics.error(
+							`${providerName}.deployment.file.mount_path.required`,
+							`deployment.${name}: Bailian file resources require mount_path.`,
+							addr,
+						);
+						continue;
+					}
+					if (
+						mountPrefix &&
+						resource.mount_path.startsWith("/") &&
+						resource.mount_path !== mountPrefix &&
+						!resource.mount_path.startsWith(`${mountPrefix}/`)
+					) {
+						diagnostics.error(
+							`${providerName}.deployment.file.mount_path.invalid`,
+							`deployment.${name}: Bailian file mount_path must start with '${mountPrefix}/'.`,
+							addr,
+						);
+						continue;
+					}
+
+					const normalizedMountPath = resolveSandboxMountPath(providerName, resource.mount_path);
+					if (normalizedMountPaths.has(normalizedMountPath)) {
+						diagnostics.error(
+							`${providerName}.deployment.file.mount_path.duplicate`,
+							`deployment.${name}: Bailian file mount_path '${normalizedMountPath}' is duplicated after normalization.`,
+							addr,
+						);
+					} else {
+						normalizedMountPaths.add(normalizedMountPath);
+					}
+				}
+			}
+		}
+
 		if (providerName !== "qoder") {
 			for (const [name, env] of Object.entries(config.environments ?? {})) {
 				// External references are never sent to the provider API, so a
@@ -451,7 +528,11 @@ export function collectProviderCapabilities(
 		if (config.deployments && caps.deployment.tier === "emulated") {
 			for (const [name, dep] of Object.entries(config.deployments)) {
 				if (dep.provider && dep.provider !== providerName) continue;
-				const addr: ResourceAddress = { type: "deployment", name, provider: providerName };
+				const addr: ResourceAddress = {
+					type: "deployment",
+					name,
+					provider: providerName,
+				};
 
 				if (dep.schedule) {
 					diagnostics.warning(

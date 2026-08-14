@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mapDeploymentToSession as mapBailianDeploymentToSession } from "../../src/internal/providers/bailian/mapper.ts";
+import {
+	mapDeployment as mapBailianDeployment,
+	mapDeploymentUpdate as mapBailianDeploymentUpdate,
+} from "../../src/internal/providers/bailian/mapper.ts";
 import { mapDeployment, mapDeploymentUpdate } from "../../src/internal/providers/claude/mapper.ts";
 import type { ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
 import {
@@ -70,8 +73,14 @@ describe("Claude mapDeployment", () => {
 		expect(body.environment_id).toBe("env_456");
 		expect(body.vault_ids).toEqual(["vault_a"]);
 		expect(body.initial_events).toEqual([
-			{ type: "user.message", content: [{ type: "text", text: "Run the daily report" }] },
-			{ type: "system.message", content: [{ type: "text", text: "You are punctual" }] },
+			{
+				type: "user.message",
+				content: [{ type: "text", text: "Run the daily report" }],
+			},
+			{
+				type: "system.message",
+				content: [{ type: "text", text: "You are punctual" }],
+			},
 			{
 				type: "user.define_outcome",
 				description: "Grade",
@@ -86,12 +95,24 @@ describe("Claude mapDeployment", () => {
 				checkout: { type: "branch", name: "main" },
 				mount_path: "/repo",
 			},
-			{ type: "memory_store", memory_store_id: "ms_2", access: "read_only", instructions: "ref only" },
+			{
+				type: "memory_store",
+				memory_store_id: "ms_2",
+				access: "read_only",
+				instructions: "ref only",
+			},
 			{ type: "memory_store", memory_store_id: "ms_1" },
 		]);
-		expect(body.schedule).toEqual({ type: "cron", expression: "0 9 * * *", timezone: "UTC" });
+		expect(body.schedule).toEqual({
+			type: "cron",
+			expression: "0 9 * * *",
+			timezone: "UTC",
+		});
 		expect(body.description).toBe("Daily report");
-		expect(body.metadata).toEqual({ "agents.project": "myproj", "agents.resource": "daily-report" });
+		expect(body.metadata).toEqual({
+			"agents.project": "myproj",
+			"agents.resource": "daily-report",
+		});
 	});
 
 	test("minimal decl omits optional fields and uses bare agent id", () => {
@@ -114,7 +135,10 @@ describe("Claude mapDeployment", () => {
 		};
 		const body = mapDeployment("d", decl, minimalRefs()) as Record<string, unknown>;
 		expect(body.initial_events).toEqual([
-			{ type: "user.define_outcome", rubric: { type: "file", file_id: "file_abc" } },
+			{
+				type: "user.define_outcome",
+				rubric: { type: "file", file_id: "file_abc" },
+			},
 		]);
 	});
 
@@ -156,7 +180,11 @@ describe("Qoder mapDeploymentToSession", () => {
 			description: "Daily",
 			initial_events: [],
 			resources: [
-				{ type: "file", source: "./report-template.md", mount_path: "/data/report-template.md" },
+				{
+					type: "file",
+					source: "./report-template.md",
+					mount_path: "/data/report-template.md",
+				},
 				{ type: "file", file_id: "file_2" },
 			],
 		};
@@ -171,7 +199,11 @@ describe("Qoder mapDeploymentToSession", () => {
 		expect(body.resources).toEqual([
 			{ type: "memory_store", memory_store_id: "ms_1" },
 			{ type: "memory_store", memory_store_id: "ms_2" },
-			{ type: "file", file_id: "file_1", mount_path: "/data/report-template.md" },
+			{
+				type: "file",
+				file_id: "file_1",
+				mount_path: "/data/report-template.md",
+			},
 			{ type: "file", file_id: "file_2" },
 		]);
 	});
@@ -236,8 +268,14 @@ describe("Qoder mapDeployment", () => {
 		// Qoder's /deployments API rejects tunnel_id (HTTP 400) — never sent.
 		expect(body.tunnel_id).toBeUndefined();
 		expect(body.initial_events).toEqual([
-			{ type: "user.message", content: [{ type: "text", text: "Run the daily report" }] },
-			{ type: "system.message", content: [{ type: "text", text: "You are punctual" }] },
+			{
+				type: "user.message",
+				content: [{ type: "text", text: "Run the daily report" }],
+			},
+			{
+				type: "system.message",
+				content: [{ type: "text", text: "You are punctual" }],
+			},
 			{
 				type: "user.define_outcome",
 				description: "Grade",
@@ -253,25 +291,44 @@ describe("Qoder mapDeployment", () => {
 				checkout: { type: "branch", name: "main" },
 				mount_path: "/repo",
 			},
-			{ type: "memory_store", memory_store_id: "ms_2", access: "read_only", instructions: "ref only" },
+			{
+				type: "memory_store",
+				memory_store_id: "ms_2",
+				access: "read_only",
+				instructions: "ref only",
+			},
 			{ type: "memory_store", memory_store_id: "ms_1" },
 		]);
-		expect(body.schedule).toEqual({ type: "cron", expression: "0 9 * * *", timezone: "Asia/Shanghai" });
+		expect(body.schedule).toEqual({
+			type: "cron",
+			expression: "0 9 * * *",
+			timezone: "Asia/Shanghai",
+		});
 		expect(body.vault_ids).toEqual(["vault_a"]);
-		expect(body.metadata).toEqual({ "agents.project": "myproj", "agents.resource": "daily-report" });
+		expect(body.metadata).toEqual({
+			"agents.project": "myproj",
+			"agents.resource": "daily-report",
+		});
 	});
 
 	test("create carries environment variables and update explicitly clears removed fields", () => {
 		const configured = mapQoderDeployment(
 			"d",
-			{ agent: "x", initial_events: [{ type: "user.message", content: "run" }], environment_variables: "B=2;A=1" },
+			{
+				agent: "x",
+				initial_events: [{ type: "user.message", content: "run" }],
+				environment_variables: "B=2;A=1",
+			},
 			minimalRefs(),
 		) as Record<string, unknown>;
 		expect(configured.environment_variables).toBe("B=2;A=1");
 
 		const update = mapQoderDeploymentUpdate(
 			"d",
-			{ agent: "x", initial_events: [{ type: "user.message", content: "run" }] },
+			{
+				agent: "x",
+				initial_events: [{ type: "user.message", content: "run" }],
+			},
 			minimalRefs(),
 			undefined,
 			undefined,
@@ -290,33 +347,159 @@ describe("Qoder mapDeployment", () => {
 	test("Claude update explicitly clears removed optional fields", () => {
 		const update = mapDeploymentUpdate(
 			"d",
-			{ agent: "x", initial_events: [{ type: "user.message", content: "run" }] },
+			{
+				agent: "x",
+				initial_events: [{ type: "user.message", content: "run" }],
+			},
 			minimalRefs(),
 		) as Record<string, unknown>;
-		expect(update).toMatchObject({ vault_ids: [], resources: [], description: "" });
+		expect(update).toMatchObject({
+			vault_ids: [],
+			resources: [],
+			description: "",
+		});
 		expect(update.schedule).toBeUndefined();
 	});
 });
 
-describe("Bailian mapDeploymentToSession", () => {
-	test("preserves mount_path for file resources", () => {
+describe("Bailian mapDeployment", () => {
+	test("normalizes file mount paths under Bailian's /mnt sandbox root", () => {
+		const body = mapBailianDeployment(
+			"daily-report",
+			{
+				agent: "researcher",
+				initial_events: [],
+				resources: [
+					{
+						type: "file",
+						file_id: "file_existing",
+						mount_path: "reports/template.md",
+					},
+				],
+			},
+			minimalRefs(),
+		) as Record<string, unknown>;
+
+		expect(body.resources).toEqual([
+			{
+				type: "file",
+				file_id: "file_existing",
+				mount_path: "/mnt/reports/template.md",
+			},
+		]);
+		expect(() =>
+			mapBailianDeployment(
+				"daily-report",
+				{
+					agent: "researcher",
+					initial_events: [],
+					resources: [
+						{
+							type: "file",
+							file_id: "file_existing",
+							mount_path: "/data/template.md",
+						},
+					],
+				},
+				minimalRefs(),
+			),
+		).toThrow("bailian mount_path must start with '/mnt/'");
+	});
+
+	test("full decl produces a native deployment body with object agent", () => {
 		const decl: DeploymentDecl = {
 			agent: "researcher",
+			agent_version: 3,
 			description: "Daily",
-			initial_events: [],
+			schedule: { expression: "0 9 * * *", timezone: "Asia/Shanghai" },
+			initial_events: [
+				{ type: "user.message", content: "Run the daily report" },
+				// define_outcome has no documented Bailian deployment shape and is dropped.
+				{
+					type: "user.define_outcome",
+					description: "Grade",
+					rubric: "Must include charts",
+				},
+			],
 			resources: [
-				{ type: "file", source: "./report-template.md", mount_path: "/workspace/report-template.md" },
+				{
+					type: "file",
+					source: "./report-template.md",
+					mount_path: "/mnt/report-template.md",
+				},
 				{ type: "file", file_id: "file_existing" },
+				// github_repository is not a Bailian deployment resource and is dropped.
+				{ type: "github_repository", url: "https://github.com/acme/repo" },
 			],
 		};
-		const body = mapBailianDeploymentToSession(decl, minimalRefs(), ["file_uploaded", "file_existing"]) as Record<
+		const uploaded = new Map([["./report-template.md", "file_uploaded"]]);
+		const body = mapBailianDeployment("daily-report", decl, fullRefs(), "myproj", uploaded) as Record<string, unknown>;
+
+		expect(body.name).toBe("daily-report");
+		expect(body.agent).toEqual({ id: "agent_123", version: 3 });
+		expect(body.environment_id).toBe("env_456");
+		expect(body.vault_ids).toEqual(["vault_a"]);
+		expect(body.description).toBe("Daily");
+		expect(body.schedule).toEqual({
+			type: "cron",
+			expression: "0 9 * * *",
+			timezone: "Asia/Shanghai",
+		});
+		expect(body.initial_events).toEqual([
+			{
+				role: "user",
+				type: "message",
+				content: [{ type: "text", text: "Run the daily report" }],
+			},
+		]);
+		expect(body.resources).toEqual([
+			{
+				type: "file",
+				file_id: "file_uploaded",
+				mount_path: "/mnt/report-template.md",
+			},
+			{ type: "file", file_id: "file_existing" },
+		]);
+		expect(body.metadata).toEqual({
+			"agents.project": "myproj",
+			"agents.resource": "daily-report",
+		});
+	});
+
+	test("minimal decl omits optional fields and always sends an object agent", () => {
+		const body = mapBailianDeployment("d", { agent: "x", initial_events: [] }, minimalRefs()) as Record<
 			string,
 			unknown
 		>;
 
-		expect(body.resources).toEqual([
-			{ type: "file", file_id: "file_uploaded", mount_path: "/workspace/report-template.md" },
-			{ type: "file", file_id: "file_existing" },
-		]);
+		expect(body.agent).toEqual({ id: "agent_min" });
+		expect(body.environment_id).toBe("env_min");
+		expect(body.initial_events).toEqual([]);
+		expect(body.vault_ids).toBeUndefined();
+		expect(body.resources).toBeUndefined();
+		expect(body.schedule).toBeUndefined();
+		expect(body.description).toBeUndefined();
+		expect(body.metadata).toBeUndefined();
+	});
+
+	test("update explicitly clears removed optional fields", () => {
+		const update = mapBailianDeploymentUpdate(
+			"d",
+			{
+				agent: "x",
+				initial_events: [{ type: "user.message", content: "run" }],
+			},
+			minimalRefs(),
+			undefined,
+			undefined,
+			{ stale: "value" },
+		) as Record<string, unknown>;
+		expect(update).toMatchObject({
+			vault_ids: [],
+			resources: [],
+			description: "",
+			metadata: { stale: "value" },
+			schedule: null,
+		});
 	});
 });

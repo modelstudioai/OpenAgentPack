@@ -13,7 +13,10 @@ if (!API_KEY || !BASE_URL || !WORKSPACE_ID) {
 
 const adapter = new BailianAdapter(API_KEY, WORKSPACE_ID, BASE_URL, "agents-smoke-test");
 
-const created: { envId?: string; agentId?: string; sessionIds: string[] } = { sessionIds: [] };
+const created: { envId?: string; agentId?: string; sessionIds: string[]; deploymentIds: string[] } = {
+	sessionIds: [],
+	deploymentIds: [],
+};
 
 async function waitForIdle(id: string, timeoutMs = 30_000): Promise<void> {
 	const start = Date.now();
@@ -111,8 +114,8 @@ async function run() {
 	const listed = await adapter.listSessions({ agent_id: agent.id!, limit: 5 });
 	console.log(`   ✅ listSessions: found ${listed.sessions.length} session(s), has_more=${listed.has_more}\n`);
 
-	// 9. emulated deployment
-	console.log("9. Deployment (emulated)...");
+	// 9. native deployment
+	console.log("9. Deployment (native)...");
 	const deployRefs: ResolvedDeploymentRefs = {
 		agent_id: agent.id!,
 		environment_id: env.id!,
@@ -126,23 +129,39 @@ async function run() {
 	};
 
 	const deployResult = await adapter.createDeployment("smoke-deploy", deployDecl, deployRefs, "/fake");
-	console.log(`   ✅ createDeployment: id=${deployResult.id} (emulated, expected null)`);
+	console.log(`   ✅ createDeployment: id=${deployResult.id}`);
+	if (deployResult.id) created.deploymentIds.push(deployResult.id);
 
-	const runResult = await adapter.runDeployment({
-		id: null,
+	const deployInfo = await adapter.getDeployment({
+		id: deployResult.id,
 		name: "smoke-deploy",
 		decl: deployDecl,
 		refs: deployRefs,
 		basePath: "/fake/project.yaml",
 	});
-	console.log(`   ✅ runDeployment: session_id=${runResult.session_id}\n`);
+	console.log(`   ✅ getDeployment: status=${deployInfo.status}`);
 
+	const runResult = await adapter.runDeployment({
+		id: deployResult.id,
+		name: "smoke-deploy",
+		decl: deployDecl,
+		refs: deployRefs,
+		basePath: "/fake/project.yaml",
+	});
+	console.log(`   ✅ runDeployment: run_id=${runResult.run_id}, session_id=${runResult.session_id}\n`);
+
+	// The run creates its Session asynchronously, so session_id may still be null here.
 	if (runResult.session_id) {
 		created.sessionIds.push(runResult.session_id);
 	}
 
 	// 10. cleanup
 	console.log("\n10. Cleanup...");
+
+	for (const deploymentId of created.deploymentIds) {
+		await adapter.deleteDeployment(deploymentId);
+		console.log(`   🧹 archived deployment: ${deploymentId}`);
+	}
 
 	for (const sid of created.sessionIds) {
 		await safeDeleteSession(sid);
@@ -167,6 +186,11 @@ run().catch(async (err) => {
 
 	// Best-effort cleanup
 	console.log("\n🧹 Attempting cleanup after failure...");
+	for (const deploymentId of created.deploymentIds) {
+		try {
+			await adapter.deleteDeployment(deploymentId);
+		} catch {}
+	}
 	for (const sid of created.sessionIds) {
 		try {
 			await safeDeleteSession(sid);

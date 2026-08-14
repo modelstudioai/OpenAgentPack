@@ -17,10 +17,8 @@ export const BAILIAN_CAPABILITIES: ProviderCapabilities = {
 		remediation: "deploy agents independently and orchestrate via MCP",
 	},
 	deployment: {
-		tier: "emulated",
-		reason: "no deployment primitive on Bailian; expanded into a session at run time",
-		remediation:
-			"scheduling and outcome rubrics are not enforced server-side — use external cron/CI for always-on or scheduled runs",
+		tier: "native",
+		reason: "deployments API with cron schedules, manual runs, pause/unpause and archive",
 	},
 	session: { tier: "native", reason: "sessions API" },
 	identity: { tier: "unsupported", reason: "no mapped Identity primitive on Bailian" },

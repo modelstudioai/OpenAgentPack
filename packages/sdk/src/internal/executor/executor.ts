@@ -5,6 +5,7 @@ import { getResourceDeclaration } from "../planner/declaration.ts";
 import { computeReplacementFingerprint, computeResourceHash } from "../planner/hasher.ts";
 import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { ApiError, ConflictError } from "../providers/base-client.ts";
+import { DeploymentCreateConflictError } from "../providers/deployment-conflict.ts";
 import { readComparableIfSupported } from "../providers/drift-support.ts";
 import type { RemoteResource } from "../providers/interface.ts";
 import type { DriftReadAdapter, ResourceCrudAdapter } from "../providers/resource-workflow.ts";
@@ -597,16 +598,41 @@ async function executeActionInner(
 		case "deployment": {
 			const decl = ctx.config.deployments![name]!;
 			const refs = resolveDeploymentRefs(name, ctx.config, address.provider, ctx.state);
-			if (isUpdate) {
-				result = await provider.updateDeployment(existingId!, name, decl, refs, ctx.configPath ?? "");
-			} else {
+			const hasLocalFileSources = decl.resources?.some(
+				(resource) => resource.type === "file" && !resource.file_id && Boolean(resource.source),
+			);
+			const materializeDeployment = async (): Promise<RemoteResource> => {
 				try {
-					result = await provider.createDeployment(name, decl, refs, ctx.configPath ?? "");
+					return await provider.createDeployment(name, decl, refs, ctx.configPath ?? "");
 				} catch (err) {
-					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
-						onExisting: (existing) => provider.updateDeployment(existing.id!, name, decl, refs, ctx.configPath ?? ""),
+					const preparedFiles = err instanceof DeploymentCreateConflictError ? err.preparedFiles : undefined;
+					const existing = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						onExisting: (existing) =>
+							provider.updateDeployment(existing.id!, name, decl, refs, ctx.configPath ?? "", preparedFiles),
 					});
 					adopted = true;
+					return existing;
+				}
+			};
+			if (isUpdate && existingId) {
+				result = await provider.updateDeployment(existingId, name, decl, refs, ctx.configPath ?? "");
+			} else {
+				// A deployment with local file sources uploads before its create request. If the
+				// remote deployment already exists, an optimistic create would upload once,
+				// conflict, then upload again during adoption. Preflight this side-effecting
+				// path so the existing deployment is updated with a single set of uploads.
+				const existing = hasLocalFileSources ? await findExistingByNames(provider, "deployment", [name]) : null;
+				if (existing) {
+					result = await provider.updateDeployment(existing.resource.id!, name, decl, refs, ctx.configPath ?? "");
+					emitRuntimeFeedback(ctx.onFeedback, {
+						type: "resource_adopted",
+						level: "info",
+						resource: address,
+						message: `adopt deployment.${name} (${address.provider}) — already existed remotely as "${existing.name}"`,
+					});
+					adopted = true;
+				} else {
+					result = await materializeDeployment();
 				}
 			}
 			break;

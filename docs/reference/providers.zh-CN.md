@@ -34,7 +34,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 | MCP Server | native | native | native | native | 通过 Agent 的 MCP 配置挂载 |
 | Memory Store | unsupported | native | native | native | Qoder、Claude（beta）、方舟均已接入 |
 | Multi-Agent | unsupported | unsupported | native | native | Claude 与 火山方舟 支持 coordinator |
-| Deployment | emulated | native | native | emulated | Qoder 和 Claude 使用原生 Deployment；百炼和火山方舟在 `run` 时展开为 Session |
+| Deployment | native | native | native | emulated | 百炼、Qoder 和 Claude 使用原生 Deployment；火山方舟在 `run` 时展开为 Session |
 | Session | native | native | native | native | 四者均原生支持 |
 
 ### Adapter 实现能力对照表
@@ -45,7 +45,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 |----------------|:----:|:-----:|:------:|:--------:|----------|
 | 枚举 Agent、Environment、Vault | yes | yes | yes | yes | 用于 Web UI 的云端资源发现 |
 | 导出资源到 YAML（`sync`） | yes | yes | yes | limited | 方舟无法枚举 Skill，因此会跳过 Skill 导出 |
-| 完整 Drift 内容比较 | Environment、Agent | Environment、Agent | no | no | 其他已支持资源降级为存在性检查；模拟 Deployment 仅有本地状态 |
+| 完整 Drift 内容比较 | Environment、Agent | Environment、Agent | no | no | 其他已支持资源降级为存在性检查；Deployment 不比较内容 |
 | 枚举已上传文件 | yes | yes | yes | yes | 四个 Adapter 也都实现上传、元数据查询和删除 |
 | 获取产物下载 URL | no | yes | no | no | Qoder 可返回短期有效的文件内容 URL |
 | 枚举 Skill | yes | yes | yes | no | 方舟可按 ID 查询，但当前无法枚举 |
@@ -59,7 +59,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 
 #### Provider 特有实现与限制
 
-- **百炼**：Skill 通过 Files API 上传并支持扫描状态轮询；Agent 更新会生成平台侧版本；官方 MCP Server 按名称引用。
+- **百炼**：Skill 通过 Files API 上传并支持扫描状态轮询；Agent 更新会生成平台侧版本；官方 MCP Server 按名称引用；Deployment 为原生资源，支持服务端 cron 调度、手动触发和暂停/恢复。
 - **Qoder**：配置中的小写工具名会转换为 PascalCase；Session 发送返回游标，可恢复事件消费；Deployment 为原生资源，支持手动或定时运行。
 - **Claude**：Deployment 是原生资源，具有服务端生命周期；当前只有 Claude Adapter 会在 `sync` 时下载远端 Skill 包。
 - **火山方舟**：经本项目验证的 Skill API 行为仅支持创建、按 ID 查询和挂载。更新会重新上传，无法枚举和原地更新，删除为 best-effort；Deployment 由 Session 模拟。
@@ -113,7 +113,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 | Skill | existence | existence | existence | existence | 可发现缺失/删除，不比较包内容 |
 | Vault | existence | existence | existence | existence | 凭证内容通常不可读回，不比较内容 |
 | Memory Store | unsupported | existence | existence | existence | 可发现资源缺失 |
-| Deployment | unsupported | native | native 路径待验证 | unsupported | 百炼和火山方舟的 emulated Deployment 为本地记录 |
+| Deployment | unsupported | native | native 路径待验证 | unsupported | 百炼 Deployment 为原生资源但不比较内容；火山方舟的 emulated Deployment 仅为本地记录 |
 
 Claude 的 drift detection 接口路径已预留；本仓库中的 live baseline 因 Anthropic API 账号余额不足未完成 Agent 创建验证。
 
@@ -139,7 +139,7 @@ qoder.multiagent.unsupported:
 
 ### 模拟（emulated）资源的能力降级
 
-`emulated` 等级表示 Provider 没有对应的原生原语，OpenAgentPack 通过其他原语间接实现。Deployment 在百炼和火山方舟上为模拟实现：`apply` 时**不调用**部署 API（状态记录的 `remote_id` 为 `null`），而是在 `agents deployment run` 时展开为一个 Session 并回放 `initial_events`。
+`emulated` 等级表示 Provider 没有对应的原生原语，OpenAgentPack 通过其他原语间接实现。Deployment 在火山方舟上为模拟实现：`apply` 时**不调用**部署 API（状态记录的 `remote_id` 为 `null`），而是在 `agents deployment run` 时展开为一个 Session 并回放 `initial_events`。
 
 部分子特性在 emulated Provider 上无法在服务端执行。`plan`/`apply` 阶段会输出**警告**（不阻断部署），`run` 时尽力降级：
 
@@ -153,13 +153,30 @@ qoder.multiagent.unsupported:
 示例诊断输出：
 
 ```
-⚠ bailian.deployment.schedule_unsupported
-  Resource: deployment.daily-report (bailian)
+⚠ ark.deployment.schedule_unsupported
+  Resource: deployment.daily-report (ark)
   Schedules are not enforced server-side on this provider; trigger runs via external cron/CI.
 
+⚠ ark.deployment.define_outcome_unsupported
+  Resource: deployment.daily-report (ark)
+  Outcome rubrics (user.define_outcome) are not enforced server-side on this provider; the run executes without rubric grading.
+```
+
+### 原生 Deployment 的 payload 裁剪
+
+百炼 Deployment 是原生资源，但其 payload 比 OpenAgentPack 的中立声明更窄：`initial_events` 只承载消息，`resources` 只接受文件。被丢弃的字段会在 `plan`/`apply` 阶段输出**警告**：
+
+| 子特性 | 百炼行为 | 替代建议 |
+|--------|----------|---------|
+| `initial_events` 中的 `user.define_outcome` | 从 payload 中丢弃，不做结果评分 | 将要求写入 `user.message` / `system.message` |
+| `resources` 中的 `github_repository` | 从 payload 中丢弃 | 在 Session 内克隆仓库 |
+
+示例诊断输出：
+
+```
 ⚠ bailian.deployment.define_outcome_unsupported
   Resource: deployment.daily-report (bailian)
-  Outcome rubrics (user.define_outcome) are not enforced server-side on this provider; the run executes without rubric grading.
+  Outcome rubrics (user.define_outcome) are dropped from the Bailian deployment payload; the run executes without rubric grading.
 ```
 
 ## Provider 配置

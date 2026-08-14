@@ -32,6 +32,7 @@ import type { ResourceType } from "../../types/state.ts";
 import { extractSkillZipFiles } from "../../utils/normalize-skill-zip.ts";
 import { skillNameFromFiles } from "../../utils/skill-manifest.ts";
 import { toRemoteResource } from "../base-client.ts";
+import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
 	DeploymentContext,
 	DeploymentInfo,
@@ -368,8 +369,12 @@ export class ClaudeAdapter implements ProviderAdapter {
 	): Promise<RemoteResource> {
 		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
 		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
-		const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
-		return toRemoteResource(res);
+		try {
+			const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
+			return toRemoteResource(res);
+		} catch (error) {
+			preserveDeploymentFilesOnConflict(error, uploaded);
+		}
 	}
 
 	async updateDeployment(
@@ -378,8 +383,9 @@ export class ClaudeAdapter implements ProviderAdapter {
 		decl: DeploymentDecl,
 		refs: ResolvedDeploymentRefs,
 		basePath: string,
+		preparedFiles?: ReadonlyMap<string, string>,
 	): Promise<RemoteResource> {
-		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
+		const uploaded = preparedFiles ? new Map(preparedFiles) : await this.uploadDeploymentFiles(decl, basePath);
 		const current = (await this.client.get(`/deployments/${id}`)) as Record<string, unknown>;
 		if (current.schedule && !decl.schedule) {
 			throw new UserError(

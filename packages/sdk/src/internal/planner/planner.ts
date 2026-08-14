@@ -5,6 +5,7 @@ import {
 } from "../core/validate-config.ts";
 import { DiagnosticCollector } from "../diagnostics/diagnostics.ts";
 import { buildDependencyGraph, type DependencyGraph, topologicalSort } from "../graph/dependency.ts";
+import { getProvider } from "../providers/registry.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { ResourceAddress, StateFile } from "../types/state.ts";
@@ -53,6 +54,10 @@ export async function buildPlan(
 		const desiredHash = await computeResourceHash(address, config, options.configPath, hashStateLookup);
 		const existing = stateIndex.get(key);
 		const deps = getDependencies(address, graph);
+		const needsNativeDeploymentMaterialization =
+			address.type === "deployment" &&
+			existing?.remote_id === null &&
+			getProvider(address.provider)?.capabilities.deployment.tier === "native";
 
 		if (address.type === "environment" && existing) {
 			const envDecl = config.environments?.[address.name];
@@ -131,6 +136,17 @@ export async function buildPlan(
 				driftKind: "none",
 				readinessImpact: "blocking",
 				reason: createReason,
+				after: { content_hash: desiredHash },
+				dependencies: deps,
+			});
+		} else if (needsNativeDeploymentMaterialization) {
+			actions.push({
+				action: "update",
+				address,
+				driftKind: "none",
+				readinessImpact: "blocking",
+				reason: "Materialize legacy state as a native deployment",
+				before: { content_hash: existing.desired_hash ?? existing.content_hash },
 				after: { content_hash: desiredHash },
 				dependencies: deps,
 			});

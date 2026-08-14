@@ -65,7 +65,7 @@ extensions, and live-test commands.
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
 | Memory Store | unsupported | native | native | native | Qoder, Claude (beta), and Volcengine Ark. |
 | Multi-Agent | unsupported | unsupported | native | native | Claude and Volcengine Ark support coordinator. |
-| Deployment | emulated | native | native | emulated | Qoder and Claude schedule server-side; Bailian and Ark expand into a session at `run` time. |
+| Deployment | native | native | native | emulated | Bailian, Qoder, and Claude schedule server-side; Ark expands into a session at `run` time. |
 | Session | native | native | native | native | All four support runtime sessions. |
 | GitHub Session resource | unsupported | native | native | unsupported | Qoder and Claude clone and mount repositories at Session creation. |
 
