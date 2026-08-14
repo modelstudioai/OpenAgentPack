@@ -8,6 +8,7 @@ import { QoderAdapter, toSessionInfo } from "../../src/internal/providers/qoder/
 interface CapturedCall {
 	url: string;
 	method: string;
+	body?: unknown;
 }
 
 const BASE = "https://api.qoder.com/api/v1/cloud";
@@ -20,7 +21,7 @@ function mockFetch(responses: Array<{ status: number; body?: unknown }>) {
 	globalThis.fetch = mock(async (input: string | URL, init?: RequestInit) => {
 		const url = typeof input === "string" ? input : input.toString();
 		const method = init?.method ?? "GET";
-		calls.push({ url, method });
+		calls.push({ url, method, body: init?.body ? JSON.parse(init.body as string) : undefined });
 
 		const resp = responses[callIndex++];
 		if (!resp) throw new Error(`Unexpected fetch call #${callIndex}: ${method} ${url}`);
@@ -127,6 +128,100 @@ describe("QoderAdapter pagination regressions", () => {
 
 		// Both blocking sessions (across both pages) must surface in the error.
 		await expect(makeAdapter().deleteEnvironment(ENV, false)).rejects.toThrow(/s1 \(idle\).*s2 \(running\)/);
+	});
+});
+
+describe("QoderAdapter environment contract", () => {
+	let cleanup: (() => void) | undefined;
+
+	afterEach(() => {
+		cleanup?.();
+		cleanup = undefined;
+	});
+
+	test("creates an environment with setup_script and only writable package fields", async () => {
+		const { calls, restore } = mockFetch([{ status: 200, body: { id: "env_1", type: "environment" } }]);
+		cleanup = restore;
+
+		await makeAdapter().createEnvironment("dev", {
+			config: {
+				type: "cloud",
+				packages: { apt: ["curl"], npm: [], cargo: ["ignored-after-validation"] },
+				setup_script: "set -euo pipefail\necho ready",
+			},
+		});
+
+		expect(calls[0]).toMatchObject({ method: "POST", url: `${BASE}/environments` });
+		expect(calls[0]?.body).toMatchObject({
+			config: {
+				type: "cloud",
+				networking: { type: "unrestricted" },
+				packages: { apt: ["curl"] },
+				setup_script: "set -euo pipefail\necho ready",
+			},
+		});
+	});
+
+	test("updates with POST and tombstones removed user metadata", async () => {
+		const { calls, restore } = mockFetch([
+			{
+				status: 200,
+				body: { metadata: { keep: "old", remove: "stale", "agents.project": "test-project" } },
+			},
+			{ status: 200, body: { id: "env_1", type: "environment" } },
+		]);
+		cleanup = restore;
+
+		await makeAdapter().updateEnvironment("env_1", "dev", {
+			config: { type: "self_hosted", setup_script: "echo updated" },
+			metadata: { keep: "new" },
+		});
+
+		expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+			`GET ${BASE}/environments/env_1`,
+			`POST ${BASE}/environments/env_1`,
+		]);
+		expect(calls[1]?.body).toMatchObject({
+			config: { type: "self_hosted", setup_script: "echo updated" },
+			metadata: {
+				keep: "new",
+				remove: null,
+				"agents.project": "test-project",
+				"agents.resource": "dev",
+			},
+		});
+	});
+
+	test("exports normalized setup scripts and omits response-only package defaults", async () => {
+		const { restore } = mockFetch([
+			{
+				status: 200,
+				body: {
+					data: [
+						{
+							id: "env_1",
+							name: "dev",
+							config: {
+								type: "cloud",
+								packages: { type: "packages", apt: ["curl"], npm: [], pip: [], cargo: [] },
+								setup_script: "echo ready",
+							},
+						},
+					],
+					has_more: false,
+				},
+			},
+		]);
+		cleanup = restore;
+
+		const exported = await makeAdapter().exportResources("environment");
+
+		expect(exported).toEqual([
+			{
+				name: "dev",
+				decl: { config: { type: "cloud", packages: { apt: ["curl"] }, setup_script: "echo ready" } },
+			},
+		]);
 	});
 });
 

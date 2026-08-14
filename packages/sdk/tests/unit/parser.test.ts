@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { loadConfig } from "../../src/internal/parser/index.ts";
+import { projectConfigSchema } from "../../src/internal/parser/schema.ts";
 
 const FIXTURES = resolve(import.meta.dir, "../fixtures");
 
@@ -53,4 +54,37 @@ test("loads official MCP server references without urls", async () => {
 			configs: [{ name: "bailian_web_search", enabled: true }],
 		},
 	]);
+});
+
+test("preserves environment setup scripts up to the 64 KiB UTF-8 limit", () => {
+	const setupScript = `${"界".repeat(21_845)}a`;
+	const result = projectConfigSchema.safeParse({
+		version: "1",
+		providers: { qoder: {} },
+		environments: { dev: { config: { type: "cloud", setup_script: setupScript } } },
+	});
+
+	expect(Buffer.byteLength(setupScript, "utf8")).toBe(65_536);
+	expect(result.success).toBe(true);
+	if (result.success) expect(result.data.environments?.dev?.config.setup_script).toBe(setupScript);
+});
+
+test("rejects environment setup scripts over 64 KiB by UTF-8 byte length", () => {
+	const result = projectConfigSchema.safeParse({
+		version: "1",
+		providers: { qoder: {} },
+		environments: { dev: { config: { type: "self_hosted", setup_script: "界".repeat(21_846) } } },
+	});
+
+	expect(result.success).toBe(false);
+	if (!result.success) expect(result.error.issues[0]?.message).toContain("65536 UTF-8 bytes");
+});
+
+test("preserves Agent environment variables from YAML", async () => {
+	const { config, errors } = await loadConfig(resolve(FIXTURES, "agent-environment-variables.yaml"));
+	expect(errors).toEqual([]);
+	expect(config.agents?.assistant?.environment_variables).toEqual({
+		FEATURE_FLAG: "on",
+		RETRY_COUNT: "3",
+	});
 });

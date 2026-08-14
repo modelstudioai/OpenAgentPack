@@ -21,6 +21,8 @@ export interface ResourceState {
 	desired_readiness_baseline?: ResourceReadinessBaseline;
 	remote_hash?: string;
 	remote_snapshot?: unknown;
+	/** Non-reversible declaration fingerprint used to infer safe logical renames. */
+	replacement_fingerprint?: string;
 	drift_paths?: string[];
 	drift_status?: "in_sync" | "drifted" | "missing" | "unchecked";
 }

@@ -147,6 +147,41 @@ export function collectProviderCapabilities(
 		}
 		const caps = def.capabilities;
 
+		for (const [name, environment] of Object.entries(config.environments ?? {})) {
+			if (environment.provider && environment.provider !== providerName) continue;
+			if (environment.environment_id) continue;
+			const address: ResourceAddress = { type: "environment", name, provider: providerName };
+			if (environment.config.setup_script !== undefined && providerName !== "qoder") {
+				diagnostics.error(
+					`${providerName}.environment.setup_script.unsupported`,
+					`environment.${name}: provider '${providerName}' does not support setup_script; remove it or pin this environment to qoder.`,
+					address,
+				);
+			}
+			if (providerName === "qoder") {
+				if (
+					environment.config.type === "self_hosted" &&
+					(environment.config.networking !== undefined || environment.config.packages !== undefined)
+				) {
+					diagnostics.error(
+						"qoder.environment.self_hosted.config.unsupported",
+						`environment.${name}: Qoder self_hosted environments accept only config.type and config.setup_script; remove networking and packages.`,
+						address,
+					);
+				}
+				const unsupported = (["cargo", "gem", "go"] as const).filter(
+					(key) => (environment.config.packages?.[key]?.length ?? 0) > 0,
+				);
+				if (unsupported.length > 0) {
+					diagnostics.error(
+						"qoder.environment.packages.unsupported",
+						`environment.${name}: Qoder accepts only apt, npm, and pip package declarations; remove ${unsupported.join(", ")} or install them from setup_script.`,
+						address,
+					);
+				}
+			}
+		}
+
 		for (const [name, identity] of Object.entries(config.identities ?? {})) {
 			if (identity.provider && identity.provider !== providerName) continue;
 			if (!isSupported(caps, "identity")) {
@@ -370,6 +405,13 @@ export function collectProviderCapabilities(
 				}
 			}
 			for (const [name, agent] of Object.entries(config.agents ?? {})) {
+				if (agent.environment_variables && (!agent.provider || agent.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.agent.environment_variables.unsupported`,
+						`agent.${name}: environment_variables is supported only by Qoder; remove it or pin this agent to qoder.`,
+						{ type: "agent", name, provider: providerName },
+					);
+				}
 				if (agent.tunnel && (!agent.provider || agent.provider === providerName)) {
 					diagnostics.error(
 						`${providerName}.agent.tunnel.unsupported`,
