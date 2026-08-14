@@ -76,7 +76,7 @@
 		"esbuild": "0.28.1",
 		"fast-equals": "5.3.3",
 		"js-yaml": "4.3.1",
-		"nanoid": "3.3.17",
+		"nanoid": "3.3.18",
 		"postcss": "8.5.23"
 	},
 	"trustedDependencies": [
