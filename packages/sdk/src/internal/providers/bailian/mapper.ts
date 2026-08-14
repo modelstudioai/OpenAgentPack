@@ -162,7 +162,10 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	if (tools?.length) {
 		const toolset = tools.find((t) => t.type === "builtin_toolkit");
 		if (toolset) {
-			const configs = (toolset.configs ?? []) as Array<{ name: string; enabled?: boolean }>;
+			const configs = (toolset.configs ?? []) as Array<{
+				name: string;
+				enabled?: boolean;
+			}>;
 			builtinTools = configs.filter((c) => c.enabled !== false).map((c) => c.name);
 		}
 	}
@@ -236,7 +239,9 @@ export function mapAgent(
 	// Tools: builtin_toolkit + mcp_toolkit blocks
 	const BAILIAN_BUILTINS = new Set(["bash", "read", "write", "edit", "glob", "grep", "download_file"]);
 	if (decl.tools) {
-		const toolConfigs = resolveBuiltinTools(decl.tools, { supportedWireNames: BAILIAN_BUILTINS }).map((tool) => ({
+		const toolConfigs = resolveBuiltinTools(decl.tools, {
+			supportedWireNames: BAILIAN_BUILTINS,
+		}).map((tool) => ({
 			name: tool.wireName,
 			enabled: true,
 		}));
@@ -368,8 +373,7 @@ export function mapDeployment(
 /**
  * Update replaces only the fields present in the payload, so every optional field a
  * deployment can drop locally must be sent explicitly to be cleared remotely.
- * `schedule` is the exception — it has no documented null form, so removing one is
- * rejected in the adapter instead of silently persisting the old cron.
+ * In particular, `schedule: null` switches a scheduled deployment back to manual.
  */
 export function mapDeploymentUpdate(
 	name: string,
@@ -383,6 +387,7 @@ export function mapDeploymentUpdate(
 	body.description = decl.description ?? "";
 	body.vault_ids = refs.vault_ids;
 	body.resources = mapDeploymentResources(decl, uploadedFiles);
+	if (!decl.schedule) body.schedule = null;
 	if (!projectName && !decl.metadata && existingMetadata) body.metadata = existingMetadata;
 	return body;
 }
@@ -396,7 +401,7 @@ function mapDeploymentResources(decl: DeploymentDecl, uploadedFiles?: Map<string
 		const fileId = resource.file_id ?? (resource.source ? uploadedFiles?.get(resource.source) : undefined);
 		if (!fileId) continue;
 		const entry: Record<string, unknown> = { type: "file", file_id: fileId };
-		if (resource.mount_path) entry.mount_path = resource.mount_path;
+		if (resource.mount_path) entry.mount_path = resolveSandboxMountPath("bailian", resource.mount_path);
 		resources.push(entry);
 	}
 	return resources;

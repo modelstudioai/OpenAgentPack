@@ -17,6 +17,62 @@ afterEach(() => {
 });
 
 describe("BailianAdapter deployment file upload", () => {
+	test("reads the current deployment before uploading replacement files", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "agents-dep-update-"));
+		writeFileSync(join(dir, "report-template.md"), "# template");
+		const calls: string[] = [];
+
+		globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+			const path = new URL(String(input)).pathname;
+			const method = init?.method ?? "GET";
+			calls.push(`${method} ${path}`);
+			if (method === "GET" && path.endsWith("/deployments/depl_1")) {
+				return Response.json({
+					id: "depl_1",
+					schedule: { type: "cron", expression: "0 9 * * *" },
+				});
+			}
+			if (method === "POST" && path.endsWith("/files")) {
+				return Response.json({ id: "file_x", status: "checking" });
+			}
+			if (method === "GET" && path.endsWith("/files/file_x")) {
+				return Response.json({ id: "file_x", status: "available" });
+			}
+			if (method === "POST" && path.endsWith("/deployments/depl_1")) {
+				return Response.json({ id: "depl_1", type: "deployment", schedule: null });
+			}
+			throw new Error(`unexpected ${method} ${path}`);
+		}) as typeof fetch;
+
+		const adapter = new BailianAdapter("sk-test", "ws-test", "https://bailian.test/api/v1/agentstudio");
+		const decl: DeploymentDecl = {
+			agent: "reporter",
+			initial_events: [{ type: "user.message", content: "go" }],
+			resources: [
+				{
+					type: "file",
+					source: "report-template.md",
+					mount_path: "/mnt/report-template.md",
+				},
+			],
+		};
+		const refs: ResolvedDeploymentRefs = {
+			agent_id: "agent_1",
+			environment_id: "env_1",
+			vault_ids: [],
+			memory_store_ids: {},
+		};
+
+		const result = await adapter.updateDeployment("depl_1", "daily-report", decl, refs, join(dir, "agents.yaml"));
+		expect(result.id).toBe("depl_1");
+		expect(calls).toEqual([
+			"GET /api/v1/agentstudio/deployments/depl_1",
+			"POST /api/v1/agentstudio/files",
+			"GET /api/v1/agentstudio/files/file_x",
+			"POST /api/v1/agentstudio/deployments/depl_1",
+		]);
+	});
+
 	test("waits for the uploaded file to become available before creating the deployment", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "agents-dep-"));
 		writeFileSync(join(dir, "report-template.md"), "# template");
@@ -31,13 +87,21 @@ describe("BailianAdapter deployment file upload", () => {
 			calls.push(`${method} ${path}`);
 
 			if (method === "POST" && path.endsWith("/files")) {
-				return Response.json({ id: "file_x", filename: "report-template.md", status: "checking" });
+				return Response.json({
+					id: "file_x",
+					filename: "report-template.md",
+					status: "checking",
+				});
 			}
 			if (method === "GET" && path.endsWith("/files/file_x")) {
 				// Flip to available on the first poll so the wait is short but real.
 				const status = fileStatus;
 				fileStatus = "available";
-				return Response.json({ id: "file_x", filename: "report-template.md", status });
+				return Response.json({
+					id: "file_x",
+					filename: "report-template.md",
+					status,
+				});
 			}
 			if (method === "POST" && path.endsWith("/deployments")) {
 				return Response.json({ id: "depl_1", type: "deployment" });
@@ -49,7 +113,13 @@ describe("BailianAdapter deployment file upload", () => {
 		const decl: DeploymentDecl = {
 			agent: "reporter",
 			initial_events: [{ type: "user.message", content: "go" }],
-			resources: [{ type: "file", source: "report-template.md", mount_path: "/mnt/report-template.md" }],
+			resources: [
+				{
+					type: "file",
+					source: "report-template.md",
+					mount_path: "/mnt/report-template.md",
+				},
+			],
 		};
 		const refs: ResolvedDeploymentRefs = {
 			agent_id: "agent_1",

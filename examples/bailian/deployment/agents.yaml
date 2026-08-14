@@ -55,4 +55,4 @@ deployments:
       # Local file uploaded at `apply` time and mounted into each run's Session.
       - type: file
         source: ./data/report-template.md
-        mount_path: /data/report-template.md
+        mount_path: /mnt/report-template.md

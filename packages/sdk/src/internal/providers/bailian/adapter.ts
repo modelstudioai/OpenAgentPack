@@ -34,6 +34,7 @@ import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { toRemoteResource } from "../base-client.ts";
+import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
 	ComparableRemoteResource,
 	DeploymentContext,
@@ -562,8 +563,12 @@ export class BailianAdapter implements ProviderAdapter {
 	): Promise<RemoteResource> {
 		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
 		const body = mapDeployment(name, decl, refs, this.projectName, uploaded);
-		const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
-		return toRemoteResource(res);
+		try {
+			const res = (await this.client.post("/deployments", body)) as Record<string, unknown>;
+			return toRemoteResource(res);
+		} catch (error) {
+			preserveDeploymentFilesOnConflict(error, uploaded);
+		}
 	}
 
 	async updateDeployment(
@@ -572,19 +577,15 @@ export class BailianAdapter implements ProviderAdapter {
 		decl: DeploymentDecl,
 		refs: ResolvedDeploymentRefs,
 		basePath: string,
+		preparedFiles?: ReadonlyMap<string, string>,
 	): Promise<RemoteResource> {
 		// Deployments used to be emulated here, so state rows written before native
 		// support carry `remote_id: null`. An update against one has nothing to PATCH —
 		// materialize it remotely instead of failing on an empty path segment.
 		if (!id) return this.createDeployment(name, decl, refs, basePath);
 
-		const uploaded = await this.uploadDeploymentFiles(decl, basePath);
 		const current = (await this.client.get(`/deployments/${id}`)) as Record<string, unknown>;
-		if (current.schedule && !decl.schedule) {
-			throw new UserError(
-				`Deployment '${name}' cannot remove its schedule through the documented Bailian update API; archive and recreate it as a manual deployment.`,
-			);
-		}
+		const uploaded = preparedFiles ? new Map(preparedFiles) : await this.uploadDeploymentFiles(decl, basePath);
 		const body = mapDeploymentUpdate(
 			name,
 			decl,
@@ -815,7 +816,10 @@ function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
 		status: (res.status as string) ?? "unknown",
 		paused_reason: (res.paused_reason as DeploymentInfo["paused_reason"] | null | undefined) ?? undefined,
 		schedule: schedule
-			? { expression: schedule.expression as string, timezone: schedule.timezone as string | undefined }
+			? {
+					expression: schedule.expression as string,
+					timezone: schedule.timezone as string | undefined,
+				}
 			: undefined,
 		attributes: res,
 	};

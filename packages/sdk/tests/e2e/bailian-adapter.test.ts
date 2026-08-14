@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BailianAdapter } from "../../src/internal/providers/bailian/adapter.ts";
+import { DeploymentCreateConflictError } from "../../src/internal/providers/deployment-conflict.ts";
 import type {
 	DeploymentContext,
 	ResolvedAgentRefs,
@@ -849,6 +850,58 @@ describe("BailianAdapter e2e", () => {
 			});
 		});
 
+		test("createDeployment preserves uploaded files when the deployment conflicts", async () => {
+			const dir = mkdtempSync(join(tmpdir(), "bailian-depl-conflict-"));
+			writeFileSync(join(dir, "report.md"), "# template");
+			const declWithFile: DeploymentDecl = {
+				agent: "helper",
+				initial_events: [{ type: "user.message", content: "analyze" }],
+				resources: [{ type: "file", source: "./report.md", mount_path: "/mnt/report.md" }],
+			};
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "file_up", status: "checking" } },
+				{ status: 200, body: { id: "file_up", status: "available" } },
+				{ status: 409, body: { message: "deployment already exists" } },
+			]);
+			cleanup = restore;
+
+			const error = await makeAdapter()
+				.createDeployment("deploy-1", declWithFile, deployRefs, join(dir, "agents.yaml"))
+				.catch((caught) => caught);
+
+			expect(error).toBeInstanceOf(DeploymentCreateConflictError);
+			expect((error as DeploymentCreateConflictError).preparedFiles.get("./report.md")).toBe("file_up");
+			expect(calls.filter((call) => call.url === `${BASE}/files`)).toHaveLength(1);
+		});
+
+		test("updateDeployment reuses files preserved by a conflicting create", async () => {
+			const declWithFile: DeploymentDecl = {
+				agent: "helper",
+				initial_events: [{ type: "user.message", content: "analyze" }],
+				resources: [{ type: "file", source: "./report.md", mount_path: "/mnt/report.md" }],
+			};
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "depl_xxx", metadata: {} } },
+				{ status: 200, body: { ...DEPLOYMENT_RESPONSE, id: "depl_xxx" } },
+			]);
+			cleanup = restore;
+
+			await makeAdapter().updateDeployment(
+				"depl_xxx",
+				"deploy-1",
+				declWithFile,
+				deployRefs,
+				"/unused/agents.yaml",
+				new Map([["./report.md", "file_up"]]),
+			);
+
+			expect(calls).toHaveLength(2);
+			expect(calls.some((call) => call.url === `${BASE}/files`)).toBe(false);
+			expect((calls[1]!.body as Record<string, unknown>).resources).toEqual([
+				{ type: "file", file_id: "file_up", mount_path: "/mnt/report.md" },
+			]);
+		});
+
 		test("updateDeployment reads current then posts to the id", async () => {
 			const { calls, restore } = mockFetch([
 				{ status: 200, body: { id: "depl_xxx", schedule: { type: "cron", expression: "0 9 * * *" } } },
@@ -871,16 +924,21 @@ describe("BailianAdapter e2e", () => {
 			expect(result.id).toBe("depl_xxx");
 		});
 
-		test("updateDeployment rejects removing an existing schedule", async () => {
-			const { restore } = mockFetch([
+		test("updateDeployment switches a scheduled deployment to manual", async () => {
+			const { calls, restore } = mockFetch([
 				{ status: 200, body: { id: "depl_xxx", schedule: { type: "cron", expression: "0 9 * * *" } } },
+				{ status: 200, body: { ...DEPLOYMENT_RESPONSE, id: "depl_xxx", schedule: null } },
 			]);
 			cleanup = restore;
 
 			const manualDecl: DeploymentDecl = { agent: "helper", initial_events: [] };
-			expect(
-				makeAdapter().updateDeployment("depl_xxx", "deploy-1", manualDecl, deployRefs, "/fake/path"),
-			).rejects.toThrow(/cannot remove its schedule/);
+			const result = await makeAdapter().updateDeployment("depl_xxx", "deploy-1", manualDecl, deployRefs, "/fake/path");
+
+			expect(calls).toHaveLength(2);
+			expect(calls[1]!.url).toBe(`${BASE}/deployments/depl_xxx`);
+			expect(calls[1]!.method).toBe("POST");
+			expect((calls[1]!.body as Record<string, unknown>).schedule).toBeNull();
+			expect(result.id).toBe("depl_xxx");
 		});
 
 		test("updateDeployment materializes a never-applied (null-id) deployment via create", async () => {
