@@ -84,7 +84,7 @@ agents apply -y        # apply changes
 agents destroy         # tear down managed resources
 ```
 
-Run `agents playground` to launch the local WebUI, and use `--provider` to target `bailian`, `qoder`, `ark`, or `claude`. You can switch providers on the same declaration, run real sessions, and observe tool calls and artifacts.
+Run `agents playground -f agents.yaml` to open an Agent directly in Preview; single-Agent projects are selected automatically, while multi-Agent projects accept `--agent <id>` or open the Workbench for selection. Use `agents workbench -f agents.yaml` to open the project console without creating a Session. Playground reads every Agent and Provider from YAML, watches local dependencies, and keeps YAML read-only while you Plan, Apply, run Sessions, and inspect events and artifacts. Missing, invalid, or empty projects open the diagnostic Workbench.
 
 ▶ [Watch the full Playground demo](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
@@ -186,14 +186,14 @@ See the [SDK reference](./docs/reference/sdk.md) for the public API surface.
 
 ## WebUI
 
-`apps/webui` is a Vite single-page app for browsing playbooks and driving agent sessions; `apps/server` exposes the SDK over an OpenAPI surface. Run both from the repo root:
+`apps/webui` is a Vite single-page project workbench for inspecting and debugging the Agents declared in `agents.yaml`; `apps/server` exposes the SDK over an OpenAPI surface. Run both from the repo root:
 
 ```bash
 bun install
 bun run dev        # server + webui together
 ```
 
-Or launch a packaged local UI with `agents playground --provider <bailian|qoder|ark|claude>`.
+Or launch the packaged local UI with `agents playground -f <path/to/agents.yaml>` for Preview or `agents workbench -f <path/to/agents.yaml>` for the project console. Provider, model, tools, memory, skills, and resources come from YAML; the UI does not override them. Deployment declarations are displayed read-only.
 
 ## Contributing
 

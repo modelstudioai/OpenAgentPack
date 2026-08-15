@@ -15,7 +15,6 @@
 	"license": "Apache-2.0",
 	"description": "",
 	"dependencies": {
-		"@openagentpack/playbooks": "workspace:*",
 		"@tiptap/core": "^3.27.2",
 		"@tiptap/extension-document": "^3.27.2",
 		"@tiptap/extension-mention": "^3.27.2",
@@ -32,6 +31,7 @@
 		"remark-gfm": "^4.0.1"
 	},
 	"devDependencies": {
+		"@openagentpack/playbooks": "workspace:*",
 		"@openagentpack/sdk": "workspace:*",
 		"@types/node": "^25.9.3",
 		"@types/react": "^19.2.17",

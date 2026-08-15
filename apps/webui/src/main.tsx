@@ -1,9 +1,19 @@
 import { createRoot } from "react-dom/client";
 import "./app/base.css";
-import "./app/desktop.css";
-import "./app/mobile.css";
-import "./app/resource-center.css";
-import "./app/deployment.css";
+import "./app/project-workbench.css";
 import App from "./App";
+import { AgentSessionPreviewLauncher } from "./session-preview/AgentSessionPreviewLauncher";
+import { agentSessionPreviewIdFromPath, sessionPreviewIdFromPath } from "./session-preview/route";
+import { SessionPreviewPage } from "./session-preview/SessionPreviewPage";
 
-createRoot(document.getElementById("root")!).render(<App />);
+const sessionPreviewId = sessionPreviewIdFromPath(window.location.pathname);
+const agentPreviewId = agentSessionPreviewIdFromPath(window.location.pathname);
+createRoot(document.getElementById("root")!).render(
+	sessionPreviewId !== null ? (
+		<SessionPreviewPage sessionId={sessionPreviewId} />
+	) : agentPreviewId !== null ? (
+		<AgentSessionPreviewLauncher agentId={agentPreviewId} />
+	) : (
+		<App />
+	),
+);

@@ -141,11 +141,18 @@ export {
 	deleteCloudEnvironment,
 	deleteCloudVault,
 	getAgent,
+	isAgentRunnable,
 	listAgentsWithReadiness,
 	listCloudAgents,
 	listCloudEnvironments,
 	listCloudVaults,
+	planAgentResourcesWithStateBackend,
 	syncAgentResourcesWithStateBackend,
+} from "./internal/core/agent-runtime.ts";
+export type {
+	AgentResourcePlan,
+	AgentResourcePlanOptions,
+	AgentResourceSyncOptions,
 } from "./internal/core/agent-runtime.ts";
 
 export type { CollectedSessionEvents } from "./internal/core/session-runtime.ts";
@@ -227,6 +234,7 @@ export {
 	AgentRecoveryActionSchema,
 	AgentSkillRefSchema,
 	AgentSyncResultSchema,
+	AgentSyncReasonSchema,
 	AgentSyncRunSchema,
 	AgentSyncStatusSchema,
 	AgentWithReadinessSchema,
@@ -268,6 +276,7 @@ export type {
 	AgentRecoveryAction,
 	AgentSkillRef,
 	AgentSyncResult,
+	AgentSyncReason,
 	AgentSyncRun,
 	AgentSyncStatus,
 	AgentWithReadiness,

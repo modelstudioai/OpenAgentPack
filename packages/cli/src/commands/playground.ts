@@ -1,22 +1,24 @@
 import { spawn } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENTS_CONFIG_PROVIDERS } from "@openagentpack/sdk";
 import { log } from "../logger.ts";
 
 const CLI_PKG = "@openagentpack/cli";
 const PLAYGROUND_PKG = "@openagentpack/playground";
 const DEFAULT_PORT = 4848;
 const PLAYGROUND_URL_RE = /running at http:\/\/localhost:(\d+)/;
-const SUPPORTED_PLAYGROUND_PROVIDERS = new Set<string>(AGENTS_CONFIG_PROVIDERS);
 
 interface PlaygroundOptions {
 	port?: string;
-	provider?: string;
 	open?: boolean;
+	file?: string;
+	agent?: string;
 }
+
+type PlaygroundSurface = "preview" | "workbench";
 
 function cliVersion(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
@@ -86,6 +88,7 @@ async function waitForPlaygroundReady(
 	child: ReturnType<typeof spawn>,
 	fallbackPort: number,
 	timeoutMs: number,
+	expectedProjectId: string,
 ): Promise<number | null> {
 	let port = fallbackPort;
 	let settled = false;
@@ -108,7 +111,8 @@ async function waitForPlaygroundReady(
 			}
 			try {
 				const res = await fetch(`http://localhost:${port}/health`);
-				if (res.ok) {
+				const body = res.ok ? ((await res.json()) as { playground?: { project_id?: string } }) : undefined;
+				if (body?.playground?.project_id === expectedProjectId) {
 					settled = true;
 					resolve(port);
 					return;
@@ -136,6 +140,77 @@ function openBrowser(url: string): void {
 interface ExistingPlayground {
 	version: string;
 	pid: number;
+	projectId?: string;
+}
+
+interface PlaygroundProjectSummary {
+	status?: string;
+	agents?: Array<{ agent?: { id?: string } }>;
+}
+
+export interface PlaygroundBrowserTarget {
+	url: string;
+	warning?: string;
+}
+
+export function playgroundBrowserTargetFromSummary(
+	baseUrl: string,
+	summary: PlaygroundProjectSummary,
+	requestedAgent?: string,
+): PlaygroundBrowserTarget {
+	if (summary.status !== "valid") return { url: baseUrl };
+	const agentIds = (summary.agents ?? [])
+		.map((entry) => entry.agent?.id?.trim())
+		.filter((agentId): agentId is string => Boolean(agentId));
+	const requested = requestedAgent?.trim();
+	if (requested) {
+		if (agentIds.includes(requested)) {
+			return { url: `${baseUrl}/agents/${encodeURIComponent(requested)}/preview` };
+		}
+		return {
+			url: baseUrl,
+			warning: `Agent '${requested}' was not found. Opening the project workbench instead.`,
+		};
+	}
+	if (agentIds.length === 1) {
+		return { url: `${baseUrl}/agents/${encodeURIComponent(agentIds[0]!)}/preview` };
+	}
+	if (agentIds.length > 1) {
+		return {
+			url: baseUrl,
+			warning: "This project declares multiple Agents. Opening the workbench; rerun with --agent <id> for Preview.",
+		};
+	}
+	return { url: baseUrl };
+}
+
+async function resolvePlaygroundBrowserTarget(port: number, requestedAgent?: string): Promise<PlaygroundBrowserTarget> {
+	const baseUrl = `http://localhost:${port}`;
+	try {
+		const response = await fetch(`${baseUrl}/api/project`, { signal: AbortSignal.timeout(3000) });
+		if (!response.ok) return { url: baseUrl };
+		return playgroundBrowserTargetFromSummary(
+			baseUrl,
+			(await response.json()) as PlaygroundProjectSummary,
+			requestedAgent,
+		);
+	} catch {
+		return { url: baseUrl };
+	}
+}
+
+async function openPlaygroundSurface(
+	port: number,
+	surface: PlaygroundSurface,
+	options: PlaygroundOptions,
+): Promise<void> {
+	if (options.open === false) return;
+	const target =
+		surface === "workbench"
+			? { url: `http://localhost:${port}` }
+			: await resolvePlaygroundBrowserTarget(port, options.agent);
+	if (target.warning) log.warn(target.warning);
+	openBrowser(target.url);
 }
 
 /**
@@ -150,9 +225,15 @@ async function probeExistingPlayground(port: number): Promise<ExistingPlayground
 		const res = await fetch(`http://localhost:${port}/health`, { signal: controller.signal });
 		clearTimeout(timeout);
 		if (!res.ok) return null;
-		const body = (await res.json()) as { playground?: { version?: string; pid?: number } };
+		const body = (await res.json()) as {
+			playground?: { version?: string; pid?: number; project_id?: string };
+		};
 		if (body.playground?.pid) {
-			return { version: body.playground.version ?? "unknown", pid: body.playground.pid };
+			return {
+				version: body.playground.version ?? "unknown",
+				pid: body.playground.pid,
+				projectId: body.playground.project_id,
+			};
 		}
 	} catch {
 		// port not listening or not a playground — ignore
@@ -181,25 +262,23 @@ async function replaceExistingPlayground(existing: ExistingPlayground, port: num
 	return false;
 }
 
-export async function playgroundCommand(options: PlaygroundOptions): Promise<void> {
+async function launchPlayground(options: PlaygroundOptions, surface: PlaygroundSurface): Promise<void> {
 	const port = options.port ? Number(options.port) : DEFAULT_PORT;
 	if (!Number.isInteger(port) || port <= 0) {
 		throw new Error(`Invalid --port '${options.port}'`);
 	}
-	if (options.provider && !SUPPORTED_PLAYGROUND_PROVIDERS.has(options.provider)) {
-		const supported = [...SUPPORTED_PLAYGROUND_PROVIDERS].join(", ");
-		throw new Error(`Playground supports providers: ${supported}; received '${options.provider}'.`);
-	}
+	const configPath = resolve(options.file ?? "agents.yaml");
+	const projectId = createHash("sha256").update(configPath).digest("hex").slice(0, 16);
 
 	// --- Detect and replace stale playground on the target port ----
 	const version = cliVersion();
 	const existing = await probeExistingPlayground(port);
 	if (existing) {
-		if (existing.version === version) {
+		if (existing.version === version && existing.projectId === projectId) {
 			// Same version already running — just reuse it.
-			const url = `http://localhost:${port}`;
-			log.success(`Playground v${version} already running at ${url} (pid ${existing.pid})`);
-			if (options.open !== false) openBrowser(url);
+			const baseUrl = `http://localhost:${port}`;
+			log.success(`Playground v${version} already running at ${baseUrl} (pid ${existing.pid})`);
+			await openPlaygroundSurface(port, surface, options);
 			return;
 		}
 		// Different version — replace the old instance so users always get the matching UI.
@@ -213,12 +292,12 @@ export async function playgroundCommand(options: PlaygroundOptions): Promise<voi
 		}
 	}
 
-	const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port) };
-	if (options.provider) {
-		// AGENTS_CLI_PROVIDER 在 playground bootstrap（config.json force）之后写回，保证 CLI 显式指定优先生效。
-		env.AGENTS_PROVIDER = options.provider;
-		env.AGENTS_CLI_PROVIDER = options.provider;
-	}
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		PORT: String(port),
+		AGENTS_CONFIG_PATH: configPath,
+		AGENTS_PLAYGROUND_TOKEN: randomBytes(32).toString("hex"),
+	};
 
 	const { cmd, args } = resolveLauncher(version);
 	if (cmd === "npx") log.info(`Fetching ${PLAYGROUND_PKG} (first run may take a moment)...`);
@@ -234,12 +313,20 @@ export async function playgroundCommand(options: PlaygroundOptions): Promise<voi
 		process.exit(1);
 	});
 
-	const readyPort = await waitForPlaygroundReady(child, port, 30_000);
+	const readyPort = await waitForPlaygroundReady(child, port, 30_000, projectId);
 	if (readyPort === null) {
 		log.warn(`Playground did not become ready in time — check the logs above, then open http://localhost:${port}`);
 		return;
 	}
-	const url = `http://localhost:${readyPort}`;
-	log.success(`Playground ready at ${url}`);
-	if (options.open !== false) openBrowser(url);
+	const baseUrl = `http://localhost:${readyPort}`;
+	log.success(`Playground ready at ${baseUrl}`);
+	await openPlaygroundSurface(readyPort, surface, options);
+}
+
+export async function playgroundCommand(options: PlaygroundOptions): Promise<void> {
+	await launchPlayground(options, "preview");
+}
+
+export async function workbenchCommand(options: PlaygroundOptions): Promise<void> {
+	await launchPlayground(options, "workbench");
 }

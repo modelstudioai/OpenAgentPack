@@ -15,7 +15,7 @@ export default defineConfig({
 	// zod — bundling a second copy would leave sdk's schemas without the patch.
 	external: ["@openagentpack/sdk", "hono", "@hono/node-server", "@hono/zod-openapi", "zod"],
 	// Inline the private workspace packages so the published artifact is self-contained.
-	noExternal: [/@openagentpack\/(server|playbooks)/],
+	noExternal: [/@openagentpack\/server/],
 	esbuildOptions(options) {
 		options.alias = { ...(options.alias ?? {}), "@": serverSrc };
 	},

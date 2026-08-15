@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { UserError } from "../../src/internal/errors.ts";
-import { resolveProjectConfigFromObject } from "../../src/internal/parser/index.ts";
+import { resolveProjectConfig, resolveProjectConfigFromObject } from "../../src/internal/parser/index.ts";
 
 function validRawConfig() {
 	return {
@@ -39,6 +42,58 @@ test("inline instructions are a file-resolver no-op", async () => {
 	const raw = validRawConfig();
 	const loaded = await resolveProjectConfigFromObject(raw, { projectName: "server" });
 	expect(loaded.config.agents?.designer?.instructions).toBe("inline instructions, no file reference");
+});
+
+test("reports every local project source used for revision and file watching", async () => {
+	const basePath = await mkdtemp(join(tmpdir(), "openagentpack-project-sources-"));
+	try {
+		await mkdir(join(basePath, "assets"));
+		await mkdir(join(basePath, "skills/reviewer"), { recursive: true });
+		await Promise.all([
+			writeFile(join(basePath, "instructions.md"), "instructions"),
+			writeFile(join(basePath, "memory.md"), "memory"),
+			writeFile(join(basePath, "assets/brief.md"), "brief"),
+			writeFile(join(basePath, "assets/input.csv"), "input"),
+			writeFile(join(basePath, "rubric.md"), "rubric"),
+		]);
+		const raw = {
+			...validRawConfig(),
+			agents: {
+				designer: {
+					...validRawConfig().agents.designer,
+					instructions: "./instructions.md",
+					memory_stores: ["notes"],
+				},
+			},
+			memory_stores: {
+				notes: { description: "notes", entries: [{ key: "seed", content: "./memory.md" }] },
+			},
+			skills: { reviewer: { source: "./skills/reviewer" } },
+			files: { brief: { source: "./assets/brief.md" } },
+			deployments: {
+				daily: {
+					agent: "designer",
+					initial_events: [{ type: "user.define_outcome" as const, rubric_file: "./rubric.md" }],
+					resources: [{ type: "file" as const, source: "./assets/input.csv" }],
+				},
+			},
+		};
+		const loaded = await resolveProjectConfigFromObject(raw, { projectName: "server", basePath });
+		expect(loaded.sourcePaths).toEqual(
+			["assets/brief.md", "assets/input.csv", "instructions.md", "memory.md", "rubric.md", "skills/reviewer"].map(
+				(relativePath) => join(basePath, relativePath),
+			),
+		);
+	} finally {
+		await rm(basePath, { recursive: true, force: true });
+	}
+});
+
+test("file-based resolution includes the root agents.yaml source", async () => {
+	const loaded = await resolveProjectConfig(resolve(import.meta.dir, "../fixtures/minimal.yaml"), {
+		resolveEnv: false,
+	});
+	expect(loaded.sourcePaths).toContain(loaded.configPath);
 });
 
 test("rejects permission keys that do not identify an enabled builtin", async () => {

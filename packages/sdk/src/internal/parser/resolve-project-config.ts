@@ -16,6 +16,8 @@ export interface LoadedProjectConfig {
 	configPath: string;
 	projectName: string;
 	config: ResolvedProjectConfig;
+	/** Root config and local files/directories that influence the resolved project. */
+	sourcePaths: string[];
 }
 
 /**
@@ -33,8 +35,17 @@ export async function resolveProjectConfig(
 	if (errors.length > 0) {
 		throw new UserError(errors.join("\n"));
 	}
-	const config = await resolveFileReferences(parsed, configPath);
-	return { configPath, projectName, config };
+	const sourcePaths = collectProjectSourcePaths(parsed, configPath, true);
+	let config: ResolvedProjectConfig;
+	try {
+		config = await resolveFileReferences(parsed, configPath);
+	} catch (error) {
+		if (error && typeof error === "object") {
+			Object.assign(error, { sourcePaths });
+		}
+		throw error;
+	}
+	return { configPath, projectName, config, sourcePaths };
 }
 
 export interface ResolveProjectConfigFromObjectOptions {
@@ -63,6 +74,43 @@ export async function resolveProjectConfigFromObject(
 	// file-resolver resolves refs relative to dirname(configPath); use a sentinel
 	// file inside basePath so `file:` refs resolve against basePath itself.
 	const anchor = resolve(basePath, "__in_memory_config__");
-	const config = await resolveFileReferences(result.data as ProjectConfig, anchor);
-	return { configPath: basePath, projectName: options.projectName, config };
+	const parsed = result.data as ProjectConfig;
+	const sourcePaths = collectProjectSourcePaths(parsed, anchor, false);
+	const config = await resolveFileReferences(parsed, anchor);
+	return { configPath: basePath, projectName: options.projectName, config, sourcePaths };
+}
+
+function collectProjectSourcePaths(config: ProjectConfig, configPath: string, includeConfigPath: boolean): string[] {
+	const baseDirectory = dirname(configPath);
+	const paths = new Set<string>();
+	if (includeConfigPath) paths.add(configPath);
+
+	const addLocalPath = (value: string | undefined, requirePathSyntax = false): void => {
+		if (!value || /^https?:\/\//i.test(value)) return;
+		if (requirePathSyntax && !isLocalPathReference(value)) return;
+		paths.add(resolve(baseDirectory, value));
+	};
+
+	for (const agent of Object.values(config.agents ?? {})) {
+		addLocalPath(agent.instructions, true);
+	}
+	for (const store of Object.values(config.memory_stores ?? {})) {
+		for (const entry of store.entries ?? []) addLocalPath(entry.content, true);
+	}
+	for (const skill of Object.values(config.skills ?? {})) addLocalPath(skill.source);
+	for (const file of Object.values(config.files ?? {})) addLocalPath(file.source);
+	for (const deployment of Object.values(config.deployments ?? {})) {
+		for (const resource of deployment.resources ?? []) {
+			if (resource.type === "file") addLocalPath(resource.source);
+		}
+		for (const event of deployment.initial_events ?? []) {
+			if (event.type === "user.define_outcome") addLocalPath(event.rubric_file, true);
+		}
+	}
+
+	return [...paths].sort();
+}
+
+function isLocalPathReference(value: string): boolean {
+	return value.startsWith("./") || value.startsWith("../") || value.startsWith("/");
 }

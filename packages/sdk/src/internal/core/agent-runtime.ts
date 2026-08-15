@@ -2,6 +2,9 @@ import { UserError } from "../errors.ts";
 import type { RemoteResource } from "../providers/interface.ts";
 import type { ResourceCrudAdapter } from "../providers/resource-workflow.ts";
 import { buildSessionBindings, resolveSessionProvider } from "../session/session-manager.ts";
+import { cloneStateFile } from "../state/backend.ts";
+import { InMemoryStateManager } from "../state/in-memory-state-manager.ts";
+import type { IStateManager } from "../state/state-manager.ts";
 import type { AgentDecl, AgentSkillDecl, EnvironmentDecl, ProjectConfig, VaultDecl } from "../types/config.ts";
 import type {
 	AgentDefinition,
@@ -17,11 +20,13 @@ import type {
 	PlannedAction,
 } from "../types/dto.ts";
 import type { ExecutionPlan } from "../types/plan.ts";
+import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
+import { contentHash } from "../utils/hash.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
-import { getRuntimeProvider, writeProjectRuntime } from "./project-runtime.ts";
+import { getRuntimeProvider, readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 import {
 	type DestructivePolicy,
 	decideDestructive,
@@ -48,6 +53,7 @@ export type {
 export interface AgentResourcePlan {
 	agentId: string;
 	provider: string;
+	fingerprint: string;
 	actions: PlannedAction[];
 	diagnostics: Diagnostic[];
 	destructiveActions: PlannedAction[];
@@ -57,11 +63,16 @@ export interface AgentResourcePlan {
 export interface AgentResourcePlanOptions {
 	refresh?: boolean;
 	quiet?: boolean;
+	onFeedback?: RuntimeFeedbackSink;
+	/** Strict Agent runtime closure; excludes downstream resources such as deployments. */
+	scope?: "runtime";
 }
 
 export interface AgentResourceSyncOptions extends AgentResourcePlanOptions {
 	policy?: DestructivePolicy;
 	confirm?: (actions: PlannedAction[]) => boolean | Promise<boolean>;
+	/** Refuse execution when a fresh plan no longer matches the plan shown to the user. */
+	expectedPlanFingerprint?: string;
 }
 
 export function listAgents(ctx: ProjectRuntimeContext): AgentDefinition[] {
@@ -250,13 +261,19 @@ export async function planAgentResources(
 		provider: agent.provider,
 		refresh: options.refresh,
 		quiet: options.quiet ?? true,
+		onFeedback: options.onFeedback,
 	});
-	const actions = filterAgentActions(ctx, agent, planned.plan);
+	const actions =
+		options.scope === "runtime"
+			? filterAgentRuntimeActions(ctx, agent, planned.plan)
+			: filterAgentActions(ctx, agent, planned.plan);
+	const diagnostics = filterAgentDiagnostics(ctx, agent, planned.plan);
 	return {
 		agentId,
 		provider: agent.provider,
+		fingerprint: computeAgentPlanFingerprint(agentId, agent.provider, actions, diagnostics),
 		actions,
-		diagnostics: filterAgentDiagnostics(ctx, agent, planned.plan),
+		diagnostics,
 		destructiveActions: selectDestructive(actions),
 		planned,
 	};
@@ -275,13 +292,33 @@ async function runAgentSync(
 	agentId: string,
 	options: AgentResourceSyncOptions,
 ): Promise<AgentSyncRun> {
-	const fullPlan = await planAgentResources(ctx, agentId, {
+	const transactionalState = options.expectedPlanFingerprint
+		? InMemoryStateManager.fromJSON(cloneStateFile(ctx.state.getStateFile()))
+		: undefined;
+	const planningContext = transactionalState ? { ...ctx, state: transactionalState } : ctx;
+	const fullPlan = await planAgentResources(planningContext, agentId, {
 		refresh: options.refresh,
 		quiet: options.quiet,
+		onFeedback: options.onFeedback,
+		scope: options.scope,
 	});
 	const actions = fullPlan.actions;
 	const destructiveActions = fullPlan.destructiveActions;
 	const errorDiagnostic = fullPlan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+
+	if (options.expectedPlanFingerprint && options.expectedPlanFingerprint !== fullPlan.fingerprint) {
+		return {
+			agentId,
+			provider: fullPlan.provider,
+			status: "blocked",
+			reason: "plan_stale",
+			actions,
+			diagnostics: fullPlan.diagnostics,
+			destructiveActions,
+			results: [],
+			error: "The project or remote resources changed after planning. Create a new plan before applying.",
+		};
+	}
 
 	const decision = await decideDestructive(destructiveActions, {
 		policy: options.policy,
@@ -292,6 +329,7 @@ async function runAgentSync(
 			agentId,
 			provider: fullPlan.provider,
 			status: "blocked",
+			reason: decision === "cancelled" ? "cancelled" : "destructive_blocked",
 			actions,
 			diagnostics: fullPlan.diagnostics,
 			destructiveActions,
@@ -308,6 +346,7 @@ async function runAgentSync(
 			agentId,
 			provider: fullPlan.provider,
 			status: "blocked",
+			reason: "diagnostic_error",
 			actions,
 			diagnostics: fullPlan.diagnostics,
 			destructiveActions,
@@ -322,8 +361,10 @@ async function runAgentSync(
 			actions: scopePlanActions(fullPlan.planned.plan, actions),
 		};
 		const execution = await executePlannedProject(replaceResourcePlan(fullPlan.planned, scopedPlan), {
+			onFeedback: options.onFeedback,
 			policy: "force",
 		});
+		if (transactionalState) await replaceState(ctx.state, transactionalState);
 		const results = toAgentSyncResults(execution);
 		const failed = results.find((result) => result.status === "failed");
 
@@ -338,6 +379,7 @@ async function runAgentSync(
 			error: failed?.error,
 		};
 	} catch (error) {
+		if (transactionalState) await replaceState(ctx.state, transactionalState);
 		return {
 			agentId,
 			provider: fullPlan.provider,
@@ -351,12 +393,26 @@ async function runAgentSync(
 	}
 }
 
+async function replaceState(target: IStateManager, source: IStateManager): Promise<void> {
+	for (const resource of target.listResources()) target.removeResource(resource.address);
+	for (const resource of source.listResources()) target.setResource(resource);
+	await target.save();
+}
+
 export async function syncAgentResourcesWithStateBackend(
 	input: BackendRuntimeInput,
 	agentId: string,
 	options: AgentResourceSyncOptions = {},
 ): Promise<AgentSyncRun> {
 	return writeProjectRuntime(input, (ctx) => syncAgentResources(ctx, agentId, options));
+}
+
+export async function planAgentResourcesWithStateBackend(
+	input: BackendRuntimeInput,
+	agentId: string,
+	options: AgentResourcePlanOptions = {},
+): Promise<AgentResourcePlan> {
+	return readProjectRuntime(input, (ctx) => planAgentResources(ctx, agentId, options));
 }
 
 export function toAgentSyncResults(execution: ResourceExecutionResult): AgentSyncResult[] {
@@ -452,6 +508,17 @@ function filterAgentActions(ctx: ProjectRuntimeContext, agent: AgentDefinition, 
 	);
 }
 
+function filterAgentRuntimeActions(
+	ctx: ProjectRuntimeContext,
+	agent: AgentDefinition,
+	plan: ExecutionPlan,
+): PlannedAction[] {
+	const relevantKeys = agentAddressKeys(ctx, agent);
+	return plan.actions.filter(
+		(action) => action.address.type !== "deployment" && relevantKeys.has(addressKey(action.address)),
+	);
+}
+
 function filterAgentDiagnostics(ctx: ProjectRuntimeContext, agent: AgentDefinition, plan: ExecutionPlan): Diagnostic[] {
 	const relevantKeys = agentAddressKeys(ctx, agent);
 	return plan.diagnostics.filter(
@@ -464,8 +531,8 @@ function agentAddressKeys(ctx: ProjectRuntimeContext, agent: AgentDefinition): S
 }
 
 function scopePlanActions(fullPlan: ExecutionPlan, agentActions: PlannedAction[]): PlannedAction[] {
-	const allowedKeys = new Set(agentActions.filter((action) => action.action !== "no-op").map(actionKey));
-	return fullPlan.actions.filter((action) => action.action === "no-op" || allowedKeys.has(actionKey(action)));
+	const allowedKeys = new Set(agentActions.map(actionKey));
+	return fullPlan.actions.filter((action) => allowedKeys.has(actionKey(action)));
 }
 
 function actionKey(action: PlannedAction): string {
@@ -479,15 +546,31 @@ function isNonBlockingAgentDrift(action: PlannedAction): boolean {
 }
 
 export function collectAgentAddresses(config: ProjectConfig, agentName: string, provider?: string): ResourceAddress[] {
+	const addresses: ResourceAddress[] = [];
+	collectAgentAddressesInto(config, agentName, provider, addresses, new Set());
+	return addresses;
+}
+
+function collectAgentAddressesInto(
+	config: ProjectConfig,
+	agentName: string,
+	provider: string | undefined,
+	addresses: ResourceAddress[],
+	visited: Set<string>,
+): void {
 	const agent = config.agents?.[agentName];
 	if (!agent) {
 		throw new UserError(`Agent '${agentName}' not found in config.`);
 	}
 	const resolvedProvider = provider ?? resolveSessionProvider(agentName, config, undefined);
+	const visitKey = `${resolvedProvider}:${agentName}`;
+	if (visited.has(visitKey)) return;
+	visited.add(visitKey);
 	const materialization = resolveAgentMaterialization(resolvedProvider, agent);
-	const addresses: ResourceAddress[] = [
-		{ type: materialization.resourceType, name: agentName, provider: resolvedProvider },
-	];
+	addresses.push({ type: materialization.resourceType, name: agentName, provider: resolvedProvider });
+	if (materialization.resourceType === "template" && config.defaults?.identity) {
+		addresses.push({ type: "identity", name: config.defaults.identity, provider: resolvedProvider });
+	}
 
 	if (agent.environment) {
 		addresses.push({
@@ -508,12 +591,28 @@ export function collectAgentAddresses(config: ProjectConfig, agentName: string, 
 		}
 	}
 	for (const subAgent of agent.multiagent?.agents ?? []) {
-		const subDecl = config.agents?.[subAgent];
-		const subType = subDecl ? resolveAgentMaterialization(resolvedProvider, subDecl).resourceType : "agent";
-		addresses.push({ type: subType, name: subAgent, provider: resolvedProvider });
+		collectAgentAddressesInto(config, subAgent, resolvedProvider, addresses, visited);
 	}
+}
 
-	return addresses;
+export function computeAgentPlanFingerprint(
+	agentId: string,
+	provider: string,
+	actions: PlannedAction[],
+	diagnostics: Diagnostic[],
+): string {
+	const normalizedActions = actions
+		.map((action) => ({
+			...action,
+			dependencies: [...action.dependencies].sort((left, right) => addressKey(left).localeCompare(addressKey(right))),
+		}))
+		.sort((left, right) => actionKey(left).localeCompare(actionKey(right)));
+	const normalizedDiagnostics = [...diagnostics].sort((left, right) => {
+		const leftKey = `${left.resource ? addressKey(left.resource) : ""}:${left.severity}:${left.code}:${left.message}`;
+		const rightKey = `${right.resource ? addressKey(right.resource) : ""}:${right.severity}:${right.code}:${right.message}`;
+		return leftKey.localeCompare(rightKey);
+	});
+	return contentHash({ agentId, provider, actions: normalizedActions, diagnostics: normalizedDiagnostics });
 }
 
 function toAgentDefinition(config: ProjectConfig, agentName: string, agent: AgentDecl): AgentDefinition {

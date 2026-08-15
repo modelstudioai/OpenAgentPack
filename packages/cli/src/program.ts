@@ -31,7 +31,7 @@ import {
 import { migrateCommand } from "./commands/migrate.ts";
 import { modelsListCommand } from "./commands/models.ts";
 import { planCommand } from "./commands/plan.ts";
-import { playgroundCommand } from "./commands/playground.ts";
+import { playgroundCommand, workbenchCommand } from "./commands/playground.ts";
 import {
 	sessionCreateCommand,
 	sessionDeleteCommand,
@@ -115,11 +115,20 @@ program.command("init").description("Create a new agents.yaml template").action(
 
 program
 	.command("playground")
-	.description("Launch the local web UI (fetches @openagentpack/playground on demand) and open it in a browser")
+	.description("Launch a Session Preview for an agents.yaml Agent")
+	.addOption(configFileOption())
+	.option("--agent <id>", "Agent to preview (required when the project declares multiple Agents)")
 	.option("--port <n>", "Port to serve on (default 4848)")
-	.addOption(providerOption("Provider the UI targets"))
 	.option("--no-open", "Do not open a browser automatically")
-	.action(playgroundCommand);
+	.action(withResolvedConfigFile(playgroundCommand));
+
+program
+	.command("workbench")
+	.description("Launch the agents.yaml project workbench")
+	.addOption(configFileOption())
+	.option("--port <n>", "Port to serve on (default 4848)")
+	.option("--no-open", "Do not open a browser automatically")
+	.action(withResolvedConfigFile(workbenchCommand));
 
 program
 	.command("validate")

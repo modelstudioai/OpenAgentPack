@@ -1,275 +1,1002 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import BottomBar, { type BottomBarHandle } from "@/components/BottomBar";
-import Composer, { type ComposerHandle } from "@/components/Composer";
-import ConfirmDialog from "@/components/ConfirmDialog";
-import DeploymentCenter from "@/components/DeploymentCenter";
-import GlobalToastHost from "@/components/GlobalToastHost";
-import HeroGreeting from "@/components/HeroGreeting";
-import PromptDialog from "@/components/PromptDialog";
-import { PromptEditorProvider } from "@/components/prompt-editor/PromptEditorProvider";
-import RoleCards from "@/components/RoleCards";
-import ResourceCenter from "@/components/resource-center";
-import SettingsDialog from "@/components/SettingsDialog";
-import Showcase from "@/components/Showcase";
-import TopBar from "@/components/TopBar";
-import WarmBanner from "@/components/WarmBanner";
-import { getModels, type UiModel } from "@/lib/domain/model-api";
-import { type WarmProgress, warmWorkspace } from "@/lib/domain/warm";
-import { useAgentsConfigReady } from "@/lib/hooks/useAgentsConfigReady";
-import { getRoleCards } from "@/lib/playbooks";
-import type { RoleCard } from "@/lib/playbooks/types";
-import { isPlaygroundMode } from "@/lib/runtime-mode";
-import { useProviderConfigRevision } from "@/lib/store/provider-config-store";
-import { useTopBarView } from "@/lib/use-topbar-view";
+import type { PlannedAction, SessionEvent } from "@openagentpack/sdk";
+import {
+	AlertTriangle,
+	Box,
+	Braces,
+	CheckCircle2,
+	ChevronRight,
+	CircleDot,
+	ExternalLink,
+	FileText,
+	LoaderCircle,
+	Paperclip,
+	Play,
+	RefreshCw,
+	Search,
+	Send,
+	ServerCog,
+	ShieldAlert,
+	Square,
+	Trash2,
+	Upload,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type AgentPlan,
+	type Attachment,
+	applyAgent,
+	cancelSession,
+	deleteAttachment,
+	getOperation,
+	getProject,
+	listAttachments,
+	type OperationEvent,
+	operationEventSource,
+	type ProjectAgent,
+	type ProjectSummary,
+	planAgent,
+	projectEventSource,
+	type SessionDetail,
+	sendSessionMessage,
+	sessionEventSource,
+	startSession,
+	uploadAttachment,
+} from "@/lib/project-api";
 
-// Fallback while the provider's model list is still loading. An empty string makes createSession
-// omit the model, so the backend applies the provider's own default (never a hardcoded id that a
-// non-bailian provider would reject).
-const DEFAULT_MODEL = "";
+type WorkbenchTab = "overview" | "changes" | "debug" | "artifacts" | "deployments";
 
-interface MakeSameInput {
-	prompt: string;
-	agentId?: string;
-}
+const TAB_LABELS: Array<{ id: WorkbenchTab; label: string }> = [
+	{ id: "overview", label: "Overview" },
+	{ id: "changes", label: "Changes" },
+	{ id: "debug", label: "Debug" },
+	{ id: "artifacts", label: "Artifacts" },
+	{ id: "deployments", label: "Deployments" },
+];
+const ACTIVE_OPERATION_KEY = "openagentpack.playground.activeOperation";
 
-// Active-playbook selection: which role is explicitly picked, which the carousel highlights, and a
-// transient "做同款" agent override. They change together through the same handlers, so a reducer
-// keeps them as one logical unit instead of three independent renders.
-interface PlaybookState {
-	selectedRoleId: string | null;
-	highlightedIndex: number;
-	agentOverride: string | null;
-}
+export default function App() {
+	const [project, setProject] = useState<ProjectSummary>();
+	const [projectError, setProjectError] = useState<string>();
+	const [reloading, setReloading] = useState(false);
+	const [selectedAgentId, setSelectedAgentId] = useState("");
+	const [query, setQuery] = useState("");
+	const [providerFilter, setProviderFilter] = useState("all");
+	const [readinessFilter, setReadinessFilter] = useState("all");
+	const [tab, setTab] = useState<WorkbenchTab>("overview");
+	const [plan, setPlan] = useState<AgentPlan>();
+	const [planBusy, setPlanBusy] = useState(false);
+	const [applyBusy, setApplyBusy] = useState(false);
+	const [operationEvents, setOperationEvents] = useState<OperationEvent[]>([]);
+	const [actionError, setActionError] = useState<string>();
+	const [attachments, setAttachments] = useState<Attachment[]>([]);
+	const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
+	const [uploadBusy, setUploadBusy] = useState(false);
+	const [prompt, setPrompt] = useState("");
+	const [followup, setFollowup] = useState("");
+	const [session, setSession] = useState<SessionDetail>();
+	const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
+	const [sessionBusy, setSessionBusy] = useState(false);
+	const operationSourceRef = useRef<EventSource | null>(null);
+	const sessionSourceRef = useRef<EventSource | null>(null);
+	const projectRef = useRef<ProjectSummary | undefined>(undefined);
+	const projectRequestGenerationRef = useRef(0);
+	const projectValid = project?.status === "valid";
 
-type PlaybookAction =
-	| { type: "selectRole"; id: string | null; clearOverride: boolean }
-	| { type: "setIndex"; index: number }
-	| { type: "override"; agentId: string | null };
-
-function playbookReducer(state: PlaybookState, action: PlaybookAction): PlaybookState {
-	switch (action.type) {
-		case "selectRole":
-			return { ...state, selectedRoleId: action.id, agentOverride: action.clearOverride ? null : state.agentOverride };
-		case "setIndex":
-			return { ...state, highlightedIndex: action.index };
-		case "override":
-			return { ...state, agentOverride: action.agentId };
-	}
-}
-
-export default function Home() {
-	const [view, setView] = useTopBarView();
-	const [settingsOpen, setSettingsOpen] = useState(false);
-	const showSettings = isPlaygroundMode();
-	const providerRevision = useProviderConfigRevision();
-	const { ready: providerConfigReady } = useAgentsConfigReady(showSettings, providerRevision);
-	const canSubmit = !showSettings || providerConfigReady;
-	const [inputValue, setInputValue] = useState("");
-	const [playbook, dispatchPlaybook] = useReducer(playbookReducer, {
-		selectedRoleId: null,
-		highlightedIndex: 0,
-		agentOverride: null,
-	});
-	const [roleCards, setRoleCards] = useState<RoleCard[]>([]);
-	const [models, setModels] = useState<UiModel[]>([]);
-	const [selectedModelsByAgent, setSelectedModelsByAgent] = useState<Record<string, string>>({});
-	const [warmProgress, setWarmProgress] = useState<WarmProgress | null>(null);
-	// Only read inside handlers (top composer vs. bottom bar routing), never rendered — a ref avoids
-	// re-rendering the whole page each time the bar scrolls in or out of view.
-	const bottomBarVisibleRef = useRef(false);
-	const bottomBarRef = useRef<BottomBarHandle>(null);
-	const composerRef = useRef<HTMLDivElement>(null);
-	const composerHandleRef = useRef<ComposerHandle>(null);
-
-	const { selectedRoleId, highlightedIndex, agentOverride } = playbook;
-
-	// Active playbook → agent slug. A "做同款" override wins; otherwise the explicitly
-	// selected role, otherwise the carousel-highlighted role. Never a hardcoded id.
-	const activeRole = selectedRoleId ? roleCards.find((r) => r.slug === selectedRoleId) : roleCards[highlightedIndex];
-	const activeAgentSlug = agentOverride ?? activeRole?.slug ?? roleCards[0]?.slug ?? "";
-	// Per-agent explicit pick wins; otherwise the provider's first model; otherwise "" (backend
-	// applies the provider default). Never a hardcoded id — that's what broke non-bailian providers.
-	const selectedModel =
-		(activeAgentSlug ? selectedModelsByAgent[activeAgentSlug] : undefined) ?? models[0]?.id ?? DEFAULT_MODEL;
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: providerRevision 触发整页数据重拉
-	useEffect(() => {
-		let cancelled = false;
-		void getModels().then((next) => {
-			if (cancelled) return;
-			setModels(next);
-			// 清空旧 provider 下的模型选择，避免把不兼容 model id 提交出去
-			setSelectedModelsByAgent({});
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [providerRevision]);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: providerRevision 触发新 provider 预热
-	useEffect(() => {
-		setWarmProgress(null);
-		void warmWorkspace(setWarmProgress);
-	}, [providerRevision]);
-
-	useEffect(() => {
-		let cancelled = false;
-		void getRoleCards().then((cards) => {
-			if (cancelled) return;
-			setRoleCards(cards);
-			if (providerRevision > 0) {
-				dispatchPlaybook({ type: "selectRole", id: null, clearOverride: true });
-				dispatchPlaybook({ type: "setIndex", index: 0 });
-			}
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [providerRevision]);
-
-	// "做同款" context-aware handler
-	const handleMakeSame = useCallback((input: MakeSameInput) => {
-		dispatchPlaybook({ type: "override", agentId: input.agentId ?? null });
-
-		if (bottomBarVisibleRef.current) {
-			// Fill bottom bar
-			setInputValue(input.prompt);
-			bottomBarRef.current?.expand();
-		} else {
-			// Fill top composer
-			setInputValue(input.prompt);
-			window.scrollTo({ top: 0, behavior: "smooth" });
-			setTimeout(() => composerHandleRef.current?.focus(), 400);
+	const loadProject = useCallback(async (refresh = false) => {
+		const requestGeneration = ++projectRequestGenerationRef.current;
+		try {
+			const next = await getProject(refresh);
+			if (requestGeneration !== projectRequestGenerationRef.current) return;
+			projectRef.current = next;
+			setProject(next);
+			setProjectError(undefined);
+			setSelectedAgentId((current) =>
+				current && next.agents.some((entry) => entry.agent.id === current) ? current : (next.agents[0]?.agent.id ?? ""),
+			);
+		} catch (error) {
+			if (requestGeneration !== projectRequestGenerationRef.current) return;
+			setProjectError(errorMessage(error));
+		} finally {
+			if (requestGeneration === projectRequestGenerationRef.current) setReloading(false);
 		}
 	}, []);
 
-	const handleBottomBarVisibility = useCallback((visible: boolean) => {
-		bottomBarVisibleRef.current = visible;
-	}, []);
-
-	// 选中角色时自动填充输入框
-	const handleSelectRole = useCallback(
-		(id: string | null) => {
-			const role = id ? roleCards.find((r) => r.slug === id) : undefined;
-			const hasPrompt = !!role?.prompt;
-			dispatchPlaybook({ type: "selectRole", id, clearOverride: hasPrompt });
-			if (!id || !hasPrompt) return;
-			setInputValue(role.prompt);
-			if (bottomBarVisibleRef.current) {
-				bottomBarRef.current?.expand();
-			} else {
-				setTimeout(() => composerHandleRef.current?.focusStart(), 80);
+	useEffect(() => {
+		void loadProject();
+		const source = projectEventSource();
+		source.addEventListener("project.snapshot", (event) => {
+			let snapshot: { status?: unknown; revision?: unknown } | undefined;
+			try {
+				snapshot = JSON.parse((event as MessageEvent<string>).data) as typeof snapshot;
+			} catch {
+				// Reload below when an unexpected snapshot payload cannot be compared safely.
 			}
+			const current = projectRef.current;
+			if (current && current.status === snapshot?.status && current.revision === snapshot.revision) return;
+			setPlan(undefined);
+			setOperationEvents([]);
+			void loadProject();
+		});
+		source.addEventListener("project.reloading", () => {
+			projectRequestGenerationRef.current++;
+			setReloading(true);
+		});
+		for (const type of ["project.valid", "project.invalid", "project.missing"] as const) {
+			source.addEventListener(type, () => {
+				setPlan(undefined);
+				setOperationEvents([]);
+				void loadProject();
+			});
+		}
+		return () => source.close();
+	}, [loadProject]);
+
+	useEffect(() => {
+		setPlan(undefined);
+		setActionError(undefined);
+		setSelectedAttachments([]);
+		if (!selectedAgentId) {
+			setAttachments([]);
+			return;
+		}
+		void listAttachments(selectedAgentId)
+			.then(setAttachments)
+			.catch((error) => setActionError(errorMessage(error)));
+	}, [selectedAgentId]);
+
+	const hasPendingAttachments = attachments.some(
+		(attachment) => !attachment.available && attachment.status !== "capability_unavailable",
+	);
+	useEffect(() => {
+		if (!selectedAgentId || !projectValid || !hasPendingAttachments) return;
+		const timer = setInterval(() => {
+			void listAttachments(selectedAgentId)
+				.then(setAttachments)
+				.catch((error) => setActionError(errorMessage(error)));
+		}, 3_000);
+		return () => clearInterval(timer);
+	}, [hasPendingAttachments, projectValid, selectedAgentId]);
+
+	useEffect(
+		() => () => {
+			operationSourceRef.current?.close();
+			sessionSourceRef.current?.close();
 		},
-		[roleCards],
+		[],
 	);
 
-	const handleActiveIndexChange = useCallback((idx: number) => {
-		dispatchPlaybook({ type: "setIndex", index: idx });
-	}, []);
-
-	// Model switching is local per playbook. The selected model rides createSession, where both
-	// transports sync the agent immediately before starting the run.
-	const handleModelChange = useCallback(
-		(model: string) => {
-			if (!activeAgentSlug) return;
-			setSelectedModelsByAgent((prev) => ({ ...prev, [activeAgentSlug]: model }));
-		},
-		[activeAgentSlug],
+	const selectedAgent = project?.agents.find((entry) => entry.agent.id === selectedAgentId);
+	const providers = useMemo(
+		() => [...new Set((project?.agents ?? []).map((entry) => entry.agent.provider))].sort(),
+		[project?.agents],
 	);
+	const filteredAgents = useMemo(() => {
+		const normalizedQuery = query.trim().toLowerCase();
+		return (project?.agents ?? []).filter((entry) => {
+			if (providerFilter !== "all" && entry.agent.provider !== providerFilter) return false;
+			if (readinessFilter !== "all" && entry.readiness.status !== readinessFilter) return false;
+			return (
+				!normalizedQuery ||
+				entry.agent.id.toLowerCase().includes(normalizedQuery) ||
+				(entry.agent.description ?? "").toLowerCase().includes(normalizedQuery)
+			);
+		});
+	}, [project?.agents, providerFilter, query, readinessFilter]);
+
+	const connectOperation = useCallback(
+		(operationId: string) => {
+			operationSourceRef.current?.close();
+			const source = operationEventSource(operationId);
+			operationSourceRef.current = source;
+			source.addEventListener("event", (event) => {
+				const operationEvent = JSON.parse((event as MessageEvent).data) as OperationEvent;
+				setOperationEvents((current) => [
+					...current.filter((item) => item.index !== operationEvent.index),
+					operationEvent,
+				]);
+			});
+			source.addEventListener("done", (event) => {
+				const result = JSON.parse((event as MessageEvent).data) as { status: string; error?: string | null };
+				setApplyBusy(false);
+				setPlan(undefined);
+				sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
+				if (result.error) setActionError(result.error);
+				void loadProject(true);
+				source.close();
+			});
+			source.onerror = () => {
+				setActionError("Apply progress stream disconnected; reconnecting with the same operation ID…");
+				void getOperation(operationId).catch((error) => {
+					if ((error as { status?: number }).status !== 404) return;
+					setApplyBusy(false);
+					setActionError(
+						"The Playground server restarted and interrupted this Apply. Create a fresh Plan before retrying.",
+					);
+					sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
+					source.close();
+				});
+			};
+			source.onopen = () => setActionError(undefined);
+		},
+		[loadProject],
+	);
+
+	useEffect(() => {
+		const operationId = sessionStorage.getItem(ACTIVE_OPERATION_KEY);
+		if (!operationId) return;
+		setApplyBusy(true);
+		connectOperation(operationId);
+	}, [connectOperation]);
+
+	const handlePlan = async () => {
+		if (!selectedAgent) return;
+		setPlanBusy(true);
+		setActionError(undefined);
+		setOperationEvents([]);
+		try {
+			setPlan(await planAgent(selectedAgent.agent.id));
+		} catch (error) {
+			setActionError(errorMessage(error));
+		} finally {
+			setPlanBusy(false);
+		}
+	};
+
+	const handleApply = async () => {
+		if (!selectedAgent || !plan) return;
+		if (plan.destructive && !window.confirm("This plan deletes remote resources. Apply the reviewed plan?")) return;
+		setApplyBusy(true);
+		setActionError(undefined);
+		setOperationEvents([]);
+		try {
+			const accepted = await applyAgent(selectedAgent.agent.id, plan.plan_token, plan.destructive);
+			sessionStorage.setItem(ACTIVE_OPERATION_KEY, accepted.operation_id);
+			connectOperation(accepted.operation_id);
+		} catch (error) {
+			setApplyBusy(false);
+			setActionError(errorMessage(error));
+		}
+	};
+
+	const handleUpload = async (fileList: FileList | null) => {
+		if (!selectedAgent || !fileList?.length) return;
+		setUploadBusy(true);
+		setActionError(undefined);
+		try {
+			for (const file of Array.from(fileList)) {
+				const attachment = await uploadAttachment(selectedAgent.agent.id, file);
+				setAttachments((current) => [...current, attachment]);
+				if (attachment.available) setSelectedAttachments((current) => [...current, attachment.id]);
+			}
+		} catch (error) {
+			setActionError(errorMessage(error));
+		} finally {
+			setUploadBusy(false);
+		}
+	};
+
+	const handleDeleteAttachment = async (attachmentId: string) => {
+		setActionError(undefined);
+		try {
+			await deleteAttachment(attachmentId);
+			setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+			setSelectedAttachments((current) => current.filter((id) => id !== attachmentId));
+		} catch (error) {
+			setActionError(errorMessage(error));
+		}
+	};
+
+	const connectSession = (sessionId: string, initialEvents: SessionEvent[]) => {
+		setSessionEvents(initialEvents);
+		sessionSourceRef.current?.close();
+		const source = sessionEventSource(sessionId, initialEvents.length - 1);
+		sessionSourceRef.current = source;
+		source.addEventListener("event", (event) => {
+			const sessionEvent = JSON.parse((event as MessageEvent).data) as SessionEvent;
+			setSessionEvents((current) => {
+				if (sessionEvent.event_id && current.some((entry) => entry.event_id === sessionEvent.event_id)) return current;
+				return [...current, sessionEvent];
+			});
+		});
+		source.addEventListener("done", () => {
+			setSessionBusy(false);
+			source.close();
+		});
+		source.onerror = () => {
+			setActionError("Session event stream disconnected; reconnecting from the last received event…");
+		};
+		source.onopen = () => setActionError(undefined);
+	};
+
+	const handleStartSession = async () => {
+		if (!selectedAgent || !prompt.trim()) return;
+		setSessionBusy(true);
+		setActionError(undefined);
+		try {
+			const detail = await startSession(selectedAgent.agent.id, prompt.trim(), selectedAttachments);
+			setSession(detail);
+			setPrompt("");
+			connectSession(detail.session.session_id, detail.events);
+		} catch (error) {
+			setSessionBusy(false);
+			setActionError(errorMessage(error));
+		}
+	};
+
+	const handleFollowup = async () => {
+		if (!session || !followup.trim()) return;
+		setSessionBusy(true);
+		setActionError(undefined);
+		try {
+			const detail = await sendSessionMessage(session.session.session_id, followup.trim());
+			setSession(detail);
+			setFollowup("");
+			connectSession(detail.session.session_id, detail.events);
+		} catch (error) {
+			setSessionBusy(false);
+			setActionError(errorMessage(error));
+		}
+	};
+
+	const handleCancel = async () => {
+		if (!session) return;
+		try {
+			await cancelSession(session.session.session_id);
+			setSessionBusy(false);
+			sessionSourceRef.current?.close();
+		} catch (error) {
+			setActionError(errorMessage(error));
+		}
+	};
 
 	return (
-		<PromptEditorProvider inputValue={inputValue} onInputChange={setInputValue}>
-			<GlobalToastHost />
-			{view === "resources" || view === "deployments" ? (
-				<>
-					<div className="page-shell">
-						<WarmBanner progress={warmProgress} />
-						<TopBar
-							view={view}
-							onNavigate={setView}
-							showSettings={showSettings}
-							settingsOpen={settingsOpen}
-							onOpenSettings={() => setSettingsOpen(true)}
-						/>
-						{view === "resources" ? <ResourceCenter /> : <DeploymentCenter />}
-					</div>
-					<ConfirmDialog />
-					<PromptDialog />
-					<SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-				</>
-			) : (
-				<>
-					<div className="page-shell">
-						<WarmBanner progress={warmProgress} />
-						<TopBar
-							view={view}
-							onNavigate={setView}
-							showSettings={showSettings}
-							settingsOpen={settingsOpen}
-							onOpenSettings={() => setSettingsOpen(true)}
-						/>
+		<div className="workbench-shell">
+			<header className="workbench-header">
+				<div className="brand-mark">
+					<Braces />
+					<span>OpenAgentPack</span>
+					<small>Playground</small>
+				</div>
+				<div className="project-identity">
+					<strong>{project?.project_name ?? "Loading project"}</strong>
+					<span title={project?.config_file}>{project?.config_file ?? "agents.yaml"}</span>
+				</div>
+				<div className="project-health">
+					<StatusPill status={reloading ? "loading" : (project?.status ?? "loading")} />
+					{project?.revision && <code>{project.revision.slice(0, 9)}</code>}
+					<button
+						className="icon-button"
+						type="button"
+						title="Refresh readiness"
+						onClick={() => void loadProject(true)}
+					>
+						<RefreshCw className={reloading ? "spin" : ""} />
+					</button>
+				</div>
+			</header>
 
-						<main>
-							<section className="hero" aria-labelledby="hero-title">
-								{roleCards.length > 0 && (
-									<HeroGreeting
-										roleCards={roleCards}
-										selectedRoleId={selectedRoleId}
-										onActiveIndexChange={handleActiveIndexChange}
-									/>
-								)}
-								{roleCards.length > 0 && (
-									<RoleCards
-										roleCards={roleCards}
-										selectedId={selectedRoleId}
-										onSelect={handleSelectRole}
-										highlightedIndex={highlightedIndex}
-									/>
-								)}
-
-								<div ref={composerRef}>
-									<Composer
-										ref={composerHandleRef}
-										inputValue={inputValue}
-										onInputChange={setInputValue}
-										agentId={activeAgentSlug}
-										roleCards={roleCards}
-										activeRoleIndex={highlightedIndex}
-										model={selectedModel}
-										models={models}
-										onModelChange={handleModelChange}
-										onMakeSame={handleMakeSame}
-										onNavigate={setView}
-										canSubmit={canSubmit}
-									/>
-								</div>
-							</section>
-						</main>
-
-						<Showcase onMakeSame={handleMakeSame} />
-					</div>
-
-					<BottomBar
-						ref={bottomBarRef}
-						inputValue={inputValue}
-						onInputChange={setInputValue}
-						agentId={activeAgentSlug}
-						model={selectedModel}
-						models={models}
-						onModelChange={handleModelChange}
-						composerRef={composerRef as React.RefObject<HTMLElement | null>}
-						onVisibilityChange={handleBottomBarVisibility}
-						onMakeSame={handleMakeSame}
-						onNavigate={setView}
-						canSubmit={canSubmit}
-					/>
-
-					<ConfirmDialog />
-					<PromptDialog />
-					<SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-				</>
+			{projectError && <Banner tone="error" message={projectError} />}
+			{project && project.status !== "valid" && (
+				<Banner
+					tone="warning"
+					message={`Project is ${project.status}. Existing Sessions remain available, but new Plan, Apply, upload, and Session operations are disabled.`}
+				/>
 			)}
-		</PromptEditorProvider>
+			{project?.diagnostics.map((diagnostic) => (
+				<Banner
+					key={`${diagnostic.code}-${diagnostic.resource?.provider ?? "project"}-${diagnostic.resource?.type ?? "config"}-${diagnostic.resource?.name ?? diagnostic.message}`}
+					tone={diagnostic.severity === "error" ? "error" : "warning"}
+					message={`${diagnostic.code}: ${diagnostic.message}`}
+				/>
+			))}
+
+			<div className="workbench-layout">
+				<aside className="agent-sidebar">
+					<div className="sidebar-heading">
+						<span>Agents</span>
+						<b>{project?.agents.length ?? 0}</b>
+					</div>
+					<div className="search-box">
+						<Search />
+						<input
+							aria-label="Search agents"
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							placeholder="Search agents"
+						/>
+					</div>
+					<div className="filter-row">
+						<select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
+							<option value="all">All providers</option>
+							{providers.map((provider) => (
+								<option key={provider}>{provider}</option>
+							))}
+						</select>
+						<select value={readinessFilter} onChange={(event) => setReadinessFilter(event.target.value)}>
+							<option value="all">All states</option>
+							{["ready", "missing", "creating", "updating", "drifted", "unavailable", "invalid", "error"].map(
+								(status) => (
+									<option key={status}>{status}</option>
+								),
+							)}
+						</select>
+					</div>
+					<div className="agent-list">
+						{filteredAgents.map((entry) => (
+							<button
+								key={entry.agent.id}
+								type="button"
+								className={`agent-item ${entry.agent.id === selectedAgentId ? "active" : ""}`}
+								onClick={() => setSelectedAgentId(entry.agent.id)}
+							>
+								<span className={`readiness-dot ${entry.readiness.status}`} />
+								<span className="agent-item-copy">
+									<strong>{entry.agent.id}</strong>
+									<small>
+										{entry.agent.provider} · {entry.readiness.status}
+									</small>
+								</span>
+								<ChevronRight />
+							</button>
+						))}
+					</div>
+				</aside>
+
+				<main className="agent-workspace">
+					{selectedAgent ? (
+						<>
+							<section className="agent-title-row">
+								<div>
+									<div className="eyebrow">{selectedAgent.agent.provider} / agent</div>
+									<div className="agent-name-row">
+										<h1>{selectedAgent.agent.id}</h1>
+										<a
+											className="agent-preview-link"
+											href={
+												session
+													? `/sessions/${encodeURIComponent(session.session.session_id)}/preview`
+													: `/agents/${encodeURIComponent(selectedAgent.agent.id)}/preview`
+											}
+											target="_blank"
+											rel="noreferrer"
+										>
+											<ExternalLink />
+											Preview
+										</a>
+									</div>
+									<p>{selectedAgent.agent.description ?? "No description declared."}</p>
+								</div>
+								<ReadinessBadge agent={selectedAgent} />
+							</section>
+							<nav className="workspace-tabs">
+								{TAB_LABELS.map((item) => (
+									<button
+										key={item.id}
+										type="button"
+										className={tab === item.id ? "active" : ""}
+										onClick={() => setTab(item.id)}
+									>
+										{item.label}
+									</button>
+								))}
+							</nav>
+							{actionError && <Banner tone="error" message={actionError} compact />}
+							{tab === "overview" && <Overview agent={selectedAgent} />}
+							{tab === "changes" && (
+								<ChangesPanel
+									agent={selectedAgent}
+									plan={plan}
+									planBusy={planBusy}
+									applyBusy={applyBusy}
+									projectValid={projectValid}
+									operationEvents={operationEvents}
+									onPlan={handlePlan}
+									onApply={handleApply}
+								/>
+							)}
+							{tab === "debug" && (
+								<DebugPanel
+									agent={selectedAgent}
+									projectValid={projectValid}
+									attachments={attachments}
+									selectedAttachments={selectedAttachments}
+									uploadBusy={uploadBusy}
+									prompt={prompt}
+									followup={followup}
+									session={session}
+									events={sessionEvents}
+									busy={sessionBusy}
+									onPrompt={setPrompt}
+									onFollowup={setFollowup}
+									onToggleAttachment={(id) =>
+										setSelectedAttachments((current) =>
+											current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+										)
+									}
+									onUpload={handleUpload}
+									onDeleteAttachment={handleDeleteAttachment}
+									onStart={handleStartSession}
+									onFollowupSend={handleFollowup}
+									onCancel={handleCancel}
+								/>
+							)}
+							{tab === "artifacts" && (
+								<EventsPanel
+									events={artifactEvents(sessionEvents)}
+									empty="Artifacts and tool outputs will appear here after a run."
+								/>
+							)}
+							{tab === "deployments" && (
+								<DeploymentsPanel
+									deployments={(project?.deployments ?? []).filter(
+										(deployment) => deployment.agent === selectedAgent.agent.id,
+									)}
+								/>
+							)}
+						</>
+					) : (
+						<div className="empty-state">
+							<ServerCog />
+							<h2>No Agent selected</h2>
+							<p>Add an Agent to agents.yaml or adjust the filters.</p>
+						</div>
+					)}
+				</main>
+			</div>
+		</div>
 	);
+}
+
+function Overview({ agent }: { agent: ProjectAgent }) {
+	return (
+		<section className="content-grid">
+			<InfoCard
+				icon={<Box />}
+				title="Runtime"
+				rows={[
+					["Provider", agent.agent.provider],
+					["Model", formatValue(agent.agent.model)],
+					["Environment", agent.details.environment ?? "—"],
+					["Vault", agent.details.vault ?? "—"],
+				]}
+			/>
+			<InfoCard
+				icon={<Braces />}
+				title="Tools & MCP"
+				rows={[
+					["Builtins", formatValue((agent.agent.tools as { builtin?: string[] } | undefined)?.builtin ?? [])],
+					["MCP servers", agent.agent.mcpServers.join(", ") || "—"],
+				]}
+			/>
+			<InfoCard
+				icon={<FileText />}
+				title="Skills & memory"
+				rows={[
+					["Skills", agent.agent.skills.map((skill) => skill.id).join(", ") || "—"],
+					["Memory stores", agent.details.memory_stores.join(", ") || "—"],
+				]}
+			/>
+			<InfoCard
+				icon={<Paperclip />}
+				title="Declared resources"
+				rows={
+					agent.details.resources.length
+						? agent.details.resources.map((resource) => [resource.type, resource.mount_path ?? "default mount"])
+						: [["Resources", "—"]]
+				}
+			/>
+		</section>
+	);
+}
+
+function ChangesPanel({
+	agent,
+	plan,
+	planBusy,
+	applyBusy,
+	projectValid,
+	operationEvents,
+	onPlan,
+	onApply,
+}: {
+	agent: ProjectAgent;
+	plan?: AgentPlan;
+	planBusy: boolean;
+	applyBusy: boolean;
+	projectValid: boolean;
+	operationEvents: OperationEvent[];
+	onPlan(): void;
+	onApply(): void;
+}) {
+	return (
+		<section className="panel-stack">
+			<div className="action-toolbar">
+				<div>
+					<h2>Runtime resource plan</h2>
+					<p>Only {agent.agent.id} and its transitive runtime dependencies are in scope. Deployments are excluded.</p>
+				</div>
+				<div className="toolbar-buttons">
+					<button
+						type="button"
+						className="secondary-button"
+						disabled={!projectValid || planBusy || applyBusy}
+						onClick={onPlan}
+					>
+						{planBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}Plan
+					</button>
+					<button type="button" className="primary-button" disabled={!plan || applyBusy} onClick={onApply}>
+						{applyBusy ? <LoaderCircle className="spin" /> : <Play />}Apply reviewed plan
+					</button>
+				</div>
+			</div>
+			{plan ? (
+				<div className="plan-card">
+					<div className="plan-meta">
+						<span>{plan.actions.filter((action) => action.action !== "no-op").length} changes</span>
+						<span>
+							{plan.destructive ? (
+								<>
+									<ShieldAlert /> destructive
+								</>
+							) : (
+								<>
+									<CheckCircle2 /> non-destructive
+								</>
+							)}
+						</span>
+						<code>{plan.fingerprint.slice(0, 12)}</code>
+					</div>
+					{plan.actions.map((action) => (
+						<PlanActionRow
+							key={`${action.action}-${action.address.provider}-${action.address.type}-${action.address.name}`}
+							action={action}
+						/>
+					))}
+				</div>
+			) : (
+				<div className="empty-panel">
+					<CircleDot />
+					<p>Create a fresh plan to compare agents.yaml, state, and remote resources.</p>
+				</div>
+			)}
+			{operationEvents.length > 0 && (
+				<div className="operation-log">
+					<h3>Apply progress</h3>
+					{operationEvents.map((event) => (
+						<div key={event.index}>
+							<time>{new Date(event.timestamp).toLocaleTimeString()}</time>
+							<strong>{event.type}</strong>
+							<span>{operationMessage(event.data)}</span>
+						</div>
+					))}
+				</div>
+			)}
+		</section>
+	);
+}
+
+function DebugPanel({
+	projectValid,
+	attachments,
+	selectedAttachments,
+	uploadBusy,
+	prompt,
+	followup,
+	session,
+	events,
+	busy,
+	onPrompt,
+	onFollowup,
+	onToggleAttachment,
+	onUpload,
+	onDeleteAttachment,
+	onStart,
+	onFollowupSend,
+	onCancel,
+}: {
+	agent: ProjectAgent;
+	projectValid: boolean;
+	attachments: Attachment[];
+	selectedAttachments: string[];
+	uploadBusy: boolean;
+	prompt: string;
+	followup: string;
+	session?: SessionDetail;
+	events: SessionEvent[];
+	busy: boolean;
+	onPrompt(value: string): void;
+	onFollowup(value: string): void;
+	onToggleAttachment(id: string): void;
+	onUpload(files: FileList | null): void;
+	onDeleteAttachment(id: string): void;
+	onStart(): void;
+	onFollowupSend(): void;
+	onCancel(): void;
+}) {
+	return (
+		<section className="debug-layout">
+			<div className="debug-controls">
+				<div className="panel-card">
+					<div className="panel-heading">
+						<div>
+							<h2>Temporary attachments</h2>
+							<p>Uploaded for Sessions only; never written to agents.yaml.</p>
+						</div>
+						<label className={`upload-button ${!projectValid ? "disabled" : ""}`}>
+							<Upload />
+							{uploadBusy ? "Uploading…" : "Upload"}
+							<input
+								type="file"
+								multiple
+								disabled={!projectValid || uploadBusy}
+								onChange={(event) => {
+									void onUpload(event.target.files);
+									event.target.value = "";
+								}}
+							/>
+						</label>
+					</div>
+					<div className="attachment-list">
+						{attachments.map((attachment) => (
+							<div key={attachment.id} className="attachment-row">
+								<input
+									type="checkbox"
+									checked={selectedAttachments.includes(attachment.id)}
+									disabled={!attachment.available}
+									onChange={() => onToggleAttachment(attachment.id)}
+								/>
+								<FileText />
+								<span>
+									<strong>{attachment.filename}</strong>
+									<small>{attachment.status ?? (attachment.available ? "available" : "pending")}</small>
+								</span>
+								<button
+									type="button"
+									title="Delete remote attachment"
+									onClick={() => void onDeleteAttachment(attachment.id)}
+								>
+									<Trash2 />
+								</button>
+							</div>
+						))}
+						{attachments.length === 0 && <p className="muted-copy">No temporary attachments.</p>}
+					</div>
+				</div>
+				<div className="panel-card">
+					<h2>Start a Session</h2>
+					<textarea
+						value={prompt}
+						onChange={(event) => onPrompt(event.target.value)}
+						placeholder="Describe the task to run with this Agent…"
+						rows={7}
+					/>
+					<button
+						type="button"
+						className="primary-button wide"
+						disabled={!projectValid || busy || !prompt.trim()}
+						onClick={onStart}
+					>
+						{busy ? <LoaderCircle className="spin" /> : <Play />}Start Session
+					</button>
+				</div>
+			</div>
+			<div className="session-console">
+				<div className="console-heading">
+					<div>
+						<span>Live Session</span>
+						<code>{session?.session.session_id ?? "not started"}</code>
+					</div>
+					{session && busy && (
+						<button type="button" className="danger-button" onClick={onCancel}>
+							<Square />
+							Cancel
+						</button>
+					)}
+				</div>
+				<EventsPanel
+					events={events}
+					empty="Start a Session to inspect messages, reasoning, tool calls, and artifacts."
+				/>
+				{session && (
+					<div className="followup-box">
+						<textarea
+							value={followup}
+							onChange={(event) => onFollowup(event.target.value)}
+							placeholder="Send a follow-up using the pinned Session runtime…"
+							rows={3}
+						/>
+						<button
+							type="button"
+							className="primary-button"
+							disabled={busy || !followup.trim()}
+							onClick={onFollowupSend}
+						>
+							<Send />
+							Send
+						</button>
+					</div>
+				)}
+			</div>
+		</section>
+	);
+}
+
+function DeploymentsPanel({ deployments }: { deployments: NonNullable<ProjectSummary["deployments"]> }) {
+	return (
+		<section className="panel-stack">
+			<div className="readonly-note">
+				<ShieldAlert />
+				<span>
+					Deployment declarations are read-only in Playground v1. Use the CLI project Plan/Apply flow for deployment
+					mutations.
+				</span>
+			</div>
+			{deployments.length ? (
+				deployments.map((deployment) => (
+					<article className="deployment-card" key={deployment.id}>
+						<div>
+							<span className="eyebrow">deployment</span>
+							<h3>{deployment.id}</h3>
+							<p>{deployment.description ?? "No description declared."}</p>
+						</div>
+						<dl>
+							<dt>Provider</dt>
+							<dd>{deployment.provider ?? "inherited"}</dd>
+							<dt>Schedule</dt>
+							<dd>
+								{deployment.schedule ? `${deployment.schedule.expression} (${deployment.schedule.timezone})` : "manual"}
+							</dd>
+							<dt>Initial events</dt>
+							<dd>{deployment.initial_event_types.join(", ")}</dd>
+							<dt>Resources</dt>
+							<dd>{deployment.resource_types.join(", ") || "—"}</dd>
+						</dl>
+					</article>
+				))
+			) : (
+				<div className="empty-panel">
+					<ServerCog />
+					<p>No Deployment references this Agent.</p>
+				</div>
+			)}
+		</section>
+	);
+}
+
+function EventsPanel({ events, empty }: { events: SessionEvent[]; empty: string }) {
+	return (
+		<div className="event-list">
+			{events.length ? (
+				events.map((event, index) => (
+					<article
+						className={`event-row ${event.is_error ? "error" : ""}`}
+						key={event.event_id ?? `${event.type}-${index}`}
+					>
+						<div className="event-icon">{event.is_error ? <AlertTriangle /> : <CircleDot />}</div>
+						<div>
+							<header>
+								<strong>{event.type}</strong>
+								<span>{event.role}</span>
+								<time>{event.created_at ? new Date(event.created_at).toLocaleTimeString() : ""}</time>
+							</header>
+							{event.message && <p>{event.message}</p>}
+							{event.content?.map((block) => (
+								<div className="event-content" key={JSON.stringify(block)}>
+									{block.text ?? (block.data !== undefined ? formatValue(block.data) : block.type)}
+								</div>
+							))}
+						</div>
+					</article>
+				))
+			) : (
+				<div className="empty-panel">
+					<CircleDot />
+					<p>{empty}</p>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function InfoCard({ icon, title, rows }: { icon: React.ReactNode; title: string; rows: string[][] }) {
+	return (
+		<article className="info-card">
+			<header>
+				{icon}
+				<h2>{title}</h2>
+			</header>
+			<dl>
+				{rows.map(([label, value]) => (
+					<div key={label}>
+						<dt>{label}</dt>
+						<dd>{value}</dd>
+					</div>
+				))}
+			</dl>
+		</article>
+	);
+}
+
+function PlanActionRow({ action }: { action: PlannedAction }) {
+	return (
+		<div className={`plan-action ${action.action}`}>
+			<span className="action-kind">{action.action}</span>
+			<span>
+				<strong>
+					{action.address.type}.{action.address.name}
+				</strong>
+				<small>
+					{action.address.provider} · {action.reason}
+				</small>
+			</span>
+			{action.changedPaths?.length ? <code>{action.changedPaths.join(", ")}</code> : null}
+		</div>
+	);
+}
+
+function ReadinessBadge({ agent }: { agent: ProjectAgent }) {
+	return (
+		<div className={`readiness-badge ${agent.readiness.status}`}>
+			<span />
+			<div>
+				<strong>{agent.readiness.status}</strong>
+				<small>
+					{agent.readiness.driftSeverity ??
+						`${agent.readiness.plannedActions.filter((action) => action.action !== "no-op").length} planned changes`}
+				</small>
+			</div>
+		</div>
+	);
+}
+
+function StatusPill({ status }: { status: string }) {
+	return (
+		<span className={`status-pill ${status}`}>
+			{status === "valid" ? (
+				<CheckCircle2 />
+			) : status === "loading" ? (
+				<LoaderCircle className="spin" />
+			) : (
+				<AlertTriangle />
+			)}
+			{status}
+		</span>
+	);
+}
+
+function Banner({ tone, message, compact = false }: { tone: "error" | "warning"; message: string; compact?: boolean }) {
+	return (
+		<div className={`workbench-banner ${tone} ${compact ? "compact" : ""}`}>
+			{tone === "error" ? <AlertTriangle /> : <ShieldAlert />}
+			<span>{message}</span>
+		</div>
+	);
+}
+
+function artifactEvents(events: SessionEvent[]): SessionEvent[] {
+	return events.filter(
+		(event) =>
+			/result|output|artifact|file/i.test(event.type) || event.content?.some((block) => block.data !== undefined),
+	);
+}
+
+function operationMessage(data: unknown): string {
+	if (
+		data &&
+		typeof data === "object" &&
+		"message" in data &&
+		typeof (data as { message?: unknown }).message === "string"
+	)
+		return (data as { message: string }).message;
+	return typeof data === "string" ? data : "";
+}
+
+function formatValue(value: unknown): string {
+	if (value === undefined || value === null || value === "") return "—";
+	if (typeof value === "string") return value;
+	return JSON.stringify(value);
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }

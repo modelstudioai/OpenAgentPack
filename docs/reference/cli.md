@@ -20,12 +20,27 @@ Create a new `agents.yaml` template via an interactive wizard (provider selectio
 
 ## `agents playground`
 
-Launch the local web UI (fetches `@openagentpack/playground` on demand) and open it in a browser.
+Launch the local web UI and open an `agents.yaml` Agent directly in Preview.
+
+Playground opens the project selected by `-f`, watches the YAML and its local dependencies, and uses each Agent's declared Provider. A single Agent is selected automatically. For multiple Agents, pass `--agent <id>`; otherwise the Workbench opens for selection. Missing, invalid, or empty projects also open the diagnostic Workbench. YAML and Deployment declarations are read-only in this UI.
 
 | Option | Description |
 |--------|-------------|
+| `-f, --file <path>` | Project configuration to open (default `agents.yaml`). |
+| `--agent <id>` | Agent to preview (required for direct Preview when multiple Agents are declared). |
 | `--port <n>` | Port to serve on (default `4848`). |
-| `--provider <name>` | Provider the UI targets (`bailian`, `qoder`, `ark`, or `claude`). |
+| `--no-open` | Do not open a browser automatically. |
+
+For each Agent, review a runtime-scoped Plan before Apply. Apply uses a single-use, ten-minute Plan token and rejects stale or newly changed plans. Temporary attachments are uploaded for Sessions without modifying YAML or state and remain recorded locally until their explicit remote deletion succeeds.
+
+## `agents workbench`
+
+Launch the same local Server and open the `agents.yaml` project Workbench without creating a Session. The command shares project identity, process reuse, port handling, and configuration watching with `agents playground`.
+
+| Option | Description |
+|--------|-------------|
+| `-f, --file <path>` | Project configuration to open (default `agents.yaml`). |
+| `--port <n>` | Port to serve on (default `4848`). |
 | `--no-open` | Do not open a browser automatically. |
 
 ## `agents validate`

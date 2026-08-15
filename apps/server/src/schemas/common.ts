@@ -23,5 +23,6 @@ export const errorResponses = {
 	400: errorResponse("Bad request"),
 	404: errorResponse("Not found"),
 	409: errorResponse("Conflict"),
+	422: errorResponse("Unprocessable entity"),
 	500: errorResponse("Server error"),
 };

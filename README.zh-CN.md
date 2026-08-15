@@ -84,7 +84,7 @@ agents apply -y        # 执行变更
 agents destroy         # 销毁托管资源
 ```
 
-运行 `agents playground` 可启动本地 WebUI，并通过 `--provider` 指定 `bailian`、`qoder`、`ark` 或 `claude`。你可以在同一份声明上切换 Provider、运行真实 Session，并观察工具调用和 Artifact。
+运行 `agents playground -f agents.yaml` 会直接打开 Agent Preview：单 Agent 项目自动选择，多 Agent 项目可传 `--agent <id>`，未指定时进入 Workbench 选择。使用 `agents workbench -f agents.yaml` 可直接打开项目控制台且不创建 Session。Playground 从 YAML 读取全部 Agent 和 Provider，监听本地依赖文件；YAML 保持只读，你可以执行 Plan、Apply、Session，并查看实时事件和 Artifact。配置缺失、非法或没有 Agent 时进入诊断 Workbench。
 
 ▶ [观看 Playground 完整演示](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
@@ -186,14 +186,14 @@ console.log(plan);
 
 ## WebUI
 
-`apps/webui` 是一个 Vite 单页应用，用于浏览 playbook 和驱动 Agent Session；`apps/server` 通过 OpenAPI 暴露 SDK。从仓库根目录同时启动两者：
+`apps/webui` 是一个 Vite 单页项目工作台，用于检查和调试 `agents.yaml` 中声明的 Agent；`apps/server` 通过 OpenAPI 暴露 SDK。从仓库根目录同时启动两者：
 
 ```bash
 bun install
 bun run dev        # 同时启动 server + webui
 ```
 
-或用 `agents playground --provider <bailian|qoder|ark|claude>` 启动打包的本地 UI。
+也可以用 `agents playground -f <path/to/agents.yaml>` 打开打包后的 Preview，或用 `agents workbench -f <path/to/agents.yaml>` 打开项目控制台。Provider、模型、工具、memory、skills 和资源全部来自 YAML，UI 不提供覆盖；Deployment 声明仅只读展示。
 
 ## 参与贡献
 
