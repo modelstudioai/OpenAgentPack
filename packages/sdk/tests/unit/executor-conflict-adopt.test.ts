@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecContext } from "../../src/internal/executor/context.ts";
 import { executePlan } from "../../src/internal/executor/executor.ts";
 import { ApiError, ConflictError } from "../../src/internal/providers/base-client.ts";
+import { DeploymentCreateConflictError } from "../../src/internal/providers/deployment-conflict.ts";
 import type { ProviderAdapter, RemoteResource } from "../../src/internal/providers/interface.ts";
 import type { IStateManager } from "../../src/internal/state/state-manager.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
@@ -217,6 +219,101 @@ describe("executor conflict-adopt", () => {
 		expect(result.results[0].status).toBe("failed");
 		expect(result.results[0].error?.message).toContain("500");
 		expect(calls).toEqual([]);
+	});
+
+	test("deployment conflict adoption reuses files uploaded by create", async () => {
+		const projectDir = mkdtempSync(join(tmpdir(), "exec-deployment-conflict-"));
+		writeFileSync(join(projectDir, "report-template.md"), "# template");
+		const deploymentConfig: ProjectConfig = {
+			version: "1",
+			providers: { bailian: { api_key: "test", workspace_id: "ws" } },
+			defaults: { provider: "bailian" },
+			environments: { dev: { config: { type: "cloud" } } },
+			agents: {
+				reporter: {
+					model: "qwen-plus",
+					instructions: "Generate reports",
+					environment: "dev",
+				},
+			},
+			deployments: {
+				"daily-report": {
+					agent: "reporter",
+					initial_events: [{ type: "user.message", content: "go" }],
+					resources: [{ type: "file", source: "report-template.md" }],
+				},
+			},
+		};
+		const calls: string[] = [];
+		let findCalls = 0;
+		const provider = {
+			name: "bailian",
+			findResource: async (type: string, name: string) => {
+				calls.push(`find:${type}.${name}`);
+				findCalls += 1;
+				return findCalls === 1 ? null : { id: "deployment_existing", type: "deployment" };
+			},
+			createDeployment: async () => {
+				calls.push("create-and-upload:file_uploaded_once");
+				throw new DeploymentCreateConflictError(
+					new ConflictError(409, "exists", "Bailian API"),
+					new Map([["report-template.md", "file_uploaded_once"]]),
+				);
+			},
+			updateDeployment: async (
+				id: string,
+				_name: unknown,
+				_decl: unknown,
+				_refs: unknown,
+				_basePath: unknown,
+				preparedFiles?: ReadonlyMap<string, string>,
+			) => {
+				calls.push(`update-and-reuse:${id}:${preparedFiles?.get("report-template.md") ?? "missing"}`);
+				return { id, type: "deployment" };
+			},
+		} as unknown as ProviderAdapter;
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({
+			address: { type: "environment", name: "dev", provider: "bailian" },
+			remote_id: "environment_existing",
+			content_hash: "h",
+		});
+		state.setResource({
+			address: { type: "agent", name: "reporter", provider: "bailian" },
+			remote_id: "agent_existing",
+			content_hash: "h",
+		});
+		const plan: ExecutionPlan = {
+			actions: [
+				{
+					action: "create",
+					address: { type: "deployment", name: "daily-report", provider: "bailian" },
+					reason: "missing",
+					after: { content_hash: "h" },
+					dependencies: [],
+				},
+			],
+			diagnostics: [],
+		};
+		const ctx: ExecContext = {
+			config: deploymentConfig,
+			configPath: join(projectDir, "agents.yaml"),
+			providers: new Map([["bailian", provider]]),
+			state,
+		};
+
+		const result = await executePlan(plan, ctx);
+
+		expect(result.partial).toBe(false);
+		expect(calls).toEqual([
+			"find:deployment.daily-report",
+			"create-and-upload:file_uploaded_once",
+			"find:deployment.daily-report",
+			"update-and-reuse:deployment_existing:file_uploaded_once",
+		]);
+		expect(state.getResource({ type: "deployment", name: "daily-report", provider: "bailian" })?.remote_id).toBe(
+			"deployment_existing",
+		);
 	});
 
 	test("skill ConflictError → multi searchNames → adopt as-is without rebuild", async () => {

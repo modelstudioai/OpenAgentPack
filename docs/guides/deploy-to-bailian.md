@@ -26,11 +26,11 @@ providers:
 | Environment, Vault, Skill, Agent, MCP Server, Session | native |
 | Memory Store | unsupported |
 | Multi-Agent | unsupported |
-| Deployment | emulated |
+| Deployment | native |
 
 - Skills upload as a zip via the Files API (two-step).
 - MCP servers are **official managed servers** referenced by `name` (no vault needed for them).
-- `deployment run` expands into a one-shot session; scheduling/outcome rubrics are not enforced server-side.
+- Deployments are native: `apply` creates the remote deployment, `schedule` runs server-side (cron + timezone), and `deployment run` triggers a server-side run. `user.define_outcome` events and `github_repository` resources are not part of the deployment payload and surface a warning on plan.
 
 ## Minimal agent
 

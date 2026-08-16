@@ -28,9 +28,16 @@ export async function computeResourceHash(
 		}
 	}
 
+	if (address.type === "file" && basePath) {
+		const fileDecl = decl as { source: string };
+		const fileHash = computeLocalFileContentHash(fileDecl.source, basePath);
+		return contentHash({ decl, fileHash });
+	}
+
 	if (address.type === "deployment") {
 		const refs = resolveDeploymentReferenceIds(decl as DeploymentRefDecl, config, address.provider, state);
-		if (refs) return contentHash({ decl, refs });
+		const sourceHashes = basePath ? computeDeploymentSourceHashes(decl as DeploymentRefDecl, basePath) : undefined;
+		if (refs || sourceHashes) return contentHash({ decl, refs, sourceHashes });
 	}
 
 	if (address.type === "template") {
@@ -80,6 +87,7 @@ function resolveChannelReferenceIds(
 interface DeploymentRefDecl {
 	agent: string;
 	environment?: string;
+	resources?: Array<{ type: string; file_id?: string; source?: string }>;
 }
 
 interface TemplateRefDecl {
@@ -151,6 +159,26 @@ function resolveDeploymentReferenceIds(
 
 function getDeclaration(address: ResourceAddress, config: ProjectConfig): unknown | null {
 	return getResourceDeclaration(address, config);
+}
+
+function computeDeploymentSourceHashes(decl: DeploymentRefDecl, basePath: string): Record<string, string> | undefined {
+	const sources = [
+		...new Set(
+			(decl.resources ?? []).flatMap((resource) =>
+				resource.type === "file" && !resource.file_id && resource.source ? [resource.source] : [],
+			),
+		),
+	];
+	if (sources.length === 0) return undefined;
+
+	return Object.fromEntries(sources.map((source) => [source, computeLocalFileContentHash(source, basePath)]));
+}
+
+export function computeLocalFileContentHash(source: string, basePath: string): string {
+	const fullPath = resolve(dirname(basePath), source);
+	const stat = statSync(fullPath, { throwIfNoEntry: false });
+	if (!stat?.isFile()) return "";
+	return contentHash(readFileSync(fullPath).toString("base64"));
 }
 
 export function computeSkillContentHash(source: string, basePath: string): string {

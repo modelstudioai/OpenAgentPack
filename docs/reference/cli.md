@@ -124,7 +124,7 @@ Manage scheduled / triggered deployments.
 | `deployment get <name>` | Show a deployment's status and resolved bindings. |
 | `deployment pause <name>` | Pause scheduled runs for a native deployment. |
 | `deployment unpause <name>` | Resume a paused native deployment. |
-| `deployment run <name>` | Trigger a deployment run (native on Qoder/Claude, emulated as a session on Bailian/Volcengine Ark). |
+| `deployment run <name>` | Trigger a deployment run (native on Bailian/Qoder/Claude, emulated as a session on Volcengine Ark). |
 
 ## `agents memory-store`
 

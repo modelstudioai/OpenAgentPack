@@ -43,7 +43,7 @@ agents:
 deployments:
   web-search-demo:
     agent: researcher
-    description: "WebSearch demo (emulated -> Session on run)"
+    description: "WebSearch demo (native Bailian deployment)"
     initial_events:
       - type: user.message
         content: |

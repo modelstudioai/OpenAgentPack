@@ -94,6 +94,7 @@ export interface ResourceCrudAdapter {
 		decl: DeploymentDecl,
 		refs: ResolvedDeploymentRefs,
 		basePath: string,
+		preparedFiles?: ReadonlyMap<string, string>,
 	): Promise<RemoteResource>;
 	deleteDeployment(id: string): Promise<void>;
 

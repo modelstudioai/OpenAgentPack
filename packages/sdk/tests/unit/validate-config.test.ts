@@ -156,6 +156,55 @@ test("rejects Claude GitHub Session mount paths outside /workspace", () => {
 	expect(diagnostics.some((item) => item.code === "claude.agent.session_resource.mount_path.invalid")).toBe(true);
 });
 
+test("warns on Bailian deployment payload drops but not on a native schedule", () => {
+	const config: ProjectConfig = {
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		environments: { dev: { config: { type: "cloud" } } },
+		agents: {
+			reporter: {
+				model: "qwen3.7-max",
+				instructions: "report",
+				environment: "dev",
+				tools: { builtin: ["read"] },
+			},
+		},
+		deployments: {
+			"daily-report": {
+				agent: "reporter",
+				schedule: { expression: "0 9 * * *", timezone: "UTC" },
+				initial_events: [
+					{ type: "user.message", content: "go" },
+					{
+						type: "user.define_outcome",
+						description: "quality gate",
+						rubric: "must have a summary",
+					},
+				],
+				resources: [
+					{
+						type: "file",
+						file_id: "file_existing",
+						mount_path: "/data/report-template.md",
+					},
+					{
+						type: "github_repository",
+						url: "https://github.com/acme/repo.git",
+					},
+				],
+			},
+		},
+	};
+
+	const diagnostics = validateProjectConfig(config);
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.define_outcome_unsupported")).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.github_repository_unsupported")).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.file.mount_path.invalid")).toBe(true);
+	// Schedule is native on Bailian now — the emulated schedule warning must not fire.
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.schedule_unsupported")).toBe(false);
+});
+
 test("allows setup_script on Qoder and rejects unsupported writable package declarations", () => {
 	const diagnostics = validateProjectConfig({
 		version: "1",
@@ -218,4 +267,67 @@ test("rejects networking and packages on managed Qoder self_hosted environments"
 	expect(
 		diagnostics.find((item) => item.code === "qoder.environment.self_hosted.config.unsupported")?.message,
 	).toContain("only config.type and config.setup_script");
+});
+
+test("rejects Bailian deployments without a supported initial message event", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		agents: {
+			reporter: { model: "qwen3.7-max", instructions: "report" },
+		},
+		deployments: {
+			"daily-report": {
+				agent: "reporter",
+				initial_events: [
+					{
+						type: "user.define_outcome",
+						description: "quality gate",
+						rubric: "must have a summary",
+					},
+				],
+			},
+		},
+	});
+
+	expect(
+		diagnostics.some(
+			(item) => item.code === "bailian.deployment.initial_events.message_required" && item.severity === "error",
+		),
+	).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.deployment.define_outcome_unsupported")).toBe(true);
+});
+
+test("requires unique normalized mount paths for Bailian deployment files", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		agents: {
+			reporter: { model: "qwen3.7-max", instructions: "report" },
+		},
+		deployments: {
+			"daily-report": {
+				agent: "reporter",
+				initial_events: [{ type: "user.message", content: "go" }],
+				resources: [
+					{ type: "file", file_id: "file_missing_mount" },
+					{
+						type: "file",
+						file_id: "file_relative_mount",
+						mount_path: "reports/template.md",
+					},
+					{
+						type: "file",
+						file_id: "file_absolute_mount",
+						mount_path: "/mnt/reports/template.md",
+					},
+				],
+			},
+		},
+	});
+
+	expect(diagnostics.filter((item) => item.code === "bailian.deployment.file.mount_path.required")).toHaveLength(1);
+	expect(diagnostics.filter((item) => item.code === "bailian.deployment.file.mount_path.duplicate")).toHaveLength(1);
 });

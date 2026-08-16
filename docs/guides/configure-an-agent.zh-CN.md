@@ -484,7 +484,7 @@ Deployment 是介于「定义」与「运行」之间的声明式中间层。它
 - **部署层**（Deployment）：声明「用哪个 Agent、带哪些绑定、以什么初始事件和调度运行」。
 - **运行层**（Session）：一次具体的执行实例。
 
-> Provider 差异：Qoder 和 Claude 原生支持 Deployment（对应平台的 deployments API，可服务端调度）；百炼、火山方舟为**模拟**实现——`apply` 只写本地状态（`remote_id` 为 `null`），`agents deployment run` 时展开为一个 Session。详见 [Provider 参考](../reference/providers.zh-CN.md#模拟emulated资源的能力降级)。
+> Provider 差异：百炼、Qoder 和 Claude 原生支持 Deployment（对应平台的 deployments API，可服务端调度）；火山方舟为**模拟**实现——`apply` 只写本地状态（`remote_id` 为 `null`），`agents deployment run` 时展开为一个 Session。百炼上 `user.define_outcome` 事件和 `github_repository` 资源不在部署 payload 内，plan 时会输出警告。详见 [Provider 参考](../reference/providers.zh-CN.md#原生-deployment-的-payload-裁剪)。
 
 ### 定义 Deployment
 

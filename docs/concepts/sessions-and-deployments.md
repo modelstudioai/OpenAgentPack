@@ -24,9 +24,10 @@ How a deployment *runs* depends on the provider's capability tier:
 |----------|:--------------:|------------------------------------|
 | Claude | native | schedules server-side through the deployments API |
 | Qoder | native | creates a deployment run and associated session |
-| Bailian, Ark | emulated | expands into a one-shot session at run time |
+| Bailian | native | triggers a server-side run through the deployments API |
+| Ark | emulated | expands into a one-shot session at run time |
 
-On the emulated providers, scheduling and outcome rubrics are **not** enforced server-side — use external cron/CI for always-on or scheduled runs.
+On Ark (the emulated provider), scheduling and outcome rubrics are **not** enforced server-side — use external cron/CI for always-on or scheduled runs.
 
 ## The lifecycle in one picture
 
@@ -34,7 +35,7 @@ On the emulated providers, scheduling and outcome rubrics are **not** enforced s
 agents.yaml ──plan/apply──▶ managed resources (agent, environment, …)
                                │
                                └─session create/run──▶ runtime session
-                               └─deployment run──────▶ runtime session (emulated) or scheduled run (native)
+                               └─deployment run──────▶ scheduled run (native) or runtime session (emulated on Ark)
 ```
 
 Next: [Run sessions](../guides/run-sessions.md) and [Manage deployments](../guides/manage-deployments.md).

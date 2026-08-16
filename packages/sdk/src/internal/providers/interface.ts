@@ -238,6 +238,7 @@ export interface ProviderAdapter {
 		decl: DeploymentDecl,
 		refs: ResolvedDeploymentRefs,
 		basePath: string,
+		preparedFiles?: ReadonlyMap<string, string>,
 	): Promise<RemoteResource>;
 	deleteDeployment(id: string): Promise<void>;
 	runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult>;

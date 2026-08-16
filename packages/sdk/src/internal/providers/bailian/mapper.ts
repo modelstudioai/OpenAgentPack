@@ -162,7 +162,10 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	if (tools?.length) {
 		const toolset = tools.find((t) => t.type === "builtin_toolkit");
 		if (toolset) {
-			const configs = (toolset.configs ?? []) as Array<{ name: string; enabled?: boolean }>;
+			const configs = (toolset.configs ?? []) as Array<{
+				name: string;
+				enabled?: boolean;
+			}>;
 			builtinTools = configs.filter((c) => c.enabled !== false).map((c) => c.name);
 		}
 	}
@@ -236,7 +239,9 @@ export function mapAgent(
 	// Tools: builtin_toolkit + mcp_toolkit blocks
 	const BAILIAN_BUILTINS = new Set(["bash", "read", "write", "edit", "glob", "grep", "download_file"]);
 	if (decl.tools) {
-		const toolConfigs = resolveBuiltinTools(decl.tools, { supportedWireNames: BAILIAN_BUILTINS }).map((tool) => ({
+		const toolConfigs = resolveBuiltinTools(decl.tools, {
+			supportedWireNames: BAILIAN_BUILTINS,
+		}).map((tool) => ({
 			name: tool.wireName,
 			enabled: true,
 		}));
@@ -323,36 +328,101 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 	return body;
 }
 
-export function mapDeploymentToSession(decl: DeploymentDecl, refs: ResolvedDeploymentRefs, fileIds: string[]): unknown {
+export function mapDeployment(
+	name: string,
+	decl: DeploymentDecl,
+	refs: ResolvedDeploymentRefs,
+	projectName?: string,
+	uploadedFiles?: Map<string, string>,
+): unknown {
+	// `agent` is always an object here: the API's required shape is `{ id, version? }`,
+	// unlike the sessions API which takes a bare agent id string.
+	const agent: Record<string, unknown> = { id: refs.agent_id };
+	if (refs.agent_version !== undefined) agent.version = refs.agent_version;
+
 	const body: Record<string, unknown> = {
-		agent: refs.agent_id,
+		name,
+		agent,
 		environment_id: refs.environment_id,
+		initial_events: mapMessageEvents(decl.initial_events),
 	};
 
-	if (decl.description) body.title = decl.description;
+	if (decl.description) body.description = decl.description;
+	if (refs.vault_ids.length) body.vault_ids = refs.vault_ids;
 
-	if (fileIds.length) {
-		const fileResources = (decl.resources ?? []).filter((r) => r.type === "file");
-		body.resources = fileIds.map((id, index) => {
-			const entry: Record<string, unknown> = { type: "file", file_id: id };
-			const mountPath = fileResources[index]?.mount_path;
-			if (mountPath) entry.mount_path = mountPath;
-			return entry;
-		});
+	const resources = mapDeploymentResources(decl, uploadedFiles);
+	if (resources.length) body.resources = resources;
+
+	if (decl.schedule) {
+		body.schedule = {
+			type: "cron",
+			expression: decl.schedule.expression,
+			timezone: decl.schedule.timezone,
+		};
+	}
+
+	if (projectName) {
+		body.metadata = injectMetadata(decl.metadata, projectName, name);
+	} else if (decl.metadata) {
+		body.metadata = decl.metadata;
 	}
 
 	return body;
 }
 
-export function mapInitialEvents(events: InitialEventDecl[]): unknown {
-	const input = events
-		.filter((e) => e.type === "user.message" || e.type === "system.message")
-		.map((e) => ({
+/**
+ * Update replaces only the fields present in the payload, so every optional field a
+ * deployment can drop locally must be sent explicitly to be cleared remotely.
+ * In particular, `schedule: null` switches a scheduled deployment back to manual.
+ */
+export function mapDeploymentUpdate(
+	name: string,
+	decl: DeploymentDecl,
+	refs: ResolvedDeploymentRefs,
+	projectName?: string,
+	uploadedFiles?: Map<string, string>,
+	existingMetadata?: Record<string, unknown>,
+): unknown {
+	const body = mapDeployment(name, decl, refs, projectName, uploadedFiles) as Record<string, unknown>;
+	body.description = decl.description ?? "";
+	body.vault_ids = refs.vault_ids;
+	body.resources = mapDeploymentResources(decl, uploadedFiles);
+	if (!decl.schedule) body.schedule = null;
+	if (!projectName && !decl.metadata && existingMetadata) body.metadata = existingMetadata;
+	return body;
+}
+
+function mapDeploymentResources(decl: DeploymentDecl, uploadedFiles?: Map<string, string>): unknown[] {
+	// The deployment API accepts file resources only; memory_store and
+	// github_repository declarations are dropped (validate-config warns).
+	const resources: unknown[] = [];
+	for (const resource of decl.resources ?? []) {
+		if (resource.type !== "file") continue;
+		const fileId = resource.file_id ?? (resource.source ? uploadedFiles?.get(resource.source) : undefined);
+		if (!fileId) continue;
+		const entry: Record<string, unknown> = { type: "file", file_id: fileId };
+		if (resource.mount_path) entry.mount_path = resolveSandboxMountPath("bailian", resource.mount_path);
+		resources.push(entry);
+	}
+	return resources;
+}
+
+/**
+ * Bailian carries an initial event as a session message. `user.define_outcome` has no
+ * documented deployment payload shape, so it is dropped (validate-config warns).
+ */
+function mapMessageEvents(events: InitialEventDecl[]): unknown[] {
+	return events
+		.filter((event) => event.type === "user.message" || event.type === "system.message")
+		.map((event) => ({
 			role: "user",
 			type: "message",
-			content: [{ type: "text", text: (e as { content: string }).content }],
+			content: [{ type: "text", text: (event as { content: string }).content }],
 		}));
-	return { input };
+}
+
+export function mapInitialEvents(events: InitialEventDecl[]): unknown {
+	return { input: mapMessageEvents(events) };
 }
 
 export function mapSendMessage(text: string): unknown {
