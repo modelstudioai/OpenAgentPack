@@ -177,8 +177,15 @@ export interface AgentDecl {
 	metadata?: Record<string, string>;
 	/** Qoder runtime environment variables. Forward delivery stores these as Template defaults. */
 	environment_variables?: Record<string, string>;
+	/** Provider-side tools the Agent Harness operates itself. Qoder Forward delivery only. */
+	managed_tool_config?: ManagedToolConfigDecl;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
 	delivery?: Record<ProviderName, AgentDeliveryDecl>;
+}
+
+export interface ManagedToolConfigDecl {
+	/** Replaces the provider's enabled managed-tool set; an empty array disables all of them. */
+	enabled_tools: string[];
 }
 
 export interface AgentDeliveryDecl {
@@ -189,12 +196,14 @@ export interface AgentDeliveryDecl {
 
 export interface ChannelDecl {
 	provider?: ProviderName;
-	/** Logical Agent name. The provider adapter resolves its materialized remote resource. */
-	agent: string;
-	/** Logical Identity name. Falls back to defaults.identity. */
+	/** Logical Agent name. The provider adapter resolves its materialized remote resource. Required for `fixed` mode; ignored for `pairing` mode. */
+	agent?: string;
+	/** Logical Identity name. Falls back to defaults.identity. Required for `fixed` mode; ignored for `pairing` mode. */
 	identity?: string;
 	type: string;
 	name?: string;
+	/** Identity resolution mode. `fixed` binds the channel to one Identity/Template; `pairing` creates a transport-only channel used by Schedules/Sinks. Defaults to `fixed`. */
+	mode?: "fixed" | "pairing";
 	enabled?: boolean;
 	credentials?: Record<string, string>;
 	options?: Record<string, unknown>;

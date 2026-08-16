@@ -73,9 +73,10 @@ External references are verified and recorded but never updated or deleted.
 channels:
   support-dingtalk:
     provider: qoder                 # optional; inherits defaults.provider
-    agent: support-agent
-    identity: chen                  # optional; inherits defaults.identity
+    agent: support-agent            # required for mode: fixed; ignored for mode: pairing
+    identity: chen                  # optional; inherits defaults.identity. ignored for mode: pairing
     type: dingtalk
+    mode: fixed                     # optional; defaults to fixed
     name: Support DingTalk          # optional; defaults to the YAML key
     enabled: true                   # optional; defaults to true
     credentials:
@@ -86,7 +87,34 @@ channels:
       include_thinking: false
 ```
 
-The declaration intentionally uses logical `agent` and `identity` references. Provider adapters resolve remote ids and map `type`, `credentials`, and `options` to provider wire fields. Qoder Channels require the referenced Agent to use Forward delivery. Credential-based Qoder support currently covers DingTalk, Feishu, and WeCom; personal WeChat remains QR-only.
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `provider` | string | no | Provider name; inherits `defaults.provider`. |
+| `agent` | string | conditional | Logical Agent name. Required for `fixed` mode; ignored for `pairing` mode. |
+| `identity` | string | conditional | Logical Identity name; inherits `defaults.identity`. Required for `fixed` mode; ignored for `pairing` mode. |
+| `type` | string | yes | Provider-specific channel type. Qoder supports `dingtalk`, `feishu`, and `wecom`; `wechat` is QR-only. |
+| `mode` | `fixed` \| `pairing` | no | `fixed` (default) binds the channel to one Identity/Template. `pairing` creates a transport-only channel for Schedules/Sinks. |
+| `name` | string | no | Display name; defaults to the YAML key. |
+| `enabled` | boolean | no | Defaults to `true`. |
+| `credentials` | map | conditional | Provider-specific credentials. Required for credential-based channel types. |
+| `options` | map | no | Provider-specific response options, e.g. `include_tool_calls`, `include_thinking`. |
+
+The declaration intentionally uses logical `agent` and `identity` references. Provider adapters resolve remote ids and map `type`, `credentials`, and `options` to provider wire fields. Qoder Channels in `fixed` mode require the referenced Agent to use Forward delivery. `pairing` mode omits Identity/Template binding and is intended for Schedule sinks such as scheduled group broadcasts. Credential-based Qoder support currently covers DingTalk, Feishu, and WeCom; personal WeChat remains QR-only.
+
+### Managed tool config
+
+`managed_tool_config` declares the provider-operated tools an Agent Harness runs
+itself, rather than tools the model calls through the sandbox. Schedule
+management is the current use: enabling `create_forward_schedule`,
+`list_forward_schedules`, and `delete_forward_schedule` lets an end user create
+and cancel Schedules in natural language from a Web or IM Channel conversation.
+
+`enabled_tools` replaces the provider's whole enabled set, so an empty array
+turns every managed tool off. Omitting the field entirely sends nothing: because
+Qoder Forward Template updates are merge-style, an undeclared field leaves
+whatever the remote Template already had. Declare it whenever the tools matter —
+a Template recreated from scratch (after a destroy, a manual deletion, or lost
+state) otherwise comes back with no managed tools and no error.
 
 ## Provider configuration
 
@@ -253,6 +281,7 @@ agents:
     vault: <string>
     memory_stores: [ <string> ]
     environment_variables: { <key>: <string> }  # Qoder only
+    managed_tool_config: { enabled_tools: [ <string> ] }  # Qoder Forward delivery only
     resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
     metadata: { <key>: <string> }
@@ -274,6 +303,7 @@ agents:
 | `vault` | string | no | Vault name. |
 | `memory_stores` | string[] | no | Bound memory stores. |
 | `environment_variables` | map<string,string> | no | Qoder runtime variables. Managed Sessions use Qoder's `KEY=VALUE;...` wire format; Forward Templates store the map as defaults and Forward Sessions send it under `config.environment_variables`. |
+| `managed_tool_config.enabled_tools` | string[] | no | Provider-operated tools the Agent Harness exposes, e.g. `create_forward_schedule`, `list_forward_schedules`, `delete_forward_schedule`. Qoder Forward delivery only; declaring it on managed delivery is a validation error. |
 | `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
 | `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |

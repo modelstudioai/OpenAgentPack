@@ -353,16 +353,21 @@ export class QoderAdapter implements ProviderAdapter {
 		}
 		if (type === "channel") {
 			const channelConfig = (raw.channel_config ?? {}) as Record<string, unknown>;
-			return compactDeep({
-				identity_id: raw.identity_id,
-				template_id: raw.template_id,
+			const mode = (raw.identity_resolution as { mode?: string } | undefined)?.mode ?? "fixed";
+			const normalized: Record<string, unknown> = {
+				identity_resolution: { mode },
 				channel_type: raw.channel_type,
 				name: raw.name,
 				enabled: raw.enabled,
 				channel_config: {
 					response_options: channelConfig.response_options ?? {},
 				},
-			});
+			};
+			if (mode === "fixed") {
+				normalized.identity_id = raw.identity_id;
+				normalized.template_id = raw.template_id;
+			}
+			return compactDeep(normalized);
 		}
 
 		return compactDeep({
@@ -563,12 +568,14 @@ export class QoderAdapter implements ProviderAdapter {
 
 	async updateChannel(id: string, name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource> {
 		const current = (await this.forwardClient.get(`/channels/${id}`)) as Record<string, unknown>;
-		if (current.channel_type !== decl.type) {
+		const currentMode = (current.identity_resolution as { mode?: string } | undefined)?.mode ?? "fixed";
+		if (current.channel_type !== decl.type || currentMode !== (decl.mode ?? "fixed")) {
 			await this.deleteChannel(id);
 			return this.createChannel(name, decl, refs);
 		}
 		const body = this.mapChannel(name, decl, refs);
 		delete body.channel_type;
+		delete body.identity_resolution;
 		const res = (await this.forwardClient.post(`/channels/${id}`, body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
@@ -578,9 +585,8 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	private mapChannel(name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Record<string, unknown> {
-		return {
-			identity_id: refs.identity_id,
-			template_id: refs.agent_id,
+		const mode = decl.mode ?? "fixed";
+		const body: Record<string, unknown> = {
 			channel_type: decl.type,
 			name: decl.name ?? name,
 			enabled: decl.enabled ?? true,
@@ -593,6 +599,13 @@ export class QoderAdapter implements ProviderAdapter {
 				},
 			},
 		};
+		if (mode === "pairing") {
+			body.identity_resolution = { mode: "pairing" };
+		} else {
+			body.identity_id = refs.identity_id;
+			body.template_id = refs.agent_id;
+		}
+		return body;
 	}
 
 	private async registerForwardVaults(vaultIds: string[]): Promise<void> {

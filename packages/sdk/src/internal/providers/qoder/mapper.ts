@@ -493,6 +493,9 @@ export function mapForwardTemplate(
 	if (projectName) body.metadata = injectMetadata(decl.metadata, projectName, name);
 	else body.metadata = decl.metadata ?? {};
 	if (decl.environment_variables) body.environment_variables = decl.environment_variables;
+	// Sent on create and on update: Forward updates are merge-style, so omitting
+	// the field would silently keep whatever the Template already had.
+	if (decl.managed_tool_config) body.managed_tool_config = decl.managed_tool_config;
 
 	if (decl.tools) {
 		body.tools = [

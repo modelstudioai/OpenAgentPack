@@ -231,6 +231,10 @@ const agentDeliverySchema = z.object({
 	type: z.enum(["managed", "forward"]),
 });
 
+const managedToolConfigSchema = z.object({
+	enabled_tools: z.array(z.string().min(1)),
+});
+
 const sessionGithubRepoResourceSchema = z.object({
 	type: z.literal("github_repository"),
 	url: z.string().url(),
@@ -261,15 +265,17 @@ const agentSchema = z.object({
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	environment_variables: z.record(z.string().min(1), z.string()).optional(),
+	managed_tool_config: managedToolConfigSchema.optional(),
 	delivery: z.record(z.string(), agentDeliverySchema).optional(),
 });
 
 const channelSchema = z.object({
 	provider: z.string().optional(),
-	agent: z.string().min(1),
+	agent: z.string().min(1).optional(),
 	identity: z.string().min(1).optional(),
 	type: z.string().min(1),
 	name: z.string().trim().min(1).optional(),
+	mode: z.enum(["fixed", "pairing"]).optional().default("fixed"),
 	enabled: z.boolean().optional(),
 	credentials: z.record(z.string(), coerceString).optional(),
 	options: z.record(z.string(), z.unknown()).optional(),

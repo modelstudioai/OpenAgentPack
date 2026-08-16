@@ -179,6 +179,13 @@ export function resolveChannelRefs(
 	const channel = config.channels?.[channelName];
 	if (!channel) throw new UserError(`Channel '${channelName}' not found in config`);
 
+	if (channel.mode === "pairing") {
+		return {};
+	}
+
+	if (!channel.agent) {
+		throw new UserError(`Channel '${channelName}' is fixed mode and must declare agent`);
+	}
 	const agent = config.agents?.[channel.agent];
 	if (!agent) throw new UserError(`Channel '${channelName}' references unknown agent '${channel.agent}'`);
 	const agentType = agent.delivery?.[provider]?.type === "forward" ? "template" : "agent";

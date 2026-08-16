@@ -126,6 +126,7 @@ describe("Identity and Channel declarations", () => {
 					remote_snapshot: { channel_type: "dingtalk" },
 					replacement_fingerprint: contentHash({
 						channel_type: "dingtalk",
+						mode: "fixed",
 						credentials: { client_id: "client", client_secret: "secret" },
 					}),
 				},
@@ -477,5 +478,126 @@ describe("Qoder Identity and Channel adapter", () => {
 				},
 			},
 		});
+	});
+
+	test("maps pairing-mode Channel to Qoder wire fields without Identity or Template", async () => {
+		const calls: Array<{ method: string; path: string; body?: any }> = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			post: async (path: string, body: unknown) => {
+				calls.push({ method: "POST", path, body });
+				return { id: "channel_pair", type: "channel" };
+			},
+			delete: async (path: string) => calls.push({ method: "DELETE", path }),
+		};
+
+		await adapter.createChannel(
+			"dingtalk-pairing",
+			{
+				agent: "assistant",
+				type: "dingtalk",
+				mode: "pairing",
+				credentials: { client_id: "client", client_secret: "secret" },
+			},
+			{},
+		);
+
+		expect(calls[0]).toMatchObject({
+			method: "POST",
+			path: "/channels",
+			body: {
+				identity_resolution: { mode: "pairing" },
+				channel_type: "dingtalk",
+				name: "dingtalk-pairing",
+				enabled: true,
+				channel_config: {
+					credentials: { client_id: "client", client_secret: "secret" },
+					response_options: { include_tool_calls: false, include_thinking: false },
+				},
+			},
+		});
+		expect(calls[0]?.body).not.toHaveProperty("identity_id");
+		expect(calls[0]?.body).not.toHaveProperty("template_id");
+	});
+
+	test("recreates a Channel when identity_resolution mode changes", async () => {
+		const calls: Array<{ method: string; path: string; body?: any }> = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			get: async (path: string) => {
+				calls.push({ method: "GET", path });
+				if (path === "/channels/channel_1") {
+					return {
+						id: "channel_1",
+						channel_type: "dingtalk",
+						identity_resolution: { mode: "fixed" },
+						identity_id: "idn_1",
+						template_id: "tmpl_1",
+					};
+				}
+				return {};
+			},
+			post: async (path: string, body: unknown) => {
+				calls.push({ method: "POST", path, body });
+				return { id: "channel_1", type: "channel" };
+			},
+			delete: async (path: string) => calls.push({ method: "DELETE", path }),
+		};
+
+		await adapter.updateChannel(
+			"channel_1",
+			"dingtalk",
+			{
+				agent: "assistant",
+				type: "dingtalk",
+				mode: "pairing",
+				credentials: { client_id: "client", client_secret: "secret" },
+			},
+			{},
+		);
+
+		expect(calls.map((c) => `${c.method}:${c.path}`)).toEqual([
+			"GET:/channels/channel_1",
+			"DELETE:/channels/channel_1",
+			"POST:/channels",
+		]);
+		expect(calls[2]).toMatchObject({
+			method: "POST",
+			path: "/channels",
+			body: {
+				identity_resolution: { mode: "pairing" },
+			},
+		});
+	});
+});
+
+describe("Pairing-mode Channel declarations", () => {
+	function pairingConfig(): ProjectConfig {
+		const base = config();
+		base.channels = {
+			"dingtalk-pairing": {
+				agent: "assistant",
+				type: "dingtalk",
+				mode: "pairing",
+				credentials: { client_id: "client", client_secret: "secret" },
+			},
+		};
+		return base;
+	}
+
+	test("does not depend on Identity or Template", () => {
+		const desired = pairingConfig();
+		const graph = buildDependencyGraph(desired, ["qoder"]);
+		expect(graph.edges.get("qoder.channel.dingtalk-pairing")).toEqual(new Set());
+	});
+
+	test("plans a pairing Channel without requiring an Identity", async () => {
+		const desired = pairingConfig();
+		delete desired.defaults!.identity;
+		delete desired.identities;
+		const plan = await buildPlan(desired, { resources: [] });
+		expect(plan.diagnostics).toEqual([]);
+		const channelAction = plan.actions.find((a) => a.address.type === "channel");
+		expect(channelAction?.action).toBe("create");
 	});
 });

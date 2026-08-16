@@ -97,8 +97,8 @@ export interface ResolvedDeploymentRefs {
 }
 
 export interface ResolvedChannelRefs {
-	identity_id: string;
-	agent_id: string;
+	identity_id?: string;
+	agent_id?: string;
 }
 
 export interface DeploymentContext {
