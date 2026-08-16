@@ -190,6 +190,43 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		]);
 	});
 
+	test("passes managed_tool_config through so schedule tools survive an update", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		decl.managed_tool_config = {
+			enabled_tools: ["create_forward_schedule", "list_forward_schedules", "delete_forward_schedule"],
+		};
+		const body = mapForwardTemplate("assistant", decl, {
+			environment_id: "env_byoc",
+			tunnel_id: "tnl_internal",
+			vault_ids: [],
+			skill_ids: [],
+		}) as Record<string, any>;
+		expect(body.managed_tool_config).toEqual({
+			enabled_tools: ["create_forward_schedule", "list_forward_schedules", "delete_forward_schedule"],
+		});
+	});
+
+	test("omits managed_tool_config when undeclared so an existing remote set is preserved", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		const body = mapForwardTemplate("assistant", decl, {
+			environment_id: "env_byoc",
+			vault_ids: [],
+			skill_ids: [],
+		}) as Record<string, any>;
+		expect("managed_tool_config" in body).toBe(false);
+	});
+
+	test("sends an explicit empty enabled_tools so managed tools can be turned off", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		decl.managed_tool_config = { enabled_tools: [] };
+		const body = mapForwardTemplate("assistant", decl, {
+			environment_id: "env_byoc",
+			vault_ids: [],
+			skill_ids: [],
+		}) as Record<string, any>;
+		expect(body.managed_tool_config).toEqual({ enabled_tools: [] });
+	});
+
 	test("uses the Forward endpoints for create, update, archive, and lookup", async () => {
 		const calls: Array<{ method: string; path: string; body?: unknown }> = [];
 		const adapter = new QoderAdapter("pt-test") as any;
@@ -368,6 +405,33 @@ describe("Forward delivery validation and runtime isolation", () => {
 		config.agents!.assistant!.delivery = { bailian: { type: "forward" } };
 		const diagnostics = validateProjectConfig(config);
 		expect(diagnostics.some((item) => item.code === "bailian.agent.delivery.forward.unsupported")).toBe(true);
+	});
+
+	test("accepts managed_tool_config on a forward-delivered Qoder agent", () => {
+		const config = forwardConfig();
+		config.agents!.assistant!.managed_tool_config = { enabled_tools: ["create_forward_schedule"] };
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code.includes("managed_tool_config"))).toBe(false);
+	});
+
+	test("rejects managed_tool_config on managed delivery because it is a Template field", () => {
+		const config = forwardConfig();
+		delete config.agents!.assistant!.delivery;
+		config.agents!.assistant!.managed_tool_config = { enabled_tools: ["create_forward_schedule"] };
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code === "qoder.agent.managed_tool_config.forward_required")).toBe(true);
+	});
+
+	test("rejects managed_tool_config on providers other than Qoder", () => {
+		const config = forwardConfig();
+		config.providers = { bailian: {} };
+		config.defaults = { provider: "bailian" };
+		delete config.agents!.assistant!.delivery;
+		delete config.agents!.assistant!.tunnel;
+		delete config.agents!.assistant!.environment_variables;
+		config.agents!.assistant!.managed_tool_config = { enabled_tools: ["create_forward_schedule"] };
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code === "bailian.agent.managed_tool_config.unsupported")).toBe(true);
 	});
 
 	test("rejects managed deployments that reference a forward template", () => {

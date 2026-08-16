@@ -63,15 +63,18 @@ export function computeReplacementFingerprint(address: ResourceAddress, config: 
 	if (address.type !== "channel") return undefined;
 	const decl = config.channels?.[address.name];
 	if (!decl) return undefined;
-	return contentHash({ channel_type: decl.type, credentials: decl.credentials ?? {} });
+	return contentHash({ channel_type: decl.type, mode: decl.mode ?? "fixed", credentials: decl.credentials ?? {} });
 }
 
 function resolveChannelReferenceIds(
-	decl: { agent: string; identity?: string },
+	decl: { agent?: string; identity?: string; mode?: "fixed" | "pairing" },
 	config: ProjectConfig,
 	provider: string,
 	state?: HashStateLookup,
 ): Record<string, string | null | undefined> {
+	if (decl.mode === "pairing" || !decl.agent) {
+		return { mode: "pairing" };
+	}
 	const agent = config.agents?.[decl.agent];
 	const agentType = agent?.delivery?.[provider]?.type === "forward" ? "template" : "agent";
 	const identity = decl.identity ?? config.defaults?.identity;

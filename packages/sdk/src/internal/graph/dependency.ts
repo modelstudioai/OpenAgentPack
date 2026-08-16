@@ -190,6 +190,8 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				const channelAddr: ResourceAddress = { type: "channel", name, provider };
 				addNode(channelAddr);
 
+				if (decl.mode === "pairing" || !decl.agent) continue;
+
 				const agentDecl = config.agents?.[decl.agent];
 				const agentType = agentDecl ? resolveAgentMaterialization(provider, agentDecl).resourceType : "agent";
 				const agentAddr: ResourceAddress = { type: agentType, name: decl.agent, provider };

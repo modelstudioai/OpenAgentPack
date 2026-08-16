@@ -113,7 +113,10 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 	}
 
 	for (const [name, channel] of Object.entries(config.channels ?? {})) {
-		if (!agentNames.has(channel.agent)) {
+		if (channel.mode === "pairing") continue;
+		if (!channel.agent) {
+			diagnostics.error("config.channel.agent.required", `channel.${name}: fixed-mode channels require agent`);
+		} else if (!agentNames.has(channel.agent)) {
 			diagnostics.error("config.channel.agent.unknown", `channel.${name}: references unknown agent '${channel.agent}'`);
 		}
 		const identity = channel.identity ?? config.defaults?.identity;
@@ -205,29 +208,31 @@ export function collectProviderCapabilities(
 			}
 
 			if (providerName === "qoder") {
-				const agent = config.agents?.[channel.agent];
-				if (agent?.provider && agent.provider !== providerName) {
-					diagnostics.error(
-						"config.channel.agent.provider_mismatch",
-						`channel.${name}: agent '${channel.agent}' is pinned to provider '${agent.provider}'.`,
-						{ type: "channel", name, provider: providerName },
-					);
-				}
-				const identityName = channel.identity ?? config.defaults?.identity;
-				const identity = identityName ? config.identities?.[identityName] : undefined;
-				if (identity?.provider && identity.provider !== providerName) {
-					diagnostics.error(
-						"config.channel.identity.provider_mismatch",
-						`channel.${name}: identity '${identityName}' is pinned to provider '${identity.provider}'.`,
-						{ type: "channel", name, provider: providerName },
-					);
-				}
-				if (agent && agent.delivery?.qoder?.type !== "forward") {
-					diagnostics.error(
-						"qoder.channel.forward_template.required",
-						`channel.${name}: Qoder Channels require agent '${channel.agent}' to use delivery.qoder.type: forward.`,
-						{ type: "channel", name, provider: providerName },
-					);
+				if (channel.mode !== "pairing" && channel.agent) {
+					const agent = config.agents?.[channel.agent];
+					if (agent?.provider && agent.provider !== providerName) {
+						diagnostics.error(
+							"config.channel.agent.provider_mismatch",
+							`channel.${name}: agent '${channel.agent}' is pinned to provider '${agent.provider}'.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
+					const identityName = channel.identity ?? config.defaults?.identity;
+					const identity = identityName ? config.identities?.[identityName] : undefined;
+					if (identity?.provider && identity.provider !== providerName) {
+						diagnostics.error(
+							"config.channel.identity.provider_mismatch",
+							`channel.${name}: identity '${identityName}' is pinned to provider '${identity.provider}'.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
+					if (agent && agent.delivery?.qoder?.type !== "forward") {
+						diagnostics.error(
+							"qoder.channel.forward_template.required",
+							`channel.${name}: Qoder Channels require agent '${channel.agent}' to use delivery.qoder.type: forward.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
 				}
 				const requiredCredentials: Record<string, string[]> = {
 					dingtalk: ["client_id", "client_secret"],
@@ -303,6 +308,13 @@ export function collectProviderCapabilities(
 				diagnostics.error(
 					`${providerName}.template.session_resources.unsupported`,
 					`agent.${name}: Forward delivery cannot attach Agent Session resources; use managed delivery.`,
+					address,
+				);
+			}
+			if (delivery !== "forward" && agent.managed_tool_config) {
+				diagnostics.error(
+					`${providerName}.agent.managed_tool_config.forward_required`,
+					`agent.${name}: managed_tool_config applies to Forward Templates; set delivery.${providerName}.type: forward or remove it.`,
 					address,
 				);
 			}
@@ -460,6 +472,13 @@ export function collectProviderCapabilities(
 					diagnostics.error(
 						`${providerName}.agent.environment_variables.unsupported`,
 						`agent.${name}: environment_variables is supported only by Qoder; remove it or pin this agent to qoder.`,
+						{ type: "agent", name, provider: providerName },
+					);
+				}
+				if (agent.managed_tool_config && (!agent.provider || agent.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.agent.managed_tool_config.unsupported`,
+						`agent.${name}: managed_tool_config is supported only by Qoder; remove it or pin this agent to qoder.`,
 						{ type: "agent", name, provider: providerName },
 					);
 				}
