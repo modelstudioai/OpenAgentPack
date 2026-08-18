@@ -3,9 +3,20 @@ import type { components, paths } from "@/lib/api/generated/schema";
 export type ProjectSummary = components["schemas"]["ProjectSummary"];
 export type ProjectAgent = ProjectSummary["agents"][number];
 export type AgentPlan = components["schemas"]["AgentPlanResponse"];
+export type ProjectPlan = components["schemas"]["ProjectPlanResponse"];
+export type ProjectDeclarations = components["schemas"]["ProjectDeclarationsResponse"];
+export type ProjectDeclaration = ProjectDeclarations["resources"][number];
+export type DeclarationType = ProjectDeclaration["type"];
+export type DeclarationPreview = components["schemas"]["DeclarationPreviewResponse"];
+export type DeclarationCommit = components["schemas"]["DeclarationCommitResponse"];
 export type SessionDetail = components["schemas"]["CreateProjectSessionResponse"];
 export type Operation = components["schemas"]["OperationResponse"];
 export type OperationEvent = components["schemas"]["OperationResponse"]["events"][number];
+export interface DeclarationPatchOperation {
+	op: "set" | "remove";
+	path: string[];
+	value?: unknown;
+}
 type AttachmentListResponse =
 	paths["/api/project/agents/{agentId}/attachments"]["get"]["responses"][200]["content"]["application/json"];
 export type Attachment = AttachmentListResponse["attachments"][number];
@@ -31,6 +42,63 @@ export async function applyAgent(
 	confirmDestructive: boolean,
 ): Promise<{ operation_id: string; status: "queued" }> {
 	return requestJson(`/api/project/agents/${encodeURIComponent(agentId)}/apply`, {
+		method: "POST",
+		body: JSON.stringify({ plan_token: planToken, confirm_destructive: confirmDestructive }),
+	});
+}
+
+export async function listProjectDeclarations(): Promise<ProjectDeclarations> {
+	return requestJson("/api/project/declarations");
+}
+
+export async function previewDeclaration(
+	type: DeclarationType,
+	id: string,
+	baseRevision: string,
+	action: "update" | "delete",
+	operations: DeclarationPatchOperation[] = [],
+): Promise<DeclarationPreview> {
+	return requestJson(declarationUrl(type, id, "/preview"), {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision, action, operations }),
+	});
+}
+
+export async function updateDeclaration(
+	type: DeclarationType,
+	id: string,
+	baseRevision: string,
+	operations: DeclarationPatchOperation[],
+): Promise<DeclarationCommit> {
+	return requestJson(declarationUrl(type, id), {
+		method: "PATCH",
+		body: JSON.stringify({ base_revision: baseRevision, operations }),
+	});
+}
+
+export async function deleteDeclaration(
+	type: DeclarationType,
+	id: string,
+	baseRevision: string,
+): Promise<DeclarationCommit> {
+	return requestJson(declarationUrl(type, id), {
+		method: "DELETE",
+		body: JSON.stringify({ base_revision: baseRevision }),
+	});
+}
+
+export async function planProject(): Promise<ProjectPlan> {
+	return requestJson("/api/project/plan", {
+		method: "POST",
+		body: JSON.stringify({ refresh: true }),
+	});
+}
+
+export async function applyProject(
+	planToken: string,
+	confirmDestructive: boolean,
+): Promise<{ operation_id: string; status: "queued" }> {
+	return requestJson("/api/project/apply", {
 		method: "POST",
 		body: JSON.stringify({ plan_token: planToken, confirm_destructive: confirmDestructive }),
 	});
@@ -103,6 +171,10 @@ export function operationEventSource(operationId: string, after = -1): EventSour
 
 export function sessionEventSource(sessionId: string, after = -1): EventSource {
 	return new EventSource(`/api/sessions/${encodeURIComponent(sessionId)}/events?after=${after}`);
+}
+
+function declarationUrl(type: DeclarationType, id: string, suffix = ""): string {
+	return `/api/project/declarations/${encodeURIComponent(type)}/${encodeURIComponent(id)}${suffix}`;
 }
 
 async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {

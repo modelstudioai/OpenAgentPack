@@ -78,13 +78,16 @@ The mechanics are a single `agents.yaml`, a `validate → plan → apply` workfl
 
 ```bash
 agents init            # interactive wizard writes a starter agents.yaml
+agents init --git my-agent # scaffold a local Aone-ready repository
 agents validate        # offline YAML check, no API calls
 agents plan            # preview create / update / delete
 agents apply -y        # apply changes
 agents destroy         # tear down managed resources
 ```
 
-Run `agents playground -f agents.yaml` to open an Agent directly in Preview; single-Agent projects are selected automatically, while multi-Agent projects accept `--agent <id>` or open the Workbench for selection. Use `agents workbench -f agents.yaml` to open the project console without creating a Session. Playground reads every Agent and Provider from YAML, watches local dependencies, and keeps YAML read-only while you Plan, Apply, run Sessions, and inspect events and artifacts. Missing, invalid, or empty projects open the diagnostic Workbench.
+The explicit `--git` repository mode creates project files, a pinned CLI dependency, a tracked `agents.state.json`, Aone check/deploy pipelines under `.aoneci/`, and a local `main` Git repository. Bind the check pipeline to Codeup merge-request events; it validates and plans without applying. The deploy pipeline applies non-destructive local changes on `main` and commits updated state back to `main`; its `--ci` policy blocks deletes and remote drift for separate explicit approval. Run `agents init --git .` inside an existing project to add this scaffolding without replacing `agents.yaml`. Without `--git`, `agents init` retains its original current-directory behavior. Init itself never creates the Codeup remote, commits, pushes, or mutates cloud resources. Configure Aone secrets, checkout write permission, concurrency `1`, and any approval in the Aone UI before enabling deployment.
+
+Run `agents playground -f agents.yaml` to open an Agent directly in Preview; single-Agent projects are selected automatically, while multi-Agent projects accept `--agent <id>` or open the Workbench for selection. Use `agents workbench -f agents.yaml` to open the project console without creating a Session. Playground reads every Agent and Provider from YAML and watches local dependencies. In the Workbench, Resources can edit or remove existing Agent, Environment, Skill, Vault, Memory Store, and File declarations through a server-generated YAML Diff; saving updates the working-tree `agents.yaml`, automatically refreshes the project Plan, and never applies, commits, or pushes without a separate user action. Deployment and Channel declarations stay read-only and are excluded from Workbench project Apply. Missing or invalid projects open the diagnostic Workbench.
 
 ▶ [Watch the full Playground demo](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 

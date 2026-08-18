@@ -166,6 +166,524 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/project/declarations": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Editable declarations already present in agents.yaml */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectDeclarationsResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/declarations/{type}/{id}/preview": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					type: "agent" | "environment" | "skill" | "vault" | "memory_store" | "file";
+					id: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+						/** @enum {string} */
+						action: "update" | "delete";
+						operations?: {
+							/** @enum {string} */
+							op: "set" | "remove";
+							path: string[];
+							value?: unknown;
+						}[];
+					};
+				};
+			};
+			responses: {
+				/** @description Validate and preview an in-memory declaration change */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["DeclarationPreviewResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/declarations/{type}/{id}": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		delete: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					type: "agent" | "environment" | "skill" | "vault" | "memory_store" | "file";
+					id: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Atomically remove an unreferenced declaration from agents.yaml */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["DeclarationCommitResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		options?: never;
+		head?: never;
+		patch: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					type: "agent" | "environment" | "skill" | "vault" | "memory_store" | "file";
+					id: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+						operations: {
+							/** @enum {string} */
+							op: "set" | "remove";
+							path: string[];
+							value?: unknown;
+						}[];
+					};
+				};
+			};
+			responses: {
+				/** @description Atomically update an existing declaration in agents.yaml */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["DeclarationCommitResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		trace?: never;
+	};
+	"/api/project/plan": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						refresh?: boolean;
+					};
+				};
+			};
+			responses: {
+				/** @description Plan all non-Deployment, non-Channel project runtime resources */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectPlanResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/apply": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						plan_token: string;
+						confirm_destructive?: boolean;
+					};
+				};
+			};
+			responses: {
+				/** @description Project runtime apply accepted as an asynchronous operation */
+				202: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectApplyResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/project/agents/{agentId}/plan": {
 		parameters: {
 			query?: never;
@@ -1494,6 +2012,164 @@ export interface components {
 				message: string;
 			};
 		};
+		ProjectDeclarationsResponse: {
+			revision: string;
+			resources: {
+				/** @enum {string} */
+				type: "agent" | "environment" | "skill" | "vault" | "memory_store" | "file";
+				id: string;
+				declaration: {
+					[key: string]: unknown;
+				};
+				read_only_paths: string[][];
+				references: {
+					type: string;
+					id: string;
+					path: string;
+				}[];
+			}[];
+		};
+		DeclarationPreviewResponse: {
+			/** @enum {string} */
+			type: "agent" | "environment" | "skill" | "vault" | "memory_store" | "file";
+			id: string;
+			/** @enum {string} */
+			action: "update" | "delete";
+			base_revision: string;
+			before_yaml: string;
+			after_yaml: string;
+			diagnostics: {
+				/** @enum {string} */
+				severity: "error" | "warning" | "info";
+				code: string;
+				message: string;
+				resource?: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+			}[];
+			references: {
+				type: string;
+				id: string;
+				path: string;
+			}[];
+			can_commit: boolean;
+		};
+		DeclarationCommitResponse: components["schemas"]["DeclarationPreviewResponse"] & {
+			new_revision: string;
+		};
+		ProjectPlanResponse: {
+			/** @enum {string} */
+			scope: "project_runtime";
+			project_revision: string;
+			plan_token: string;
+			expires_at: string;
+			fingerprint: string;
+			actions: {
+				/** @enum {string} */
+				action: "create" | "update" | "delete" | "no-op";
+				address: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+				previousAddress?: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+				reason: string;
+				/** @enum {string} */
+				driftKind?: "none" | "local" | "remote" | "both";
+				/** @enum {string} */
+				readinessImpact?: "none" | "non_blocking" | "blocking";
+				changedPaths?: string[];
+				before?: {
+					[key: string]: unknown;
+				};
+				after?: {
+					[key: string]: unknown;
+				};
+				dependencies: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				}[];
+			}[];
+			diagnostics: {
+				/** @enum {string} */
+				severity: "error" | "warning" | "info";
+				code: string;
+				message: string;
+				resource?: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+			}[];
+			destructive: boolean;
+		};
+		ProjectApplyResponse: {
+			operation_id: string;
+			/** @enum {string} */
+			status: "queued";
+		};
 		AgentPlanResponse: {
 			agent_id: string;
 			provider: string;
@@ -1667,8 +2343,8 @@ export interface components {
 		OperationResponse: {
 			id: string;
 			/** @enum {string} */
-			type: "agent.apply";
-			agent_id: string;
+			type: "agent.apply" | "project.apply";
+			agent_id?: string;
 			/** @enum {string} */
 			status: "queued" | "running" | "completed" | "failed" | "interrupted";
 			created_at: string;

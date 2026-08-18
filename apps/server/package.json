@@ -18,7 +18,8 @@
 		"@hono/zod-openapi": "^1.4.0",
 		"@openagentpack/sdk": "workspace:*",
 		"chokidar": "^4.0.3",
-		"hono": "^4.12.28"
+		"hono": "^4.12.28",
+		"yaml": "^2.9.0"
 	},
 	"devDependencies": {
 		"@openagentpack/playbooks": "workspace:*",

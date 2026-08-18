@@ -105,6 +105,11 @@ export class ProjectRuntimeManager {
 		return this.snapshot;
 	}
 
+	async computeCurrentSourceRevision(): Promise<string> {
+		await this.ensureStarted();
+		return computeProjectRevision([...this.snapshot.sourcePaths]);
+	}
+
 	requireRuntimeInput(): BackendRuntimeInput {
 		if (this.snapshot.status !== "valid" || !this.snapshot.input) {
 			throw new ProjectUnavailableError(
@@ -151,6 +156,12 @@ export class ProjectRuntimeManager {
 	async refreshAfterMutation(): Promise<void> {
 		this.readinessCache = undefined;
 		await this.reload(false);
+	}
+
+	async refreshAfterSourceMutation(): Promise<string | undefined> {
+		this.readinessCache = undefined;
+		await this.reload(false);
+		return this.snapshot.revision;
 	}
 
 	scheduleReload(): void {

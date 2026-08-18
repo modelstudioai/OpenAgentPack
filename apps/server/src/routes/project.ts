@@ -6,11 +6,28 @@ import {
 	AgentApplyResponseSchema,
 	AgentPlanBodySchema,
 	AgentPlanResponseSchema,
+	DeclarationCommitResponseSchema,
+	DeclarationDeleteBodySchema,
+	DeclarationParamsSchema,
+	DeclarationPatchBodySchema,
+	DeclarationPreviewBodySchema,
+	DeclarationPreviewResponseSchema,
 	ProjectAgentParamsSchema,
+	ProjectApplyBodySchema,
+	ProjectApplyResponseSchema,
+	ProjectDeclarationsResponseSchema,
+	ProjectPlanBodySchema,
+	ProjectPlanResponseSchema,
 	ProjectSummarySchema,
 } from "@/schemas/project";
+import {
+	commitDeclarationChange,
+	listProjectDeclarations,
+	previewDeclarationChange,
+} from "@/services/project-declarations";
 import { projectRuntimeManager } from "@/services/project-manager";
 import { planTokenStore, projectOperationStore } from "@/services/project-operations";
+import { applyProjectRuntimeResources, planProjectRuntimeResources } from "@/services/project-runtime-plan";
 
 export const projectRoute = new OpenAPIHono();
 
@@ -80,6 +97,173 @@ projectRoute.openapi(streamProjectRoute, async (context) => {
 	return new Response(stream, { headers: sseHeaders() });
 });
 
+const listDeclarationsRoute = createRoute({
+	method: "get",
+	path: "/project/declarations",
+	responses: {
+		200: {
+			description: "Editable declarations already present in agents.yaml",
+			content: { "application/json": { schema: ProjectDeclarationsResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(listDeclarationsRoute, async (context) => context.json(await listProjectDeclarations(), 200));
+
+const previewDeclarationRoute = createRoute({
+	method: "post",
+	path: "/project/declarations/{type}/{id}/preview",
+	request: {
+		params: DeclarationParamsSchema,
+		body: { content: { "application/json": { schema: DeclarationPreviewBodySchema } } },
+	},
+	responses: {
+		200: {
+			description: "Validate and preview an in-memory declaration change",
+			content: { "application/json": { schema: DeclarationPreviewResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(previewDeclarationRoute, async (context) => {
+	const { type, id } = context.req.valid("param");
+	const { base_revision: baseRevision, action, operations } = context.req.valid("json");
+	return context.json(await previewDeclarationChange({ type, id, baseRevision, action, operations }), 200);
+});
+
+const patchDeclarationRoute = createRoute({
+	method: "patch",
+	path: "/project/declarations/{type}/{id}",
+	request: {
+		params: DeclarationParamsSchema,
+		body: { content: { "application/json": { schema: DeclarationPatchBodySchema } } },
+	},
+	responses: {
+		200: {
+			description: "Atomically update an existing declaration in agents.yaml",
+			content: { "application/json": { schema: DeclarationCommitResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(patchDeclarationRoute, async (context) => {
+	const { type, id } = context.req.valid("param");
+	const { base_revision: baseRevision, operations } = context.req.valid("json");
+	return context.json(await commitDeclarationChange({ type, id, baseRevision, action: "update", operations }), 200);
+});
+
+const deleteDeclarationRoute = createRoute({
+	method: "delete",
+	path: "/project/declarations/{type}/{id}",
+	request: {
+		params: DeclarationParamsSchema,
+		body: { content: { "application/json": { schema: DeclarationDeleteBodySchema } } },
+	},
+	responses: {
+		200: {
+			description: "Atomically remove an unreferenced declaration from agents.yaml",
+			content: { "application/json": { schema: DeclarationCommitResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(deleteDeclarationRoute, async (context) => {
+	const { type, id } = context.req.valid("param");
+	const { base_revision: baseRevision } = context.req.valid("json");
+	return context.json(await commitDeclarationChange({ type, id, baseRevision, action: "delete" }), 200);
+});
+
+const planProjectRoute = createRoute({
+	method: "post",
+	path: "/project/plan",
+	request: { body: { content: { "application/json": { schema: ProjectPlanBodySchema } } } },
+	responses: {
+		200: {
+			description: "Plan all non-Deployment, non-Channel project runtime resources",
+			content: { "application/json": { schema: ProjectPlanResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(planProjectRoute, async (context) => {
+	await projectRuntimeManager.ensureStarted();
+	const { refresh } = context.req.valid("json");
+	const snapshot = projectRuntimeManager.getSnapshot();
+	const plan = await planProjectRuntimeResources(projectRuntimeManager.requireRuntimeInput(), {
+		refresh: refresh ?? true,
+	});
+	const errorDiagnostic = plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+	if (errorDiagnostic) throw statusError(errorDiagnostic.message, 422);
+	const scope = { kind: "project" as const };
+	const token = planTokenStore.issue({
+		scope,
+		projectRevision: snapshot.revision!,
+		fingerprint: plan.fingerprint,
+		destructive: plan.destructiveActions.length > 0,
+	});
+	return context.json(
+		{
+			scope: "project_runtime" as const,
+			project_revision: snapshot.revision!,
+			plan_token: token.token,
+			expires_at: new Date(token.expiresAt).toISOString(),
+			fingerprint: plan.fingerprint,
+			actions: redactForWire(plan.actions),
+			diagnostics: redactForWire(plan.diagnostics),
+			destructive: token.destructive,
+		},
+		200,
+	);
+});
+
+const applyProjectRoute = createRoute({
+	method: "post",
+	path: "/project/apply",
+	request: { body: { content: { "application/json": { schema: ProjectApplyBodySchema } } } },
+	responses: {
+		202: {
+			description: "Project runtime apply accepted as an asynchronous operation",
+			content: { "application/json": { schema: ProjectApplyResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(applyProjectRoute, async (context) => {
+	await projectRuntimeManager.ensureStarted();
+	const { plan_token: planToken, confirm_destructive: confirmDestructive } = context.req.valid("json");
+	const snapshot = projectRuntimeManager.getSnapshot();
+	const scope = { kind: "project" as const };
+	const token = planTokenStore.require(planToken, scope, snapshot.revision ?? "");
+	if (token.destructive && !confirmDestructive) {
+		throw statusError(
+			"This plan contains destructive actions. Set confirm_destructive to true after reviewing it.",
+			422,
+		);
+	}
+	const input = projectRuntimeManager.requireRuntimeInput();
+	const freshPlan = await planProjectRuntimeResources(input, { refresh: true });
+	if (freshPlan.fingerprint !== token.fingerprint) {
+		planTokenStore.consume(planToken);
+		throw statusError("Plan is stale because project or remote resources changed. Create a new plan.", 409);
+	}
+	planTokenStore.require(planToken, scope, projectRuntimeManager.getSnapshot().revision ?? "");
+
+	const operation = projectOperationStore.create(scope, async (reporter) => {
+		const run = await applyProjectRuntimeResources(input, token.fingerprint, { onFeedback: reporter.feedback });
+		planTokenStore.invalidateAll();
+		await projectRuntimeManager.refreshAfterMutation();
+		return redactForWire(run);
+	});
+	planTokenStore.consume(planToken);
+	return context.json({ operation_id: operation.id, status: "queued" as const }, 202);
+});
+
 const planAgentRoute = createRoute({
 	method: "post",
 	path: "/project/agents/{agentId}/plan",
@@ -110,7 +294,7 @@ projectRoute.openapi(planAgentRoute, async (context) => {
 		throw statusError(plan.diagnostics.find((diagnostic) => diagnostic.severity === "error")!.message, 422);
 	}
 	const token = planTokenStore.issue({
-		agentId,
+		scope: { kind: "agent", agentId },
 		projectRevision: snapshot.revision!,
 		fingerprint: plan.fingerprint,
 		destructive: plan.destructiveActions.length > 0,
@@ -153,7 +337,8 @@ projectRoute.openapi(applyAgentRoute, async (context) => {
 	const { plan_token: planToken, confirm_destructive: confirmDestructive } = context.req.valid("json");
 	const snapshot = projectRuntimeManager.getSnapshot();
 	const input = projectRuntimeManager.requireRuntimeInput();
-	const token = planTokenStore.require(planToken, agentId, snapshot.revision!);
+	const scope = { kind: "agent" as const, agentId };
+	const token = planTokenStore.require(planToken, scope, snapshot.revision!);
 	if (token.destructive && !confirmDestructive) {
 		throw statusError(
 			"This plan contains destructive actions. Set confirm_destructive to true after reviewing it.",
@@ -171,13 +356,13 @@ projectRoute.openapi(applyAgentRoute, async (context) => {
 	}
 	const currentSnapshot = projectRuntimeManager.getSnapshot();
 	try {
-		planTokenStore.require(planToken, agentId, currentSnapshot.revision ?? "");
+		planTokenStore.require(planToken, scope, currentSnapshot.revision ?? "");
 	} catch {
 		planTokenStore.consume(planToken);
 		throw statusError("Plan is stale because project configuration changed. Create a new plan.", 409);
 	}
 
-	const operation = projectOperationStore.create(agentId, async (reporter) => {
+	const operation = projectOperationStore.create(scope, async (reporter) => {
 		const run = await syncAgentResourcesWithStateBackend(input, agentId, {
 			refresh: true,
 			scope: "runtime",

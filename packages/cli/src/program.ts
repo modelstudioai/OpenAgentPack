@@ -111,7 +111,15 @@ export const program = new Command()
 		});
 	});
 
-program.command("init").description("Create a new agents.yaml template").action(initCommand);
+program
+	.command("init")
+	.description("Create an agents.yaml template or a local Aone-ready project repository")
+	.option("--provider <provider>", "Provider to configure (bailian, claude, qoder, ark, or all)")
+	.option("--agent-name <name>", "Name of the first Agent")
+	.option("--git <directory>", "Create a local Aone-ready project repository in this directory")
+	.action((options: { provider?: string; agentName?: string; git?: string }) =>
+		initCommand(options, program.version() ?? "0.0.0-dev"),
+	);
 
 program
 	.command("playground")
@@ -151,6 +159,7 @@ program
 	.description("Apply the planned changes to create/update/delete resources")
 	.addOption(configFileOption())
 	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--ci", "Run non-interactively while blocking deletes and remote drift")
 	.option("--refresh <value>", "Refresh state from remote before planning (true/false)", parseBooleanOption, true)
 	.option("--refresh-only", "Refresh state without mutating remote resources")
 	.option(

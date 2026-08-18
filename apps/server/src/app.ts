@@ -13,7 +13,7 @@ app.use(
 	"/*",
 	cors({
 		origin: process.env.CORS_ORIGIN?.split(",") ?? ["http://localhost:3000"],
-		allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+		allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
 		allowHeaders: ["Content-Type", "X-Agents-Playground-Token"],
 		maxAge: 86400,
 	}),

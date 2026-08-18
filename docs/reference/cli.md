@@ -18,11 +18,27 @@ Provider-backed commands such as `plan`, `apply`, `models`, `session`, and `depl
 
 Create a new `agents.yaml` template via an interactive wizard (provider selection + agent name). Appends `agents.state.json` and `.env` to `.gitignore`.
 
+Pass a directory to scaffold a local Aone-ready project repository:
+
+```bash
+agents init --git my-agent --provider bailian --agent-name assistant
+```
+
+For a directory that already contains `agents.yaml`, `agents init --git .` upgrades the project in place: it preserves the declaration and existing README/Aone workflows, creates or preserves `agents.state.json`, removes that file from `.gitignore`, merges missing package and environment-example entries, and initializes Git only when `.git` is absent. For a new or empty directory, repository mode creates `agents.yaml`, an external instructions file, `.env.example`, `.gitignore`, `package.json`, `README.md`, `agents.state.json`, `.aoneci/openagentpack-check.yml`, and `.aoneci/openagentpack.yml`, then initializes a local Git repository on `main`. The check pipeline validates, plans, and uploads the plan artifact without applying; bind it to Codeup merge-request events in Aone. The main-push pipeline repeats validation/plan, applies through the non-interactive `--ci` policy, and commits updated state back to `main`. CI policy blocks deletes and remote drift for a separate approved workflow. Init itself does not create a Codeup remote, commit, push, or apply cloud changes. Aone secrets, checkout write permission, serial execution, merge-request binding, and approval gates are platform-side settings.
+
+| Option | Description |
+|--------|-------------|
+| `--provider <provider>` | Configure `bailian`, `claude`, `qoder`, `ark`, or `all` without prompting. |
+| `--agent-name <name>` | Set the first Agent name without prompting. |
+| `--git <directory>` | Create an Aone-ready project in a new/empty directory, or add Git CI scaffolding when the directory already contains `agents.yaml`. Without it, `agents init` keeps the original current-directory behavior. |
+
 ## `agents playground`
 
 Launch the local web UI and open an `agents.yaml` Agent directly in Preview.
 
-Playground opens the project selected by `-f`, watches the YAML and its local dependencies, and uses each Agent's declared Provider. A single Agent is selected automatically. For multiple Agents, pass `--agent <id>`; otherwise the Workbench opens for selection. Missing, invalid, or empty projects also open the diagnostic Workbench. YAML and Deployment declarations are read-only in this UI.
+Playground opens the project selected by `-f`, watches the YAML and its local dependencies, and uses each Agent's declared Provider. A single Agent is selected automatically. For multiple Agents, pass `--agent <id>`; otherwise the Workbench opens for selection. Missing or invalid projects also open the diagnostic Workbench.
+
+The Workbench Resources tab edits or removes declarations already present in `agents.yaml`; it has no create action. Agent, Environment, Skill, Vault, Memory Store, and File changes require a server-generated YAML Diff before save. Local file-backed content and external ownership fields remain read-only, and referenced declarations cannot be removed. Saving writes only `agents.yaml`, refreshes the project, and automatically opens a new project runtime Plan. Apply remains a separate confirmation, while Git commit and push remain outside the Workbench. Deployment and Channel declarations are read-only and excluded from this project Apply.
 
 | Option | Description |
 |--------|-------------|
@@ -31,7 +47,7 @@ Playground opens the project selected by `-f`, watches the YAML and its local de
 | `--port <n>` | Port to serve on (default `4848`). |
 | `--no-open` | Do not open a browser automatically. |
 
-For each Agent, review a runtime-scoped Plan before Apply. Apply uses a single-use, ten-minute Plan token and rejects stale or newly changed plans. Temporary attachments are uploaded for Sessions without modifying YAML or state and remain recorded locally until their explicit remote deletion succeeds.
+Workbench Changes reviews a project runtime Plan before Apply. The plan covers declared runtime resources, including transitive dependencies, but excludes Deployment and Channel actions. The existing Agent-scoped Plan/Apply protocol remains available to Session Preview callers. Apply uses a single-use, ten-minute Plan token, requires explicit confirmation for destructive actions, replans immediately before execution, and rejects stale or newly changed plans. Temporary attachments are uploaded for Sessions without modifying YAML or state and remain recorded locally until their explicit remote deletion succeeds.
 
 ## `agents workbench`
 
@@ -65,6 +81,7 @@ Apply the planned changes to create / update / delete resources.
 | Option | Description |
 |--------|-------------|
 | `-y, --yes` | Skip confirmation prompt. |
+| `--ci` | Run non-interactively, but block delete actions and remote/combined drift. Cannot be combined with `--yes` or `--refresh false`. |
 | `--provider <name>` | Target provider (`all` by default). |
 | `--refresh <bool>` | Refresh state from remote before planning (default `true`). |
 | `--refresh-only` | Refresh state without mutating remote resources. |

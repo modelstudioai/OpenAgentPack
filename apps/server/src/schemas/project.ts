@@ -43,6 +43,61 @@ export const ProjectSummarySchema = z
 
 export const ProjectAgentParamsSchema = z.object({ agentId: z.string().min(1) });
 
+export const DeclarationTypeSchema = z.enum(["agent", "environment", "skill", "vault", "memory_store", "file"]);
+export const DeclarationParamsSchema = z.object({
+	type: DeclarationTypeSchema,
+	id: z.string().min(1),
+});
+export const DeclarationPatchOperationSchema = z.object({
+	op: z.enum(["set", "remove"]),
+	path: z.array(z.string().min(1)).min(1),
+	value: z.unknown().optional(),
+});
+export const DeclarationReferenceSchema = z.object({
+	type: z.string(),
+	id: z.string(),
+	path: z.string(),
+});
+export const DeclarationResourceSchema = z.object({
+	type: DeclarationTypeSchema,
+	id: z.string(),
+	declaration: z.record(z.string(), z.unknown()),
+	read_only_paths: z.array(z.array(z.string())),
+	references: z.array(DeclarationReferenceSchema),
+});
+export const ProjectDeclarationsResponseSchema = z
+	.object({
+		revision: z.string(),
+		resources: z.array(DeclarationResourceSchema),
+	})
+	.openapi("ProjectDeclarationsResponse");
+export const DeclarationPreviewBodySchema = z.object({
+	base_revision: z.string().min(1),
+	action: z.enum(["update", "delete"]),
+	operations: z.array(DeclarationPatchOperationSchema).optional(),
+});
+export const DeclarationPatchBodySchema = z.object({
+	base_revision: z.string().min(1),
+	operations: z.array(DeclarationPatchOperationSchema).min(1),
+});
+export const DeclarationDeleteBodySchema = z.object({ base_revision: z.string().min(1) });
+export const DeclarationPreviewResponseSchema = z
+	.object({
+		type: DeclarationTypeSchema,
+		id: z.string(),
+		action: z.enum(["update", "delete"]),
+		base_revision: z.string(),
+		before_yaml: z.string(),
+		after_yaml: z.string(),
+		diagnostics: z.array(DiagnosticSchema),
+		references: z.array(DeclarationReferenceSchema),
+		can_commit: z.boolean(),
+	})
+	.openapi("DeclarationPreviewResponse");
+export const DeclarationCommitResponseSchema = DeclarationPreviewResponseSchema.extend({
+	new_revision: z.string(),
+}).openapi("DeclarationCommitResponse");
+
 export const AgentPlanBodySchema = z.object({ refresh: z.boolean().optional() });
 
 export const AgentPlanResponseSchema = z
@@ -68,6 +123,22 @@ export const AgentApplyResponseSchema = z
 	.object({ operation_id: z.string(), status: z.literal("queued") })
 	.openapi("AgentApplyResponse");
 
+export const ProjectPlanBodySchema = z.object({ refresh: z.boolean().optional() });
+export const ProjectPlanResponseSchema = z
+	.object({
+		scope: z.literal("project_runtime"),
+		project_revision: z.string(),
+		plan_token: z.string(),
+		expires_at: z.string(),
+		fingerprint: z.string(),
+		actions: z.array(PlannedActionSchema),
+		diagnostics: z.array(DiagnosticSchema),
+		destructive: z.boolean(),
+	})
+	.openapi("ProjectPlanResponse");
+export const ProjectApplyBodySchema = AgentApplyBodySchema;
+export const ProjectApplyResponseSchema = AgentApplyResponseSchema.openapi("ProjectApplyResponse");
+
 export const OperationStatusSchema = z.enum(["queued", "running", "completed", "failed", "interrupted"]);
 export const OperationEventSchema = z.object({
 	index: z.number().int().nonnegative(),
@@ -78,8 +149,8 @@ export const OperationEventSchema = z.object({
 export const OperationResponseSchema = z
 	.object({
 		id: z.string(),
-		type: z.literal("agent.apply"),
-		agent_id: z.string(),
+		type: z.enum(["agent.apply", "project.apply"]),
+		agent_id: z.string().optional(),
 		status: OperationStatusSchema,
 		created_at: z.string(),
 		updated_at: z.string(),

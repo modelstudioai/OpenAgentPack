@@ -38,6 +38,26 @@ agents init
 
 init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`，并把 `agents.state.json` 和 `.env` 加进 `.gitignore`，确保状态和密钥不会被提交。
 
+如果要生成一个由用户自行推送到内部 Codeup 的完整本地仓库，可以直接传目录：
+
+```bash
+agents init --git my-agents --provider bailian --agent-name assistant
+cd my-agents
+```
+
+显式指定 `--git` 后，仓库模式会初始化本地 `main` Git 仓库、跟踪 `agents.state.json`，并生成 `.aoneci/openagentpack-check.yml` 与 `.aoneci/openagentpack.yml`。需要在 Aone 中把检查流水线绑定到 Codeup 合并请求新建/更新事件；它只执行 validate 和基于真实远端状态的 Plan。代码 push 到 `main` 后，部署流水线会 plan、自动 apply 非破坏性的本地变更，并把更新后的 state commit 回 `main`。`agents apply --ci` 策略会阻断删除和远端漂移，这两类变更需要另一条显式审批流程。没有 `--git` 时保持原有当前目录行为，state 仍会被忽略。init 本身不会创建 Codeup 远端或推送 commit。
+
+启用流水线前，需要把 `agents.yaml` 引用的环境变量配置为 Aone 密钥，给 checkout 身份授予 `main` 写权限，把流水线并发度设为 `1`，并在 Aone 中配置合并请求检查或人工审批。Workbench 从本地 `.env` 取值；CI 可以使用相同变量名，但指向另一套 Base URL 和 API Key。
+
+如果此前已经执行过 `agents init`，可以在原项目中补齐仓库能力：
+
+```bash
+cd my-agents
+agents init --git .
+```
+
+该命令会保留 `agents.yaml`、已有 README 和 Aone workflow，创建或保留 `agents.state.json`，从 `.gitignore` 移除 state，增量合并 package 与本地文件 ignore 配置，并且只在 `.git` 不存在时初始化 Git。
+
 为 `bailian` provider、agent 名为 `assistant` 生成的文件如下：
 
 ```yaml

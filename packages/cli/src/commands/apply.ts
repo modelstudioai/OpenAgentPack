@@ -17,6 +17,22 @@ function classifyApplyPrompt(actions: PlannedAction[]): ApplyPromptKind {
 	return "planned_change";
 }
 
+export function assertCiApplyPolicy(actions: PlannedAction[]): void {
+	const deletes = actions.filter((action) => action.action === "delete");
+	if (deletes.length > 0) {
+		throw new UserError(
+			`CI policy blocked ${deletes.length} delete action(s). Review the plan and apply this destructive change through an explicitly approved workflow.`,
+		);
+	}
+
+	const drifted = actions.filter((action) => action.driftKind === "remote" || action.driftKind === "both");
+	if (drifted.length > 0) {
+		throw new UserError(
+			`CI policy blocked ${drifted.length} action(s) with remote drift. Review the remote changes before deciding whether YAML should overwrite them.`,
+		);
+	}
+}
+
 // Confirm callback for the SDK destructive policy (policy="prompt").
 async function confirmDestroy(deletes: PlannedAction[]): Promise<boolean> {
 	log.plain(chalk.red.bold(`\nResources will be destroyed.`));
@@ -86,11 +102,18 @@ async function confirmDrift(actions: PlannedAction[], file: string): Promise<boo
 export async function applyCommand(options: {
 	file: string;
 	yes?: boolean;
+	ci?: boolean;
 	provider?: string;
 	refresh?: boolean;
 	refreshOnly?: boolean;
 	concurrency?: number;
 }) {
+	if (options.ci && options.yes) {
+		throw new UserError("--ci cannot be combined with --yes.");
+	}
+	if (options.ci && options.refresh === false) {
+		throw new UserError("--ci requires remote state refresh and cannot be combined with --refresh false.");
+	}
 	const ctx = await buildCliRuntime(options.file);
 	assertProviderConfigured(ctx, options.provider);
 
@@ -114,6 +137,7 @@ export async function applyCommand(options: {
 	const creates = actionable.filter((a) => a.action === "create");
 	const updates = actionable.filter((a) => a.action === "update");
 	const deletes = planned.destructiveActions;
+	if (options.ci) assertCiApplyPolicy(actionable);
 
 	console.log(
 		`\n${chalk.green(`${creates.length} to create`)}, ${chalk.yellow(`${updates.length} to update`)}, ${chalk.red(`${deletes.length} to destroy`)}\n`,
@@ -142,7 +166,7 @@ export async function applyCommand(options: {
 	}
 
 	const destructiveDecision = await decideDestructive(deletes, {
-		policy: options.yes ? "force" : "prompt",
+		policy: options.yes || options.ci ? "force" : "prompt",
 		confirm: confirmDestroy,
 	});
 	if (destructiveDecision !== "proceed") {
@@ -152,7 +176,7 @@ export async function applyCommand(options: {
 		return;
 	}
 
-	if (!options.yes && deletes.length === 0) {
+	if (!options.yes && !options.ci && deletes.length === 0) {
 		const shouldApply = await confirmDrift(actionable, options.file);
 		if (!shouldApply) {
 			p.cancel("Apply cancelled. No remote resources were changed.", {

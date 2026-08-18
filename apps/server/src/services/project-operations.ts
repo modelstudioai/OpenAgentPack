@@ -6,12 +6,14 @@ const OPERATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface PlanTokenRecord {
 	token: string;
-	agentId: string;
+	scope: PlanScope;
 	projectRevision: string;
 	fingerprint: string;
 	destructive: boolean;
 	expiresAt: number;
 }
+
+export type PlanScope = { kind: "agent"; agentId: string } | { kind: "project" };
 
 export class OperationProtocolError extends Error {
 	constructor(
@@ -37,10 +39,10 @@ export class PlanTokenStore {
 		return record;
 	}
 
-	require(token: string, agentId: string, projectRevision: string): PlanTokenRecord {
+	require(token: string, scope: PlanScope, projectRevision: string): PlanTokenRecord {
 		this.evictExpired();
 		const record = this.records.get(token);
-		if (!record || record.agentId !== agentId || record.projectRevision !== projectRevision) {
+		if (!record || scopeKey(record.scope) !== scopeKey(scope) || record.projectRevision !== projectRevision) {
 			throw new OperationProtocolError("Plan is stale or no longer valid. Create a new plan before applying.", 409);
 		}
 		return record;
@@ -73,8 +75,8 @@ export interface OperationEvent {
 
 export interface ProjectOperation {
 	id: string;
-	type: "agent.apply";
-	agent_id: string;
+	type: "agent.apply" | "project.apply";
+	agent_id?: string;
 	status: OperationStatus;
 	created_at: string;
 	updated_at: string;
@@ -95,7 +97,7 @@ export class ProjectOperationStore {
 	private readonly listeners = new Map<string, Set<OperationListener>>();
 	private activeOperationId?: string;
 
-	create(agentId: string, executor: (reporter: OperationReporter) => Promise<unknown>): ProjectOperation {
+	create(scope: PlanScope, executor: (reporter: OperationReporter) => Promise<unknown>): ProjectOperation {
 		this.evictExpired();
 		if (this.activeOperationId) {
 			const active = this.operations.get(this.activeOperationId);
@@ -110,8 +112,8 @@ export class ProjectOperationStore {
 		const now = new Date().toISOString();
 		const operation: ProjectOperation = {
 			id: randomUUID(),
-			type: "agent.apply",
-			agent_id: agentId,
+			type: scope.kind === "agent" ? "agent.apply" : "project.apply",
+			...(scope.kind === "agent" ? { agent_id: scope.agentId } : {}),
 			status: "queued",
 			created_at: now,
 			updated_at: now,
@@ -145,7 +147,9 @@ export class ProjectOperationStore {
 	): Promise<void> {
 		operation.status = "running";
 		operation.updated_at = new Date().toISOString();
-		this.append(operation, "operation.started", { agent_id: operation.agent_id });
+		this.append(operation, "operation.started", {
+			scope: operation.type === "agent.apply" ? `agent:${operation.agent_id}` : "project",
+		});
 		const reporter: OperationReporter = {
 			emit: (type, data) => this.append(operation, type, data),
 			feedback: (event) => this.append(operation, "runtime.feedback", event),
@@ -197,3 +201,7 @@ export class ProjectOperationStore {
 
 export const planTokenStore = new PlanTokenStore();
 export const projectOperationStore = new ProjectOperationStore();
+
+function scopeKey(scope: PlanScope): string {
+	return scope.kind === "agent" ? `agent:${scope.agentId}` : "project";
+}

@@ -78,13 +78,16 @@ OpenAgentPack 在 Agent 和云平台之间建立一个声明式控制平面。�
 
 ```bash
 agents init            # 交互式向导生成 agents.yaml
+agents init --git my-agent # 生成本地 Aone-ready 仓库
 agents validate        # 离线校验，不发起 API 调用
 agents plan            # 预览 create / update / delete
 agents apply -y        # 执行变更
 agents destroy         # 销毁托管资源
 ```
 
-运行 `agents playground -f agents.yaml` 会直接打开 Agent Preview：单 Agent 项目自动选择，多 Agent 项目可传 `--agent <id>`，未指定时进入 Workbench 选择。使用 `agents workbench -f agents.yaml` 可直接打开项目控制台且不创建 Session。Playground 从 YAML 读取全部 Agent 和 Provider，监听本地依赖文件；YAML 保持只读，你可以执行 Plan、Apply、Session，并查看实时事件和 Artifact。配置缺失、非法或没有 Agent 时进入诊断 Workbench。
+显式指定 `--git` 后，仓库模式会生成项目文件、固定版本的 CLI 依赖、纳入版本管理的 `agents.state.json`、`.aoneci/` 下的 Aone 检查/部署流水线，并初始化本地 `main` Git 仓库。检查流水线需要在 Aone 中绑定 Codeup 合并请求事件，只执行 validate/plan；部署流水线在 `main` 上自动 apply 非破坏性的本地变更，并把更新后的 state commit 回 `main`。专用 `--ci` 策略会阻断删除和远端漂移，必须通过另一条显式审批流程处理。已有 `agents.yaml` 的项目可以执行 `agents init --git .` 增量补齐，不替换现有声明。没有 `--git` 时保持原有当前目录行为。init 本身不会创建 Codeup 远端、commit、push 或修改云端资源。启用部署前，需要在 Aone UI 配置密钥、checkout 写权限、并发度 `1` 和所需的人工审批。
+
+运行 `agents playground -f agents.yaml` 会直接打开 Agent Preview：单 Agent 项目自动选择，多 Agent 项目可传 `--agent <id>`，未指定时进入 Workbench 选择。使用 `agents workbench -f agents.yaml` 可直接打开项目控制台且不创建 Session。Playground 从 YAML 读取全部 Agent 和 Provider，并监听本地依赖文件。Workbench 的 Resources 页面可以通过服务端生成的 YAML Diff 编辑或移除已有 Agent、Environment、Skill、Vault、Memory Store 和 File 声明；保存只更新工作区中的 `agents.yaml` 并自动刷新项目 Plan，不会自动 Apply、commit 或 push。Deployment 和 Channel 声明继续只读，且不进入 Workbench 项目 Apply。配置缺失或非法时进入诊断 Workbench。
 
 ▶ [观看 Playground 完整演示](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 

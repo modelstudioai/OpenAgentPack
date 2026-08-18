@@ -22,10 +22,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-	type AgentPlan,
 	type Attachment,
-	applyAgent,
+	applyProject,
 	cancelSession,
+	type DeclarationType,
 	deleteAttachment,
 	getOperation,
 	getProject,
@@ -33,8 +33,9 @@ import {
 	type OperationEvent,
 	operationEventSource,
 	type ProjectAgent,
+	type ProjectPlan,
 	type ProjectSummary,
-	planAgent,
+	planProject,
 	projectEventSource,
 	type SessionDetail,
 	sendSessionMessage,
@@ -42,11 +43,14 @@ import {
 	startSession,
 	uploadAttachment,
 } from "@/lib/project-api";
+import { comparePlanActions } from "@/resources/plan-impact";
+import { ResourcesPanel } from "@/resources/ResourcesPanel";
 
-type WorkbenchTab = "overview" | "changes" | "debug" | "artifacts" | "deployments";
+type WorkbenchTab = "overview" | "resources" | "changes" | "debug" | "artifacts" | "deployments";
 
 const TAB_LABELS: Array<{ id: WorkbenchTab; label: string }> = [
 	{ id: "overview", label: "Overview" },
+	{ id: "resources", label: "Resources" },
 	{ id: "changes", label: "Changes" },
 	{ id: "debug", label: "Debug" },
 	{ id: "artifacts", label: "Artifacts" },
@@ -63,7 +67,8 @@ export default function App() {
 	const [providerFilter, setProviderFilter] = useState("all");
 	const [readinessFilter, setReadinessFilter] = useState("all");
 	const [tab, setTab] = useState<WorkbenchTab>("overview");
-	const [plan, setPlan] = useState<AgentPlan>();
+	const [plan, setPlan] = useState<ProjectPlan>();
+	const [baselinePlan, setBaselinePlan] = useState<ProjectPlan>();
 	const [planBusy, setPlanBusy] = useState(false);
 	const [applyBusy, setApplyBusy] = useState(false);
 	const [operationEvents, setOperationEvents] = useState<OperationEvent[]>([]);
@@ -82,7 +87,7 @@ export default function App() {
 	const projectRequestGenerationRef = useRef(0);
 	const projectValid = project?.status === "valid";
 
-	const loadProject = useCallback(async (refresh = false) => {
+	const loadProject = useCallback(async (refresh = false, preserveEmptySelection = false) => {
 		const requestGeneration = ++projectRequestGenerationRef.current;
 		try {
 			const next = await getProject(refresh);
@@ -90,9 +95,10 @@ export default function App() {
 			projectRef.current = next;
 			setProject(next);
 			setProjectError(undefined);
-			setSelectedAgentId((current) =>
-				current && next.agents.some((entry) => entry.agent.id === current) ? current : (next.agents[0]?.agent.id ?? ""),
-			);
+			setSelectedAgentId((current) => {
+				if (current && next.agents.some((entry) => entry.agent.id === current)) return current;
+				return preserveEmptySelection ? "" : (next.agents[0]?.agent.id ?? "");
+			});
 		} catch (error) {
 			if (requestGeneration !== projectRequestGenerationRef.current) return;
 			setProjectError(errorMessage(error));
@@ -114,6 +120,7 @@ export default function App() {
 			const current = projectRef.current;
 			if (current && current.status === snapshot?.status && current.revision === snapshot.revision) return;
 			setPlan(undefined);
+			setBaselinePlan(undefined);
 			setOperationEvents([]);
 			void loadProject();
 		});
@@ -122,8 +129,20 @@ export default function App() {
 			setReloading(true);
 		});
 		for (const type of ["project.valid", "project.invalid", "project.missing"] as const) {
-			source.addEventListener(type, () => {
+			source.addEventListener(type, (event) => {
+				let change: { status?: unknown; revision?: unknown } | undefined;
+				try {
+					change = JSON.parse((event as MessageEvent<string>).data) as typeof change;
+				} catch {
+					// Reload below when an unexpected change payload cannot be compared safely.
+				}
+				const current = projectRef.current;
+				if (current && current.status === change?.status && current.revision === change.revision) {
+					setReloading(false);
+					return;
+				}
 				setPlan(undefined);
+				setBaselinePlan(undefined);
 				setOperationEvents([]);
 				void loadProject();
 			});
@@ -132,7 +151,6 @@ export default function App() {
 	}, [loadProject]);
 
 	useEffect(() => {
-		setPlan(undefined);
 		setActionError(undefined);
 		setSelectedAttachments([]);
 		if (!selectedAgentId) {
@@ -199,6 +217,7 @@ export default function App() {
 				const result = JSON.parse((event as MessageEvent).data) as { status: string; error?: string | null };
 				setApplyBusy(false);
 				setPlan(undefined);
+				setBaselinePlan(undefined);
 				sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
 				if (result.error) setActionError(result.error);
 				void loadProject(true);
@@ -229,12 +248,12 @@ export default function App() {
 	}, [connectOperation]);
 
 	const handlePlan = async () => {
-		if (!selectedAgent) return;
 		setPlanBusy(true);
+		setBaselinePlan(undefined);
 		setActionError(undefined);
 		setOperationEvents([]);
 		try {
-			setPlan(await planAgent(selectedAgent.agent.id));
+			setPlan(await planProject());
 		} catch (error) {
 			setActionError(errorMessage(error));
 		} finally {
@@ -243,18 +262,46 @@ export default function App() {
 	};
 
 	const handleApply = async () => {
-		if (!selectedAgent || !plan) return;
+		if (!plan) return;
 		if (plan.destructive && !window.confirm("This plan deletes remote resources. Apply the reviewed plan?")) return;
 		setApplyBusy(true);
 		setActionError(undefined);
 		setOperationEvents([]);
 		try {
-			const accepted = await applyAgent(selectedAgent.agent.id, plan.plan_token, plan.destructive);
+			const accepted = await applyProject(plan.plan_token, plan.destructive);
 			sessionStorage.setItem(ACTIVE_OPERATION_KEY, accepted.operation_id);
 			connectOperation(accepted.operation_id);
 		} catch (error) {
 			setApplyBusy(false);
 			setActionError(errorMessage(error));
+		}
+	};
+
+	const handleDeclarationCommitted = async (
+		change: {
+			type: DeclarationType;
+			id: string;
+			action: "edit" | "delete";
+		},
+		previousPlan?: ProjectPlan,
+	) => {
+		const deletedSelectedAgent = change.action === "delete" && change.type === "agent" && change.id === selectedAgentId;
+		if (deletedSelectedAgent) setSelectedAgentId("");
+		setTab("changes");
+		setActionError(undefined);
+		await loadProject(false, deletedSelectedAgent);
+		setPlanBusy(true);
+		setOperationEvents([]);
+		try {
+			const nextPlan = await planProject();
+			setPlan(nextPlan);
+			setBaselinePlan(previousPlan);
+		} catch (error) {
+			setPlan(undefined);
+			setBaselinePlan(undefined);
+			setActionError(errorMessage(error));
+		} finally {
+			setPlanBusy(false);
 		}
 	};
 
@@ -443,30 +490,40 @@ export default function App() {
 				</aside>
 
 				<main className="agent-workspace">
-					{selectedAgent ? (
+					{selectedAgent || projectValid ? (
 						<>
 							<section className="agent-title-row">
-								<div>
-									<div className="eyebrow">{selectedAgent.agent.provider} / agent</div>
-									<div className="agent-name-row">
-										<h1>{selectedAgent.agent.id}</h1>
-										<a
-											className="agent-preview-link"
-											href={
-												session
-													? `/sessions/${encodeURIComponent(session.session.session_id)}/preview`
-													: `/agents/${encodeURIComponent(selectedAgent.agent.id)}/preview`
-											}
-											target="_blank"
-											rel="noreferrer"
-										>
-											<ExternalLink />
-											Preview
-										</a>
+								{selectedAgent ? (
+									<>
+										<div>
+											<div className="eyebrow">{selectedAgent.agent.provider} / agent</div>
+											<div className="agent-name-row">
+												<h1>{selectedAgent.agent.id}</h1>
+												<a
+													className="agent-preview-link"
+													href={
+														session
+															? `/sessions/${encodeURIComponent(session.session.session_id)}/preview`
+															: `/agents/${encodeURIComponent(selectedAgent.agent.id)}/preview`
+													}
+													target="_blank"
+													rel="noreferrer"
+												>
+													<ExternalLink />
+													Preview
+												</a>
+											</div>
+											<p>{selectedAgent.agent.description ?? "No description declared."}</p>
+										</div>
+										<ReadinessBadge agent={selectedAgent} />
+									</>
+								) : (
+									<div>
+										<div className="eyebrow">project / runtime</div>
+										<h1>{project?.project_name ?? "Project"}</h1>
+										<p>No Agent is currently selected. Resources and project Changes remain available.</p>
 									</div>
-									<p>{selectedAgent.agent.description ?? "No description declared."}</p>
-								</div>
-								<ReadinessBadge agent={selectedAgent} />
+								)}
 							</section>
 							<nav className="workspace-tabs">
 								{TAB_LABELS.map((item) => (
@@ -481,11 +538,25 @@ export default function App() {
 								))}
 							</nav>
 							{actionError && <Banner tone="error" message={actionError} compact />}
-							{tab === "overview" && <Overview agent={selectedAgent} />}
+							{tab === "overview" &&
+								(selectedAgent ? (
+									<Overview agent={selectedAgent} />
+								) : (
+									<AgentRequiredPanel action="view its overview" />
+								))}
+							{tab === "resources" && selectedAgent && (
+								<ResourcesPanel
+									projectRevision={project?.revision}
+									projectValid={projectValid}
+									selectedAgentId={selectedAgent.agent.id}
+									onCommitted={handleDeclarationCommitted}
+								/>
+							)}
+							{tab === "resources" && !selectedAgent && <AgentRequiredPanel action="edit its resources" />}
 							{tab === "changes" && (
 								<ChangesPanel
-									agent={selectedAgent}
 									plan={plan}
+									baselinePlan={baselinePlan}
 									planBusy={planBusy}
 									applyBusy={applyBusy}
 									projectValid={projectValid}
@@ -494,7 +565,7 @@ export default function App() {
 									onApply={handleApply}
 								/>
 							)}
-							{tab === "debug" && (
+							{tab === "debug" && selectedAgent && (
 								<DebugPanel
 									agent={selectedAgent}
 									projectValid={projectValid}
@@ -520,25 +591,27 @@ export default function App() {
 									onCancel={handleCancel}
 								/>
 							)}
+							{tab === "debug" && !selectedAgent && <AgentRequiredPanel action="start a debug Session" />}
 							{tab === "artifacts" && (
 								<EventsPanel
 									events={artifactEvents(sessionEvents)}
 									empty="Artifacts and tool outputs will appear here after a run."
 								/>
 							)}
-							{tab === "deployments" && (
+							{tab === "deployments" && selectedAgent && (
 								<DeploymentsPanel
 									deployments={(project?.deployments ?? []).filter(
 										(deployment) => deployment.agent === selectedAgent.agent.id,
 									)}
 								/>
 							)}
+							{tab === "deployments" && !selectedAgent && <AgentRequiredPanel action="view Deployments" />}
 						</>
 					) : (
 						<div className="empty-state">
 							<ServerCog />
 							<h2>No Agent selected</h2>
-							<p>Add an Agent to agents.yaml or adjust the filters.</p>
+							<p>Fix agents.yaml or adjust the filters to select an existing Agent.</p>
 						</div>
 					)}
 				</main>
@@ -590,8 +663,8 @@ function Overview({ agent }: { agent: ProjectAgent }) {
 }
 
 function ChangesPanel({
-	agent,
 	plan,
+	baselinePlan,
 	planBusy,
 	applyBusy,
 	projectValid,
@@ -599,8 +672,8 @@ function ChangesPanel({
 	onPlan,
 	onApply,
 }: {
-	agent: ProjectAgent;
-	plan?: AgentPlan;
+	plan?: ProjectPlan;
+	baselinePlan?: ProjectPlan;
 	planBusy: boolean;
 	applyBusy: boolean;
 	projectValid: boolean;
@@ -608,12 +681,13 @@ function ChangesPanel({
 	onPlan(): void;
 	onApply(): void;
 }) {
+	const impact = plan && baselinePlan ? comparePlanActions(baselinePlan.actions, plan.actions) : undefined;
 	return (
 		<section className="panel-stack">
 			<div className="action-toolbar">
 				<div>
-					<h2>Runtime resource plan</h2>
-					<p>Only {agent.agent.id} and its transitive runtime dependencies are in scope. Deployments are excluded.</p>
+					<h2>Project runtime resource plan</h2>
+					<p>All declared runtime resources are in scope. Deployments and Channels are explicitly excluded.</p>
 				</div>
 				<div className="toolbar-buttons">
 					<button
@@ -646,11 +720,33 @@ function ChangesPanel({
 						</span>
 						<code>{plan.fingerprint.slice(0, 12)}</code>
 					</div>
-					{plan.actions.map((action) => (
-						<PlanActionRow
-							key={`${action.action}-${action.address.provider}-${action.address.type}-${action.address.name}`}
-							action={action}
-						/>
+					{impact ? (
+						<>
+							<PlanActionGroup
+								title="This edit"
+								description="Actions introduced or changed by the declaration you just saved."
+								actions={impact.currentEdit}
+								empty="This edit introduced no Apply action."
+							/>
+							{impact.resolvedByEdit.length > 0 && <ResolvedPlanActions actions={impact.resolvedByEdit} />}
+							<PlanActionGroup
+								title="Already pending"
+								description="These actions existed before this edit and are still included in the project Apply."
+								actions={impact.alreadyPending}
+								empty="No pre-existing project changes remain."
+							/>
+							<p className="plan-scope-notice">
+								Apply reviewed plan executes both groups above. Resolved items require no remote action.
+							</p>
+						</>
+					) : (
+						plan.actions.map((action) => <PlanActionRow key={planActionKey(action)} action={action} />)
+					)}
+					{plan.diagnostics.map((diagnostic) => (
+						<div className={`plan-diagnostic ${diagnostic.severity}`} key={`${diagnostic.code}:${diagnostic.message}`}>
+							<strong>{diagnostic.code}</strong>
+							<span>{diagnostic.message}</span>
+						</div>
 					))}
 				</div>
 			) : (
@@ -672,6 +768,15 @@ function ChangesPanel({
 				</div>
 			)}
 		</section>
+	);
+}
+
+function AgentRequiredPanel({ action }: { action: string }) {
+	return (
+		<div className="empty-panel content-empty-panel">
+			<ServerCog />
+			<p>Select an existing Agent to {action}.</p>
+		</div>
 	);
 }
 
@@ -827,8 +932,8 @@ function DeploymentsPanel({ deployments }: { deployments: NonNullable<ProjectSum
 			<div className="readonly-note">
 				<ShieldAlert />
 				<span>
-					Deployment declarations are read-only in Playground v1. Use the CLI project Plan/Apply flow for deployment
-					mutations.
+					Deployment declarations are read-only in Playground v1 and are excluded from Workbench project Plan/Apply. Use
+					the CLI deployment flow for mutations.
 				</span>
 			</div>
 			{deployments.length ? (
@@ -917,13 +1022,67 @@ function InfoCard({ icon, title, rows }: { icon: React.ReactNode; title: string;
 	);
 }
 
+function PlanActionGroup({
+	title,
+	description,
+	actions,
+	empty,
+}: {
+	title: string;
+	description: string;
+	actions: PlannedAction[];
+	empty: string;
+}) {
+	return (
+		<section className="plan-action-group">
+			<header className="plan-action-group-heading">
+				<span>
+					<strong>{title}</strong>
+					<b>{actions.length}</b>
+				</span>
+				<small>{description}</small>
+			</header>
+			{actions.length > 0 ? (
+				actions.map((action) => <PlanActionRow key={planActionKey(action)} action={action} />)
+			) : (
+				<p className="plan-action-group-empty">{empty}</p>
+			)}
+		</section>
+	);
+}
+
+function ResolvedPlanActions({ actions }: { actions: PlannedAction[] }) {
+	return (
+		<section className="plan-action-group resolved">
+			<header className="plan-action-group-heading">
+				<span>
+					<strong>Resolved by this edit</strong>
+					<b>{actions.length}</b>
+				</span>
+				<small>These previously pending actions are no longer part of the project Plan.</small>
+			</header>
+			{actions.map((action) => (
+				<div className="plan-action resolved" key={planActionKey(action)}>
+					<span className="action-kind">cleared</span>
+					<span>
+						<strong>
+							{displayPlanResourceType(action)}.{action.address.name}
+						</strong>
+						<small>Was pending {action.action} · no remote action remains</small>
+					</span>
+				</div>
+			))}
+		</section>
+	);
+}
+
 function PlanActionRow({ action }: { action: PlannedAction }) {
 	return (
 		<div className={`plan-action ${action.action}`}>
 			<span className="action-kind">{action.action}</span>
 			<span>
 				<strong>
-					{action.address.type}.{action.address.name}
+					{displayPlanResourceType(action)}.{action.address.name}
 				</strong>
 				<small>
 					{action.address.provider} · {action.reason}
@@ -932,6 +1091,14 @@ function PlanActionRow({ action }: { action: PlannedAction }) {
 			{action.changedPaths?.length ? <code>{action.changedPaths.join(", ")}</code> : null}
 		</div>
 	);
+}
+
+function displayPlanResourceType(action: PlannedAction): string {
+	return action.address.type === "agent" || action.address.type === "template" ? "Agent" : action.address.type;
+}
+
+function planActionKey(action: PlannedAction): string {
+	return `${action.action}-${action.address.provider}-${action.address.type}-${action.address.name}`;
 }
 
 function ReadinessBadge({ agent }: { agent: ProjectAgent }) {
