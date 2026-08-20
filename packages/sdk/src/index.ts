@@ -81,7 +81,10 @@ export {
 
 export type { DeploymentListFilter, DeploymentListResult } from "./internal/providers/interface.ts";
 
-export type { DestroyResourceResult } from "./internal/core/destroy-runtime.ts";
+export type {
+	DestroyDefaultMemoryStoreResult,
+	DestroyResourceResult,
+} from "./internal/core/destroy-runtime.ts";
 export {
 	destroyPlannedProjectResources,
 	planDestroyProjectContext,

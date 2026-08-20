@@ -51,7 +51,13 @@ export class StateManager implements IStateManager {
 				drift_paths: r.drift_paths as string[] | undefined,
 				drift_status: r.drift_status as ResourceState["drift_status"],
 			}));
-			return new StateManager({ resources }, path);
+			const pending = Array.isArray(data.pending_default_memory_store_cleanups)
+				? (data.pending_default_memory_store_cleanups as StateFile["pending_default_memory_store_cleanups"])
+				: undefined;
+			return new StateManager(
+				{ resources, ...(pending ? { pending_default_memory_store_cleanups: pending } : {}) },
+				path,
+			);
 		} catch (err) {
 			if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
 				return StateManager.initialize(path);

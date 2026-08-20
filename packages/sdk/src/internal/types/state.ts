@@ -35,6 +35,16 @@ export interface ResourceReadinessBaseline {
 
 export interface StateFile {
 	resources: ResourceState[];
+	pending_default_memory_store_cleanups?: PendingDefaultMemoryStoreCleanup[];
+}
+
+export interface PendingDefaultMemoryStoreCleanup {
+	agent_name: string;
+	provider: string;
+	remote_id: string;
+	identity_id?: string;
+	template_id?: string;
+	last_error?: string;
 }
 
 export function addressKey(addr: ResourceAddress): string {

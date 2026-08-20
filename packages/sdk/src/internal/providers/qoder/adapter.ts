@@ -526,6 +526,41 @@ export class QoderAdapter implements ProviderAdapter {
 		await this.forwardClient.post(`/templates/${id}/archive`, {});
 	}
 
+	async reconcileDefaultMemoryStore(
+		identityId: string,
+		templateId: string,
+		desired: { name: string; description?: string },
+	): Promise<{ status: "updated" | "unchanged" | "pending"; memory_store_id?: string }> {
+		const storeId = await this.findDefaultMemoryStoreId(identityId, templateId);
+		if (!storeId) return { status: "pending" };
+
+		const current = (await this.forwardClient.get(`/memory_stores/${storeId}`)) as Record<string, unknown>;
+		const descriptionChanged = desired.description !== undefined && current.description !== desired.description;
+		if (current.name === desired.name && !descriptionChanged) {
+			return { status: "unchanged", memory_store_id: storeId };
+		}
+
+		await this.forwardClient.post(`/memory_stores/${storeId}`, {
+			name: desired.name,
+			...(desired.description !== undefined ? { description: desired.description } : {}),
+		});
+		return { status: "updated", memory_store_id: storeId };
+	}
+
+	async findDefaultMemoryStoreId(identityId: string, templateId: string): Promise<string | null> {
+		const mounts = (await this.forwardClient.get(
+			`/identities/${identityId}/templates/${templateId}/memory_stores`,
+		)) as { data?: Array<Record<string, unknown>> };
+		const writableDefault = (mounts.data ?? []).find(
+			(mount) => mount.system_managed === true && mount.access === "read_write",
+		);
+		return typeof writableDefault?.memory_store_id === "string" ? writableDefault.memory_store_id : null;
+	}
+
+	async deleteDefaultMemoryStore(id: string): Promise<void> {
+		await this.forwardClient.delete(`/memory_stores/${id}`);
+	}
+
 	async createIdentity(name: string, decl: IdentityDecl): Promise<RemoteResource> {
 		if (decl.identity_id) return { id: decl.identity_id, type: "identity" };
 		const res = (await this.forwardClient.post("/identities", {

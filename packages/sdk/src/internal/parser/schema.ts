@@ -261,6 +261,13 @@ const agentSchema = z.object({
 	skills: z.array(z.union([z.string(), agentSkillRefSchema])).optional(),
 	vault: z.string().optional(),
 	memory_stores: z.array(z.string()).optional(),
+	default_memory_store: z
+		.object({
+			name: z.string().trim().min(1).max(255),
+			description: z.string().max(1024).optional(),
+			delete_on_destroy: z.boolean().optional().default(false),
+		})
+		.optional(),
 	resources: z.array(sessionGithubRepoResourceSchema).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),

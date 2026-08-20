@@ -59,6 +59,15 @@ function forwardConfig(): ProjectConfig {
 }
 
 describe("Qoder Forward Template declaration", () => {
+	test("makes the default Identity a Template dependency when default memory is configured", () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const graph = buildDependencyGraph(config, ["qoder"]);
+		expect([...graph.edges.get("qoder.template.assistant")!]).toContain("qoder.identity.zhang");
+	});
+
 	test("materializes a forward-delivered agent as a template graph resource", async () => {
 		const config = forwardConfig();
 		const graph = buildDependencyGraph(config, ["qoder"]);
@@ -386,6 +395,52 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 });
 
 describe("Forward delivery validation and runtime isolation", () => {
+	test("requires a default Identity for default memory reconciliation", () => {
+		const config = forwardConfig();
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code === "qoder.template.default_memory_store.identity.required")).toBe(
+			true,
+		);
+	});
+
+	test("accepts default memory metadata for Qoder Forward delivery", () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
+		config.agents!.assistant!.default_memory_store = {
+			name: "Support memory",
+			description: "Confirmed support knowledge",
+		};
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code.includes("default_memory_store"))).toBe(false);
+	});
+
+	test("rejects a default memory Identity pinned to another provider", () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang", provider: "claude" } };
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const diagnostics = validateProjectConfig(config);
+		expect(
+			diagnostics.some((item) => item.code === "qoder.template.default_memory_store.identity.provider_mismatch"),
+		).toBe(true);
+	});
+
+	test("rejects default memory deletion for an externally managed Identity", () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { identity_id: "idn_external" } };
+		config.agents!.assistant!.default_memory_store = {
+			name: "Support memory",
+			delete_on_destroy: true,
+		};
+		const diagnostics = validateProjectConfig(config);
+		expect(
+			diagnostics.some((item) => item.code === "qoder.template.default_memory_store.delete.external_identity"),
+		).toBe(true);
+	});
+
 	test("rejects Agent session resources because Forward sessions cannot attach them", () => {
 		const config = forwardConfig();
 		config.agents!.assistant!.resources = [
@@ -498,5 +553,189 @@ describe("Forward delivery validation and runtime isolation", () => {
 		});
 
 		expect(() => buildSessionBindings("assistant", config, "qoder", state)).toThrow(/defaults.identity/);
+	});
+});
+
+describe("Qoder Forward default memory store", () => {
+	test("deletes a captured default Store through the Forward endpoint", async () => {
+		const calls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			get: async (path: string) => {
+				calls.push(`GET ${path}`);
+				return {
+					data: [{ memory_store_id: "memstore_default", system_managed: true, access: "read_write" }],
+				};
+			},
+			delete: async (path: string) => calls.push(`DELETE ${path}`),
+		};
+
+		const id = await adapter.findDefaultMemoryStoreId("idn_1", "tmpl_1");
+		await adapter.deleteDefaultMemoryStore(id!);
+
+		expect(calls).toEqual([
+			"GET /identities/idn_1/templates/tmpl_1/memory_stores",
+			"DELETE /memory_stores/memstore_default",
+		]);
+	});
+
+	test("finds the writable system mount and updates changed metadata", async () => {
+		const calls: Array<{ path: string; body?: unknown }> = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			get: async (path: string) => {
+				calls.push({ path });
+				if (path.includes("/identities/")) {
+					return {
+						data: [
+							{ memory_store_id: "memstore_default", system_managed: true, access: "read_write" },
+							{ memory_store_id: "memstore_explicit", system_managed: false, access: "read_only" },
+						],
+					};
+				}
+				if (path === "/memory_stores/memstore_default") return { name: "System Default Memory", description: "" };
+				throw new Error(`unexpected GET ${path}`);
+			},
+			post: async (path: string, body: unknown) => {
+				calls.push({ path, body });
+				return { id: "memstore_default" };
+			},
+		};
+
+		const result = await adapter.reconcileDefaultMemoryStore("idn_1", "tmpl_1", {
+			name: "Support memory",
+			description: "Confirmed support knowledge",
+		});
+		expect(result).toEqual({ status: "updated", memory_store_id: "memstore_default" });
+		expect(calls.at(-1)).toEqual({
+			path: "/memory_stores/memstore_default",
+			body: { name: "Support memory", description: "Confirmed support knowledge" },
+		});
+	});
+
+	test("returns pending before the first Session creates a default Store", async () => {
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = { get: async () => ({ data: [] }) };
+		expect(await adapter.reconcileDefaultMemoryStore("idn_1", "tmpl_1", { name: "Support memory" })).toEqual({
+			status: "pending",
+		});
+	});
+
+	test("reconciles on an otherwise no-op apply", async () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const state = StateManager.initialize(tmpPath("default-memory-no-op"));
+		state.setResource({
+			address: { type: "identity", name: "zhang", provider: "qoder" },
+			remote_id: "idn_1",
+			content_hash: "identity-hash",
+		});
+		state.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_1",
+			content_hash: "template-hash",
+		});
+		const calls: unknown[] = [];
+		const provider = {
+			reconcileDefaultMemoryStore: async (...args: unknown[]) => {
+				calls.push(args);
+				return { status: "unchanged", memory_store_id: "memstore_default" };
+			},
+		} as unknown as ProviderAdapter;
+		await executePlan(
+			{
+				actions: [
+					{
+						action: "no-op",
+						address: { type: "template", name: "assistant", provider: "qoder" },
+						dependencies: [],
+					},
+				],
+				diagnostics: [],
+			},
+			{ config, providers: new Map([["qoder", provider]]), state },
+		);
+		expect(calls).toEqual([["idn_1", "tmpl_1", { name: "Support memory" }]]);
+	});
+
+	test("does not reconcile Qoder defaults when the execution plan targets another provider", async () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "all", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
+		config.agents!.assistant!.provider = "qoder";
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const state = StateManager.initialize(tmpPath("provider-scope"));
+		state.setResource({
+			address: { type: "identity", name: "zhang", provider: "qoder" },
+			remote_id: "idn_1",
+			content_hash: "identity-hash",
+		});
+		state.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_1",
+			content_hash: "template-hash",
+		});
+		const calls: unknown[] = [];
+		const provider = {
+			reconcileDefaultMemoryStore: async (...args: unknown[]) => {
+				calls.push(args);
+				return { status: "unchanged" };
+			},
+		} as unknown as ProviderAdapter;
+		await executePlan(
+			{
+				actions: [
+					{
+						action: "no-op",
+						address: { type: "agent", name: "other", provider: "claude" },
+						dependencies: [],
+					},
+				],
+				diagnostics: [],
+			},
+			{ config, providers: new Map([["qoder", provider]]), state },
+		);
+		expect(calls).toEqual([]);
+	});
+
+	test("reconciles when Qoder is the sole provider and no provider default is declared", async () => {
+		const config = forwardConfig();
+		config.defaults = { identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const state = StateManager.initialize(tmpPath("implicit-qoder"));
+		state.setResource({
+			address: { type: "identity", name: "zhang", provider: "qoder" },
+			remote_id: "idn_1",
+			content_hash: "identity-hash",
+		});
+		state.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_1",
+			content_hash: "template-hash",
+		});
+		const calls: unknown[] = [];
+		const provider = {
+			reconcileDefaultMemoryStore: async (...args: unknown[]) => {
+				calls.push(args);
+				return { status: "unchanged" };
+			},
+		} as unknown as ProviderAdapter;
+		await executePlan(
+			{
+				actions: [
+					{
+						action: "no-op",
+						address: { type: "template", name: "assistant", provider: "qoder" },
+						dependencies: [],
+					},
+				],
+				diagnostics: [],
+			},
+			{ config, providers: new Map([["qoder", provider]]), state },
+		);
+		expect(calls).toEqual([["idn_1", "tmpl_1", { name: "Support memory" }]]);
 	});
 });

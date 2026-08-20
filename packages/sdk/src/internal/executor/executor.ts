@@ -136,6 +136,11 @@ export async function executePlan(
 		await ctx.state.save();
 	}
 
+	// Qoder creates the writable default Store lazily on the first Forward Session.
+	// Reconcile on every apply (including an otherwise no-op plan), so the first apply
+	// after that Session converges its display metadata without creating a throwaway Session.
+	await reconcileDefaultMemoryStores(ctx, new Set(plan.actions.map((action) => action.address.provider)));
+
 	// delete: run serially, preserving the planner's reverse dependency order.
 	for (const action of deletions) {
 		await runAction(action);
@@ -147,6 +152,44 @@ export async function executePlan(
 		results,
 		partial: results.some((r) => r.status === "failed"),
 	};
+}
+
+async function reconcileDefaultMemoryStores(ctx: ExecContext, plannedProviders: ReadonlySet<string>): Promise<void> {
+	const identityName = ctx.config.defaults?.identity;
+	for (const [agentName, agent] of Object.entries(ctx.config.agents ?? {})) {
+		const desired = agent.default_memory_store;
+		if (!desired || agent.delivery?.qoder?.type !== "forward") continue;
+		const providerName = "qoder";
+		if ((agent.provider && agent.provider !== providerName) || !plannedProviders.has(providerName)) continue;
+		const provider = ctx.providers.get(providerName);
+		if (!provider?.reconcileDefaultMemoryStore || !identityName) continue;
+
+		const identityId = ctx.state.getResource({
+			type: "identity",
+			name: identityName,
+			provider: providerName,
+		})?.remote_id;
+		const templateId = ctx.state.getResource({ type: "template", name: agentName, provider: providerName })?.remote_id;
+		if (!identityId || !templateId) continue;
+
+		const result = await provider.reconcileDefaultMemoryStore(identityId, templateId, desired);
+		const resource = { type: "template" as const, name: agentName, provider: providerName };
+		if (result.status === "pending") {
+			emitRuntimeFeedback(ctx.onFeedback, {
+				type: "provider_wait",
+				level: "warning",
+				resource,
+				message: `default memory store for template.${agentName} is pending — create the first Forward Session, then run apply again`,
+			});
+		} else if (result.status === "updated") {
+			emitRuntimeFeedback(ctx.onFeedback, {
+				type: "resource_action_success",
+				level: "success",
+				resource,
+				message: `updated default memory store for template.${agentName} to "${desired.name}"`,
+			});
+		}
+	}
 }
 
 // Run `worker` over `items` with at most `limit` concurrent executions.

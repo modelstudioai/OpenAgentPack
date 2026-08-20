@@ -1,6 +1,7 @@
 import type {
 	AgentDecl,
 	ChannelDecl,
+	DefaultMemoryStoreDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
 	IdentityDecl,
@@ -99,6 +100,11 @@ export interface ResolvedDeploymentRefs {
 export interface ResolvedChannelRefs {
 	identity_id?: string;
 	agent_id?: string;
+}
+
+export interface DefaultMemoryStoreReconcileResult {
+	status: "updated" | "unchanged" | "pending";
+	memory_store_id?: string;
 }
 
 export interface DeploymentContext {
@@ -201,6 +207,13 @@ export interface ProviderAdapter {
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	/** Remove the template from desired state. Qoder implements this as a soft archive. */
 	archiveTemplate?(id: string): Promise<void>;
+	reconcileDefaultMemoryStore?(
+		identityId: string,
+		templateId: string,
+		desired: DefaultMemoryStoreDecl,
+	): Promise<DefaultMemoryStoreReconcileResult>;
+	findDefaultMemoryStoreId?(identityId: string, templateId: string): Promise<string | null>;
+	deleteDefaultMemoryStore?(id: string): Promise<void>;
 
 	createIdentity?(name: string, decl: IdentityDecl): Promise<RemoteResource>;
 	updateIdentity?(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource>;

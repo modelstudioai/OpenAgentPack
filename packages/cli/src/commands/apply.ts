@@ -107,7 +107,20 @@ export async function applyCommand(options: {
 
 	const actionable = plan.actions.filter((a) => a.action !== "no-op");
 	if (actionable.length === 0) {
-		log.success("No changes. Infrastructure is up-to-date.");
+		if (options.refreshOnly) {
+			log.success("No changes. Infrastructure is up-to-date.");
+			return;
+		}
+		const s = p.spinner({ output: process.stderr });
+		s.start("Reconciling provider-managed defaults...");
+		const result = await executePlannedProject(planned, {
+			onFeedback: renderRuntimeFeedback,
+			policy: "force",
+			concurrency: options.concurrency,
+		});
+		s.stop("Provider-managed defaults reconciled.");
+		if (result.partial) throw new UserError("Apply failed.");
+		log.success("No resource changes. Infrastructure is up-to-date.");
 		return;
 	}
 

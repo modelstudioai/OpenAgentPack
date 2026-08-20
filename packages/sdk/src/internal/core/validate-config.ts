@@ -318,6 +318,37 @@ export function collectProviderCapabilities(
 					address,
 				);
 			}
+			if (agent.default_memory_store) {
+				if (providerName !== "qoder" || delivery !== "forward") {
+					diagnostics.error(
+						`${providerName}.agent.default_memory_store.forward_required`,
+						`agent.${name}: default_memory_store is supported only by Qoder Forward delivery.`,
+						address,
+					);
+				} else if (!config.defaults?.identity) {
+					diagnostics.error(
+						"qoder.template.default_memory_store.identity.required",
+						`agent.${name}: default_memory_store requires defaults.identity to select the owning Forward Identity.`,
+						{ type: "template", name, provider: providerName },
+					);
+				} else {
+					const identity = config.identities?.[config.defaults.identity];
+					if (identity?.provider && identity.provider !== providerName) {
+						diagnostics.error(
+							"qoder.template.default_memory_store.identity.provider_mismatch",
+							`agent.${name}: defaults.identity '${config.defaults.identity}' is pinned to provider '${identity.provider}'.`,
+							{ type: "template", name, provider: providerName },
+						);
+					}
+					if (agent.default_memory_store.delete_on_destroy && identity?.identity_id) {
+						diagnostics.error(
+							"qoder.template.default_memory_store.delete.external_identity",
+							`agent.${name}: delete_on_destroy requires an OpenCMA-managed Identity because an external Identity keeps the default Memory Store mounted.`,
+							{ type: "template", name, provider: providerName },
+						);
+					}
+				}
+			}
 			if (delivery === "forward" && !isSupported(caps, "template")) {
 				diagnostics.error(
 					`${providerName}.agent.delivery.forward.unsupported`,
