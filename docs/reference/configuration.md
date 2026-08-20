@@ -350,6 +350,7 @@ If the preflight cannot resolve the Identity, Template, or Store lookup, destroy
 | `mcp_servers[]` | `{ name, type?, url? }` | no | URL (`url`/`http`) or `official` MCP server. |
 | `skills[]` | string \| AgentSkillRef | no | Skill name or `{ type: "official"\|"custom", skill_id, version? }`. |
 | `vault` | string | no | Vault name. |
+| `files` | string[] | no | File declarations inherited by a Qoder Forward Template. These files are created through the Forward File API. |
 | `memory_stores` | string[] | no | Bound memory stores. |
 | `default_memory_store.name` | string | yes (with `default_memory_store`) | Display name for Qoder Forward's writable system-managed Store; 1–255 characters. |
 | `default_memory_store.description` | string | no | Display description for the system-managed Store; up to 1024 characters. |
@@ -360,6 +361,14 @@ If the preflight cannot resolve the Identity, Template, or Store lookup, destroy
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
 | `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
+
+For Qoder Forward delivery, a locally declared Environment is created only through the Forward Environment API. An
+external `environment_id` may reference an Environment from either the Managed API or the Forward API; OpenCMA does
+not create or mutate such a reference and resolves its API domain when checking existence. Referenced custom Skills, Vaults and Credentials, Files, and explicit
+Memory Stores are created through their Forward APIs. A locally managed Environment, Skill, Vault, File, or Memory
+Store cannot be shared by Managed and Forward Agents under one logical declaration; declare separate resources for
+the two API domains. Explicit Forward Memory Stores require `defaults.identity` and are mounted read-only to that
+Identity and Template.
 
 ### Session resources
 

@@ -30,14 +30,18 @@ export async function computeResourceHash(
 		return contentHash({ decl, apiMode });
 	}
 
-	if (address.type === "vault" || address.type === "memory_store") {
+	if (address.type === "environment" || address.type === "vault" || address.type === "memory_store") {
 		return contentHash({ decl, apiMode: resolveQoderApiMode(address.type, address.name, address.provider, config) });
 	}
 
 	if (address.type === "file" && basePath) {
 		const fileDecl = decl as { source: string };
 		const fileHash = computeLocalFileContentHash(fileDecl.source, basePath);
-		return contentHash({ decl, fileHash });
+		return contentHash({
+			decl,
+			fileHash,
+			apiMode: resolveQoderApiMode("file", address.name, address.provider, config),
+		});
 	}
 
 	if (address.type === "deployment") {
@@ -65,22 +69,28 @@ export async function computeResourceHash(
 }
 
 function resolveQoderApiMode(
-	type: "skill" | "vault" | "memory_store",
+	type: "environment" | "skill" | "vault" | "memory_store" | "file",
 	name: string,
 	provider: string,
 	config: ProjectConfig,
-): "managed" | "forward" | undefined {
+): "managed" | "forward" | "auto" | undefined {
 	if (provider !== "qoder") return undefined;
+	// External Environment ids are valid in both the Managed and Forward domains.
+	if (type === "environment" && config.environments?.[name]?.environment_id) return "auto";
 	for (const agent of Object.values(config.agents ?? {})) {
 		if (agent.provider && agent.provider !== provider) continue;
 		const referenced =
-			type === "skill"
-				? agent.skills?.some((skill) =>
-						typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
-					)
-				: type === "vault"
-					? agent.vault === name
-					: agent.memory_stores?.includes(name);
+			type === "environment"
+				? agent.environment === name
+				: type === "skill"
+					? agent.skills?.some((skill) =>
+							typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
+						)
+					: type === "vault"
+						? agent.vault === name
+						: type === "memory_store"
+							? agent.memory_stores?.includes(name)
+							: agent.files?.includes(name);
 		if (referenced && agent.delivery?.qoder?.type === "forward") return "forward";
 	}
 	return "managed";
@@ -123,6 +133,8 @@ interface TemplateRefDecl {
 	tunnel?: string;
 	vault?: string;
 	skills?: Array<string | { type: "official" | "custom"; skill_id: string; version?: string }>;
+	memory_stores?: string[];
+	files?: string[];
 }
 
 function resolveTemplateReferenceIds(
@@ -154,6 +166,17 @@ function resolveTemplateReferenceIds(
 			? [state?.getResource({ type: "vault", name: decl.vault, provider })?.remote_id ?? decl.vault]
 			: [],
 		skill_ids: skillIds,
+		memory_store_ids: (decl.memory_stores ?? []).map(
+			(memoryStore) =>
+				state?.getResource({ type: "memory_store", name: memoryStore, provider })?.remote_id ?? memoryStore,
+		),
+		file_ids: (decl.files ?? []).map(
+			(file) => state?.getResource({ type: "file", name: file, provider })?.remote_id ?? file,
+		),
+		identity_id:
+			decl.memory_stores?.length && config.defaults?.identity
+				? state?.getResource({ type: "identity", name: config.defaults.identity, provider })?.remote_id
+				: undefined,
 	};
 }
 

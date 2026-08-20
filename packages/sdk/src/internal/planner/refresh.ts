@@ -121,7 +121,7 @@ export async function refreshState(
 			// Prefer the recorded remote_id so existence checks hit the detail
 			// endpoint (GET /{id}) instead of matching by name — names are not
 			// guaranteed unique, so name matching can adopt the wrong resource.
-			const remote = await provider.findResource(res.address.type, res.address.name, res.remote_id);
+			const remote = await provider.findResource(res.address.type, res.address.name, res.remote_id, res.api_mode);
 			if (!remote) {
 				if (!options.quiet) {
 					emitRuntimeFeedback(options.onFeedback, {

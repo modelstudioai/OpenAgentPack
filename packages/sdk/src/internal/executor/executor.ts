@@ -310,7 +310,7 @@ async function executeActionInner(
 			try {
 				switch (type) {
 					case "environment":
-						await provider.deleteEnvironment(id);
+						await provider.deleteEnvironment(id, false, apiMode);
 						break;
 					case "vault":
 						await provider.deleteVault(id, apiMode);
@@ -324,7 +324,7 @@ async function executeActionInner(
 					case "template":
 						if (!provider.archiveTemplate)
 							throw new UserError(`Provider '${address.provider}' does not support templates`);
-						await provider.archiveTemplate(id);
+						await provider.archiveTemplate(id, ownedForwardMemoryStoreIds(ctx, address.provider));
 						break;
 					case "memory_store":
 						if (!provider.deleteMemoryStore) throw memoryStoreUnsupported(address.provider);
@@ -334,7 +334,7 @@ async function executeActionInner(
 						await provider.deleteDeployment(id);
 						break;
 					case "file":
-						await provider.deleteFile(id);
+						await provider.deleteFile(id, apiMode);
 						break;
 					case "identity":
 						if (!provider.deleteIdentity)
@@ -386,6 +386,17 @@ async function executeActionInner(
 					resource: action.address,
 					message: `${action.action} ${action.address.type}.${action.address.name} (${action.address.provider}) — external reference, no remote mutation`,
 				});
+			} else if (apiModeChanged) {
+				try {
+					result = await provider.createEnvironment(remoteName, decl, apiMode);
+				} catch (err) {
+					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						mode: apiMode,
+						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl, apiMode),
+					});
+					adopted = true;
+				}
+				if (existingId) await provider.deleteEnvironment(existingId, false, priorApiMode);
 			} else if (isUpdate) {
 				// Defense in depth: ownership is a state-level fact. Never push the
 				// local config onto an environment recorded as externally managed —
@@ -399,13 +410,14 @@ async function executeActionInner(
 							`with 'agents state rm environment.${name}' (then 'agents state import' to adopt it as a managed resource).`,
 					);
 				}
-				result = await provider.updateEnvironment(existingId!, remoteName, decl);
+				result = await provider.updateEnvironment(existingId!, remoteName, decl, apiMode);
 			} else {
 				try {
-					result = await provider.createEnvironment(remoteName, decl);
+					result = await provider.createEnvironment(remoteName, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
-						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl),
+						mode: apiMode,
+						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl, apiMode),
 					});
 					adopted = true;
 				}
@@ -430,6 +442,7 @@ async function executeActionInner(
 					result = await provider.createVault(name, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						mode: apiMode,
 						onExisting: async (existing) => {
 							await provider.deleteVault(existing.id!, apiMode);
 							return provider.createVault(name, decl, apiMode);
@@ -471,7 +484,7 @@ async function executeActionInner(
 				const searchNames = manifestName && manifestName !== remoteName ? [remoteName, manifestName] : [remoteName];
 				// Pre-check: if a matching skill already exists, adopt it directly without
 				// uploading (avoids wasteful zip upload + OSS delay).
-				const existing = await findExistingByNames(provider, "skill", searchNames);
+				const existing = await findExistingByNames(provider, "skill", searchNames, apiMode);
 				if (existing) {
 					result = existing.resource;
 					emitRuntimeFeedback(ctx.onFeedback, {
@@ -486,6 +499,7 @@ async function executeActionInner(
 						result = await provider.createSkill(remoteName, decl, files, apiMode);
 					} catch (err) {
 						result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+							mode: apiMode,
 							searchNames,
 							onExisting: async (existing) => existing,
 						});
@@ -556,6 +570,7 @@ async function executeActionInner(
 					result = await createMemoryStore(name, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						mode: apiMode,
 						onExisting: async (existing) => reconcile(existing.id!),
 					});
 					adopted = true;
@@ -711,16 +726,13 @@ async function executeActionInner(
 				const oldId = ctx.state.getResource(address)?.remote_id;
 				if (oldId) {
 					try {
-						await provider.deleteFile(oldId);
+						await provider.deleteFile(oldId, priorApiMode);
 					} catch {
 						// best effort — old file may already be gone
 					}
 				}
 			}
-			const info = await provider.uploadFile(filePath, {
-				name: decl.name,
-				purpose: decl.purpose,
-			});
+			const info = await provider.uploadFile(filePath, { name: decl.name, purpose: decl.purpose }, apiMode);
 			result = { id: info.id, type: "file" };
 			break;
 		}
@@ -771,30 +783,50 @@ async function executeActionInner(
 	return adopted;
 }
 
+function ownedForwardMemoryStoreIds(ctx: ExecContext, provider: string): string[] {
+	return ctx.state
+		.listResources()
+		.filter(
+			(resource) =>
+				resource.address.provider === provider &&
+				resource.address.type === "memory_store" &&
+				resource.api_mode === "forward" &&
+				typeof resource.remote_id === "string",
+		)
+		.map((resource) => resource.remote_id as string);
+}
+
 function resolveResourceApiMode(
 	type: ResourceType,
 	name: string,
 	provider: string,
 	config: ExecContext["config"],
 ): ProviderResourceMode | undefined {
-	if (provider !== "qoder" || (type !== "skill" && type !== "vault" && type !== "memory_store" && type !== "file")) {
+	if (
+		provider !== "qoder" ||
+		(type !== "environment" && type !== "skill" && type !== "vault" && type !== "memory_store" && type !== "file")
+	) {
 		return undefined;
 	}
+	// An external Environment reference can resolve in either Qoder API domain.
+	if (type === "environment" && config.environments?.[name]?.environment_id) return "auto";
 
 	let managed = false;
 	let forward = false;
 	for (const agent of Object.values(config.agents ?? {})) {
 		if (agent.provider && agent.provider !== provider) continue;
 		const referenced =
-			type === "skill"
-				? agent.skills?.some((skill) =>
-						typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
-					)
-				: type === "vault"
-					? agent.vault === name
-					: type === "memory_store"
-						? agent.memory_stores?.includes(name)
-						: false;
+			type === "environment"
+				? agent.environment === name
+				: type === "skill"
+					? agent.skills?.some((skill) =>
+							typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
+						)
+					: type === "vault"
+						? agent.vault === name
+						: type === "memory_store"
+							? agent.memory_stores?.includes(name)
+							: agent.files?.includes(name);
 		if (!referenced) continue;
 		if (agent.delivery?.qoder?.type === "forward") forward = true;
 		else managed = true;
@@ -811,9 +843,10 @@ async function findExistingByNames(
 	provider: Pick<ResourceCrudAdapter, "findResource">,
 	type: ResourceType,
 	names: string[],
+	mode?: ProviderResourceMode,
 ): Promise<{ resource: RemoteResource; name: string } | null> {
 	for (const candidate of names) {
-		const found = await provider.findResource(type, candidate);
+		const found = await provider.findResource(type, candidate, undefined, mode);
 		if (found && found.id !== null) return { resource: found, name: candidate };
 	}
 	return null;
@@ -826,13 +859,14 @@ async function adoptOnConflict(
 	onFeedback: RuntimeFeedbackSink | undefined,
 	opts: {
 		searchNames?: string[];
+		mode?: ProviderResourceMode;
 		onExisting: (existing: RemoteResource) => Promise<RemoteResource>;
 	},
 ): Promise<RemoteResource> {
 	if (!(err instanceof ConflictError)) throw err;
 
 	const candidates = opts.searchNames?.length ? opts.searchNames : [address.name];
-	const existing = await findExistingByNames(provider, address.type, candidates);
+	const existing = await findExistingByNames(provider, address.type, candidates, opts.mode);
 	if (!existing) throw nameReservedError(err, address, candidates.join('" / "'));
 
 	emitRuntimeFeedback(onFeedback, {

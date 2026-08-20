@@ -11,6 +11,7 @@ import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
+import { resolveAgentMaterialization } from "./agent-materialization.ts";
 
 export interface ValidateProjectConfigOptions {
 	/** Providers to capability-check. Defaults to the config's target providers. */
@@ -51,6 +52,7 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 	const skillNames = new Set(Object.keys(config.skills ?? {}));
 	const vaultNames = new Set(Object.keys(config.vaults ?? {}));
 	const memoryNames = new Set(Object.keys(config.memory_stores ?? {}));
+	const fileNames = new Set(Object.keys(config.files ?? {}));
 	const agentNames = new Set(Object.keys(config.agents ?? {}));
 	const identityNames = new Set(Object.keys(config.identities ?? {}));
 
@@ -79,6 +81,11 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 		}
 		if (agent.vault && !vaultNames.has(agent.vault)) {
 			diagnostics.error("config.agent.vault.unknown", `agent.${name}: references unknown vault '${agent.vault}'`);
+		}
+		for (const file of agent.files ?? []) {
+			if (!fileNames.has(file)) {
+				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${file}'`);
+			}
 		}
 		for (const memory of agent.memory_stores ?? []) {
 			if (!memoryNames.has(memory)) {
@@ -270,11 +277,15 @@ export function collectProviderCapabilities(
 				if (agent.provider && agent.provider !== providerName) continue;
 				const mode = agent.delivery?.qoder?.type === "forward" ? "forward" : "managed";
 				const refs = [
+					...(agent.environment && !config.environments?.[agent.environment]?.environment_id
+						? [`environment:${agent.environment}`]
+						: []),
 					...(agent.skills ?? []).flatMap((skill) =>
 						typeof skill === "string" ? [`skill:${skill}`] : skill.type === "custom" ? [`skill:${skill.skill_id}`] : [],
 					),
 					...(agent.vault ? [`vault:${agent.vault}`] : []),
 					...(agent.memory_stores ?? []).map((store) => `memory_store:${store}`),
+					...(agent.files ?? []).map((file) => `file:${file}`),
 				];
 				for (const ref of refs) {
 					const modes = domains.get(ref) ?? new Set<"managed" | "forward">();
@@ -284,11 +295,22 @@ export function collectProviderCapabilities(
 			}
 			for (const [ref, modes] of domains) {
 				if (modes.size < 2) continue;
-				const [type, name] = ref.split(":") as ["skill" | "vault" | "memory_store", string];
+				const [type, name] = ref.split(":") as ["environment" | "skill" | "vault" | "memory_store" | "file", string];
 				diagnostics.error(
 					`qoder.${type}.delivery_domain.conflict`,
 					`${type}.${name}: referenced by both Managed and Forward agents; declare separate resources because Qoder uses different API domains.`,
 					{ type, name, provider: providerName },
+				);
+			}
+		}
+
+		for (const [name, agent] of Object.entries(config.agents ?? {})) {
+			if (agent.provider && agent.provider !== providerName) continue;
+			if (agent.files?.length && (providerName !== "qoder" || agent.delivery?.qoder?.type !== "forward")) {
+				diagnostics.error(
+					"config.agent.files.unsupported",
+					`agent.${name}: files are supported only by Qoder Forward Templates.`,
+					{ type: resolveAgentMaterialization(providerName, agent).resourceType, name, provider: providerName },
 				);
 			}
 		}

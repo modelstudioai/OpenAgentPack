@@ -1,6 +1,6 @@
 import { UserError } from "../errors.ts";
 import { ApiError } from "../providers/base-client.ts";
-import type { ProviderAdapter } from "../providers/interface.ts";
+import type { ProviderAdapter, ProviderResourceMode } from "../providers/interface.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import { emitRuntimeFeedback } from "../types/runtime-feedback.ts";
 import type { ResourceState, ResourceType } from "../types/state.ts";
@@ -401,8 +401,25 @@ async function destroyOneResource(
 		return successResult(resource, "destroyed");
 	}
 
+	const apiMode = resource.api_mode === "auto" ? undefined : resource.api_mode;
 	try {
-		await deleteRemoteResource(provider, resource.address.type, resource.remote_id, options.cascade);
+		await deleteRemoteResource(
+			provider,
+			resource.address.type,
+			resource.remote_id,
+			options.cascade,
+			apiMode,
+			ctx.state
+				.listResources()
+				.filter(
+					(candidate) =>
+						candidate.address.provider === resource.address.provider &&
+						candidate.address.type === "memory_store" &&
+						candidate.api_mode === "forward" &&
+						typeof candidate.remote_id === "string",
+				)
+				.map((candidate) => candidate.remote_id as string),
+		);
 		ctx.state.removeResource(resource.address);
 		emitRuntimeFeedback(options.onFeedback, {
 			type: "resource_action_success",
@@ -432,7 +449,7 @@ async function destroyOneResource(
 			} satisfies DestroyResourceResult;
 			if (await options.onCascadeRequired?.(blocked)) {
 				try {
-					await provider.deleteEnvironment(resource.remote_id, true);
+					await provider.deleteEnvironment(resource.remote_id, true, apiMode);
 					ctx.state.removeResource(resource.address);
 					return {
 						...successResult(resource, "destroyed"),
@@ -481,6 +498,8 @@ async function deleteRemoteResource(
 	type: ResourceType,
 	id: string,
 	cascade?: boolean,
+	mode?: ProviderResourceMode,
+	ownedMemoryStoreIds: string[] = [],
 ): Promise<void> {
 	switch (type) {
 		case "agent":
@@ -488,22 +507,22 @@ async function deleteRemoteResource(
 			return;
 		case "template":
 			if (!provider.archiveTemplate) throw new UserError(`Provider does not support templates`);
-			await provider.archiveTemplate(id);
+			await provider.archiveTemplate(id, ownedMemoryStoreIds);
 			return;
 		case "skill":
-			await provider.deleteSkill(id);
+			await provider.deleteSkill(id, mode);
 			return;
 		case "memory_store":
 			if (!provider.deleteMemoryStore) {
 				throw new UserError(`Provider does not support memory stores`);
 			}
-			await provider.deleteMemoryStore(id);
+			await provider.deleteMemoryStore(id, mode);
 			return;
 		case "vault":
-			await provider.deleteVault(id);
+			await provider.deleteVault(id, mode);
 			return;
 		case "environment":
-			await provider.deleteEnvironment(id, cascade);
+			await provider.deleteEnvironment(id, cascade, mode);
 			return;
 		case "deployment":
 			await provider.deleteDeployment(id);
@@ -517,7 +536,7 @@ async function deleteRemoteResource(
 			await provider.deleteChannel(id);
 			return;
 		case "file":
-			await provider.deleteFile(id);
+			await provider.deleteFile(id, mode);
 			return;
 	}
 }

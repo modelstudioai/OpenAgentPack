@@ -44,7 +44,7 @@ export interface RemoteResource {
 	version?: number;
 }
 
-export type ProviderResourceMode = "managed" | "forward";
+export type ProviderResourceMode = "managed" | "forward" | "auto";
 
 export interface ModelInfo {
 	id: string;
@@ -87,8 +87,11 @@ export interface ResolvedTemplateRefs extends ResolvedAgentRefs {
 	/** Qoder BYOC private-network route used by Forward Templates. */
 	tunnel_id?: string;
 	vault_ids: string[];
+	file_ids?: string[];
 	identity_id?: string;
 	memory_store_ids?: string[];
+	/** Forward Store ids owned by this project and therefore safe to detach during reconciliation. */
+	owned_memory_store_ids?: string[];
 }
 
 export interface ResolvedDeploymentRefs {
@@ -165,7 +168,12 @@ export interface ProviderAdapter {
 	 * ambiguity of name matching when names are not unique. Without `id`, falls
 	 * back to listing and matching by `name` (used by conflict adoption).
 	 */
-	findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null>;
+	findResource(
+		type: ResourceType,
+		name: string,
+		id?: string | null,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource | null>;
 	// Raw cloud agent list (full remote objects, not local config). Optional: only
 	// providers that can enumerate their remote agents implement it. `prefix` filters
 	// by display-name prefix (e.g. "Agents/") server-side where supported.
@@ -192,9 +200,14 @@ export interface ProviderAdapter {
 	 */
 	exportResources?(type: ResourceType): Promise<ExportedResource[]>;
 
-	createEnvironment(name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	deleteEnvironment(id: string, cascade?: boolean): Promise<void>;
+	createEnvironment(name: string, decl: EnvironmentDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateEnvironment(
+		id: string,
+		name: string,
+		decl: EnvironmentDecl,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
 	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
 	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
@@ -216,7 +229,7 @@ export interface ProviderAdapter {
 	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	/** Remove the template from desired state. Qoder implements this as a soft archive. */
-	archiveTemplate?(id: string): Promise<void>;
+	archiveTemplate?(id: string, ownedMemoryStoreIds?: string[]): Promise<void>;
 	reconcileDefaultMemoryStore?(
 		identityId: string,
 		templateId: string,
@@ -279,14 +292,18 @@ export interface ProviderAdapter {
 	pauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 	unpauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 
-	uploadFile(filePath: string, options?: { name?: string; purpose?: string }): Promise<ProviderFileInfo>;
+	uploadFile(
+		filePath: string,
+		options?: { name?: string; purpose?: string },
+		mode?: ProviderResourceMode,
+	): Promise<ProviderFileInfo>;
 	/** Upload from in-memory content (no filesystem), for server contexts that receive bytes directly (e.g. webui browser uploads). */
 	uploadFileContent(
 		content: Uint8Array,
 		filename: string,
 		options?: { mimeType?: string; purpose?: string },
 	): Promise<ProviderFileInfo>;
-	deleteFile(id: string): Promise<void>;
+	deleteFile(id: string, mode?: ProviderResourceMode): Promise<void>;
 	/** Fetch a single file's metadata (incl. scan `status`); used to gate session binding on availability. */
 	getFileInfo?(id: string): Promise<ProviderFileInfo>;
 	/**

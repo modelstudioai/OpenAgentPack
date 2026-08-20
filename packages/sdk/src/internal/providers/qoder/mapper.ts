@@ -69,6 +69,15 @@ export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName:
 	};
 }
 
+/** Forward Environment config has its own schema and does not accept Managed networking fields. */
+export function mapForwardEnvironment(name: string, decl: EnvironmentDecl, projectName: string): unknown {
+	const body = mapEnvironment(name, decl, projectName) as Record<string, unknown>;
+	const config = { ...(body.config as Record<string, unknown>) };
+	delete config.networking;
+	body.config = config;
+	return body;
+}
+
 // Qoder's create-vault endpoint accepts only display_name + metadata; credentials are
 // added one-by-one via POST /vaults/{id}/credentials (see adapter.createVault).
 export function mapVault(name: string, decl: VaultDecl, projectName: string): unknown {
@@ -489,6 +498,7 @@ export function mapForwardTemplate(
 		environment_id: refs.environment_id,
 		vault_ids: refs.vault_ids,
 	};
+	body.files = Object.fromEntries((refs.file_ids ?? []).map((id) => [id, { enabled: true }]));
 	if (refs.tunnel_id) body.tunnel_id = refs.tunnel_id;
 	if (projectName) body.metadata = injectMetadata(decl.metadata, projectName, name);
 	else body.metadata = decl.metadata ?? {};

@@ -364,6 +364,13 @@ agents:
 
 #### 配置 Qoder Forward 默认 Memory Store
 
+Qoder Forward 本地声明的 Environment 只通过 Forward Environment API 创建。外部 `environment_id`
+既可以引用 Managed API 的 Environment，也可以引用 Forward API 的 Environment；OpenCMA 不会创建或
+修改此类外部引用，并会在检查其是否存在时自动解析 API 域。Forward Agent 引用的自定义 Skill、Vault/Credential、File 和显式 Memory
+Store 均通过 Forward API 管理；本地管理的 Environment、Skill、Vault、File 或 Memory Store 不能同时
+供 Managed 与 Forward Agent 共用，应分别声明。Forward File 通过 Agent 的 `files` 字段绑定到 Template。
+显式 Memory Store 依赖 `defaults.identity`，并以只读方式挂载到对应的 Identity + Template。
+
 Qoder Forward 会在某个 `(Identity, Template)` 首次创建 Session 时自动建立唯一可写的系统默认
 Memory Store。`default_memory_store` 管理的是这个由 Qoder 创建的 Store，而不是在顶层
 `memory_stores` 中额外创建一个普通 Store。可以为它设置有业务含义的展示名称、描述以及销毁策略：

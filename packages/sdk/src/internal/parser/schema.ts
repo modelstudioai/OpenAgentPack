@@ -260,6 +260,7 @@ const agentSchema = z.object({
 	mcp_servers: z.array(mcpServerSchema).optional(),
 	skills: z.array(z.union([z.string(), agentSkillRefSchema])).optional(),
 	vault: z.string().optional(),
+	files: z.array(z.string()).optional(),
 	memory_stores: z.array(z.string()).optional(),
 	default_memory_store: z
 		.object({

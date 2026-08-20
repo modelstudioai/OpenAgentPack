@@ -125,6 +125,13 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 					}
 				}
 
+				if (decl.files) {
+					for (const fileName of decl.files) {
+						const fileAddr: ResourceAddress = { type: "file", name: fileName, provider };
+						if (nodes.has(addressKey(fileAddr))) addEdge(agentAddr, fileAddr);
+					}
+				}
+
 				if (decl.memory_stores) {
 					for (const msName of decl.memory_stores) {
 						const msAddr: ResourceAddress = {

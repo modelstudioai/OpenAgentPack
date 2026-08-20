@@ -39,6 +39,7 @@ import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
+import { skillNameFromFiles } from "../../utils/skill-manifest.ts";
 import { ApiError, toRemoteResource } from "../base-client.ts";
 import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
@@ -82,6 +83,7 @@ import {
 	mapDeployment,
 	mapDeploymentUpdate,
 	mapEnvironment,
+	mapForwardEnvironment,
 	mapForwardTemplate,
 	mapMemoryStore,
 	mapSendMessage,
@@ -178,7 +180,12 @@ export class QoderAdapter implements ProviderAdapter {
 		deployment: "/deployments",
 	};
 
-	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
+	async findResource(
+		type: ResourceType,
+		name: string,
+		id?: string | null,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource | null> {
 		if (type === "template") {
 			const raw = await locateRemote(this.forwardClient, "/templates", name, id, (item) => item.status !== "archived");
 			return raw ? toRemoteResource(raw) : null;
@@ -200,7 +207,22 @@ export class QoderAdapter implements ProviderAdapter {
 			const raw = await locateRemote(this.forwardClient, "/channels", name, id, () => true);
 			return raw ? toRemoteResource(raw) : null;
 		}
-		const raw = await locateRemote(this.client, QoderAdapter.ENDPOINT_MAP[type], name, id, notArchived);
+		// An Environment id referenced by a Forward Template may belong to either
+		// the Cloud/Managed API or the Forward API. With no ownership domain
+		// recorded, resolve the external id across both read APIs. Locally owned
+		// environments always pass an explicit mode and never use this fallback.
+		if (type === "environment" && id && mode === "auto") {
+			const managed = await locateRemote(this.client, "/environments", name, id, notArchived);
+			if (managed) return toRemoteResource(managed);
+			const forward = await locateRemote(this.forwardClient, "/environments", name, id, notArchived);
+			return forward ? toRemoteResource(forward) : null;
+		}
+		const client =
+			mode === "forward" &&
+			(type === "environment" || type === "skill" || type === "vault" || type === "memory_store" || type === "file")
+				? this.forwardClient
+				: this.client;
+		const raw = await locateRemote(client, QoderAdapter.ENDPOINT_MAP[type], name, id, notArchived);
 		return raw ? toRemoteResource(raw) : null;
 	}
 
@@ -396,26 +418,50 @@ export class QoderAdapter implements ProviderAdapter {
 		});
 	}
 
-	async createEnvironment(name: string, decl: EnvironmentDecl): Promise<RemoteResource> {
-		const body = mapEnvironment(name, decl, this.projectName);
-		const res = (await this.client.post("/environments", body)) as Record<string, unknown>;
+	async createEnvironment(
+		name: string,
+		decl: EnvironmentDecl,
+		mode: ProviderResourceMode = "managed",
+	): Promise<RemoteResource> {
+		const body =
+			mode === "forward"
+				? mapForwardEnvironment(name, decl, this.projectName)
+				: mapEnvironment(name, decl, this.projectName);
+		const res = (await (mode === "forward" ? this.forwardClient : this.client).post("/environments", body)) as Record<
+			string,
+			unknown
+		>;
 		return toRemoteResource(res);
 	}
 
-	async updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource> {
-		const body = mapEnvironment(name, decl, this.projectName) as Record<string, unknown>;
-		const current = (await this.client.get(`/environments/${id}`)) as Record<string, unknown>;
+	async updateEnvironment(
+		id: string,
+		name: string,
+		decl: EnvironmentDecl,
+		mode: ProviderResourceMode = "managed",
+	): Promise<RemoteResource> {
+		const body = (
+			mode === "forward"
+				? mapForwardEnvironment(name, decl, this.projectName)
+				: mapEnvironment(name, decl, this.projectName)
+		) as Record<string, unknown>;
+		const client = mode === "forward" ? this.forwardClient : this.client;
+		const current = (await client.get(`/environments/${id}`)) as Record<string, unknown>;
 		const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
 		const metadata = { ...((body.metadata ?? {}) as Record<string, string | null>) };
 		for (const key of Object.keys(currentMetadata)) {
 			if (!key.startsWith("agents.") && !(key in metadata)) metadata[key] = null;
 		}
 		body.metadata = metadata;
-		const res = (await this.client.post(`/environments/${id}`, body)) as Record<string, unknown>;
+		const res = (await client.post(`/environments/${id}`, body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
 
-	async deleteEnvironment(id: string, cascade = false): Promise<void> {
+	async deleteEnvironment(id: string, cascade = false, mode: ProviderResourceMode = "managed"): Promise<void> {
+		if (mode === "forward") {
+			await this.forwardClient.delete(`/environments/${id}`);
+			return;
+		}
 		try {
 			await this.client.delete(`/environments/${id}`);
 			return;
@@ -509,8 +555,12 @@ export class QoderAdapter implements ProviderAdapter {
 		files: SkillFile[],
 		mode: ProviderResourceMode = "managed",
 	): Promise<RemoteResource> {
-		await (mode === "forward" ? this.forwardClient : this.client).delete(`/skills/${id}`);
-		return this.createSkill(name, decl, files, mode);
+		const client = mode === "forward" ? this.forwardClient : this.client;
+		const packageName = skillNameFromFiles(files) ?? name;
+		const formData = await buildSkillFormData(packageName, decl, files, "files", false, true);
+		await client.postFormData(`/skills/${id}/versions`, formData);
+		const current = (await client.get(`/skills/${id}`)) as Record<string, unknown>;
+		return toRemoteResource(current);
 	}
 
 	async deleteSkill(id: string, mode: ProviderResourceMode = "managed"): Promise<void> {
@@ -552,7 +602,25 @@ export class QoderAdapter implements ProviderAdapter {
 		return toRemoteResource(res);
 	}
 
-	async archiveTemplate(id: string): Promise<void> {
+	async archiveTemplate(id: string, ownedMemoryStoreIds: string[] = []): Promise<void> {
+		const owned = new Set(ownedMemoryStoreIds);
+		if (owned.size > 0) {
+			for (const identity of await this.forwardClient.getAllPaged("/identities")) {
+				if (typeof identity.id !== "string") continue;
+				const path = `/identities/${identity.id}/templates/${id}/memory_stores`;
+				try {
+					const mounts = (await this.forwardClient.get(path)) as { data?: Array<Record<string, unknown>> };
+					for (const mount of mounts.data ?? []) {
+						const storeId = mount.memory_store_id;
+						if (mount.system_managed !== true && typeof storeId === "string" && owned.has(storeId)) {
+							await this.forwardClient.delete(`${path}/${storeId}`);
+						}
+					}
+				} catch (error) {
+					if (!ApiError.isNotFound(error)) throw error;
+				}
+			}
+		}
 		await this.forwardClient.post(`/templates/${id}/archive`, {});
 	}
 
@@ -566,9 +634,10 @@ export class QoderAdapter implements ProviderAdapter {
 		const path = `/identities/${refs.identity_id}/templates/${templateId}/memory_stores`;
 		const current = (await this.forwardClient.get(path)) as { data?: Array<Record<string, unknown>> };
 		const explicit = (current.data ?? []).filter((mount) => mount.system_managed !== true);
+		const owned = new Set(refs.owned_memory_store_ids ?? refs.memory_store_ids ?? []);
 		for (const mount of explicit) {
 			const storeId = mount.memory_store_id;
-			if (typeof storeId === "string" && !desired.has(storeId)) {
+			if (typeof storeId === "string" && owned.has(storeId) && !desired.has(storeId)) {
 				await this.forwardClient.delete(`${path}/${storeId}`);
 			}
 		}
@@ -612,7 +681,10 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async deleteDefaultMemoryStore(id: string): Promise<void> {
-		await this.forwardClient.delete(`/memory_stores/${id}`);
+		// Forward DELETE rejects the system-managed default Store while its
+		// non-detachable Identity/Template mount exists. The Cloud lifecycle API
+		// permanently deletes the same underlying Store and its stale binding.
+		await this.client.delete(`/memory_stores/${id}`);
 	}
 
 	async createIdentity(name: string, decl: IdentityDecl): Promise<RemoteResource> {
@@ -717,15 +789,18 @@ export class QoderAdapter implements ProviderAdapter {
 				await memoryApi.createMemory(storeId, { content: entry.content, path: entry.key });
 			}
 		} catch (error) {
-			await client.delete(`/memory_stores/${storeId}`).catch(() => undefined);
+			await this.client.delete(`/memory_stores/${storeId}`).catch(() => undefined);
 			throw error;
 		}
 
 		return toRemoteResource(res);
 	}
 
-	async deleteMemoryStore(id: string, mode: ProviderResourceMode = "managed"): Promise<void> {
-		await (mode === "forward" ? this.forwardClient : this.client).delete(`/memory_stores/${id}`);
+	async deleteMemoryStore(id: string, _mode: ProviderResourceMode = "managed"): Promise<void> {
+		// Memory Store persistence is shared across Qoder API domains. Permanent
+		// deletion belongs to the Cloud lifecycle API, which also clears stale
+		// Forward mounts left by archived Templates or deleted Identities.
+		await this.client.delete(`/memory_stores/${id}`);
 	}
 
 	listMemoryStores(options?: MemoryStoreListOptions) {
@@ -1096,13 +1171,25 @@ export class QoderAdapter implements ProviderAdapter {
 
 	// --- Files ---
 
-	async uploadFile(filePath: string, options?: { name?: string; purpose?: string }): Promise<ProviderFileInfo> {
+	async uploadFile(
+		filePath: string,
+		options?: { name?: string; purpose?: string },
+		mode: ProviderResourceMode = "managed",
+	): Promise<ProviderFileInfo> {
+		if (mode === "forward" && options?.purpose && !["user_upload", "session_resource"].includes(options.purpose)) {
+			throw new UserError(
+				`Qoder Forward File purpose must be 'user_upload' or 'session_resource', got '${options.purpose}'.`,
+			);
+		}
 		const resolved = resolve(filePath);
 		const content = readFileSync(resolved);
 		const fileName = options?.name ?? basename(resolved);
-		return this.uploadFileContent(new Uint8Array(content), fileName, {
-			purpose: options?.purpose,
-		});
+		const formData = buildFileFormData(new Uint8Array(content), fileName, { purpose: options?.purpose });
+		const res = (await (mode === "forward" ? this.forwardClient : this.client).postFormData(
+			"/files",
+			formData,
+		)) as Record<string, unknown>;
+		return toRestFileInfo(res);
 	}
 
 	async uploadFileContent(
@@ -1110,21 +1197,30 @@ export class QoderAdapter implements ProviderAdapter {
 		filename: string,
 		options?: { mimeType?: string; purpose?: string },
 	): Promise<ProviderFileInfo> {
-		const formData = new FormData();
-		const bytes = new Uint8Array(content);
-		formData.append(
-			"file",
-			options?.mimeType ? new File([bytes], filename, { type: options.mimeType }) : new File([bytes], filename),
-		);
-		if (filename) formData.append("name", filename);
-		if (options?.purpose) formData.append("purpose", options.purpose);
+		const formData = buildFileFormData(content, filename, options);
 		const res = (await this.client.postFormData("/files", formData)) as Record<string, unknown>;
 		return toRestFileInfo(res);
 	}
 
-	async deleteFile(id: string): Promise<void> {
-		await this.client.delete(`/files/${id}`);
+	async deleteFile(id: string, mode: ProviderResourceMode = "managed"): Promise<void> {
+		await (mode === "forward" ? this.forwardClient : this.client).delete(`/files/${id}`);
 	}
+}
+
+function buildFileFormData(
+	content: Uint8Array,
+	filename: string,
+	options?: { mimeType?: string; purpose?: string },
+): FormData {
+	const formData = new FormData();
+	const bytes = new Uint8Array(content);
+	formData.append(
+		"file",
+		options?.mimeType ? new File([bytes], filename, { type: options.mimeType }) : new File([bytes], filename),
+	);
+	if (filename) formData.append("name", filename);
+	if (options?.purpose) formData.append("purpose", options.purpose);
+	return formData;
 }
 
 export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo {
@@ -1189,22 +1285,31 @@ function normalizeQoderMcpServers(value: unknown): unknown {
 	});
 }
 
-async function buildSkillFormData(name: string, decl: SkillDecl, files: SkillFile[]): Promise<FormData> {
+async function buildSkillFormData(
+	name: string,
+	decl: SkillDecl,
+	files: SkillFile[],
+	fileField = "file",
+	includeCreateFields = true,
+	prefixTopLevelDirectory = false,
+): Promise<FormData> {
 	const zip = new JSZip();
 	for (const f of files) {
-		zip.file(f.relativePath, f.content);
+		zip.file(prefixTopLevelDirectory ? `${name}/${f.relativePath}` : f.relativePath, f.content);
 	}
 	const zipContent = await zip.generateAsync({ type: "uint8array" });
 
 	const formData = new FormData();
 	formData.append(
-		"file",
+		fileField,
 		new File([new Uint8Array(zipContent)], `${name}.zip`, {
 			type: "application/zip",
 		}),
 	);
-	formData.append("name", name);
-	formData.append("type", "custom");
-	if (decl.description) formData.append("description", decl.description);
+	if (includeCreateFields) {
+		formData.append("name", name);
+		formData.append("type", "custom");
+		if (decl.description) formData.append("description", decl.description);
+	}
 	return formData;
 }

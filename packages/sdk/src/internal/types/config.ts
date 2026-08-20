@@ -170,6 +170,8 @@ export interface AgentDecl {
 	mcp_servers?: McpServerDecl[];
 	skills?: AgentSkillDecl[];
 	vault?: string;
+	/** File declarations inherited by a Qoder Forward Template. */
+	files?: string[];
 	memory_stores?: string[];
 	/** Desired display metadata for Qoder Forward's system-managed writable Store. */
 	default_memory_store?: DefaultMemoryStoreDecl;

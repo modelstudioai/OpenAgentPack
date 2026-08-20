@@ -87,7 +87,7 @@ export function resolveTemplateRefs(
 	if (!environment) throw new UserError(`Environment '${agent.environment}' is not defined in config.`);
 
 	const agentRefs = resolveAgentRefs(agentName, config, provider, state);
-	const memoryStoreIds = agent.memory_stores?.map((memoryStore) =>
+	const memoryStoreIds = (agent.memory_stores ?? []).map((memoryStore) =>
 		requireRef(state, { type: "memory_store", name: memoryStore, provider }),
 	);
 	const identityName = config.defaults?.identity;
@@ -97,7 +97,18 @@ export function resolveTemplateRefs(
 			environment.environment_id ?? requireRef(state, { type: "environment", name: agent.environment, provider }),
 		...(agent.tunnel ? { tunnel_id: resolveTunnelIdFromConfig(config, agent.tunnel, provider) } : {}),
 		vault_ids: agent.vault ? [requireRef(state, { type: "vault", name: agent.vault, provider })] : [],
-		...(memoryStoreIds ? { memory_store_ids: memoryStoreIds } : {}),
+		file_ids: (agent.files ?? []).map((file) => requireRef(state, { type: "file", name: file, provider })),
+		memory_store_ids: memoryStoreIds,
+		owned_memory_store_ids: state
+			.listResources()
+			.filter(
+				(resource) =>
+					resource.address.provider === provider &&
+					resource.address.type === "memory_store" &&
+					resource.api_mode === "forward" &&
+					typeof resource.remote_id === "string",
+			)
+			.map((resource) => resource.remote_id as string),
 		...(identityName ? { identity_id: requireRef(state, { type: "identity", name: identityName, provider }) } : {}),
 	};
 }

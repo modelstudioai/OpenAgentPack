@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import JSZip from "jszip";
 import { validateProjectConfig } from "../../src/internal/core/validate-config.ts";
 import { executePlan } from "../../src/internal/executor/executor.ts";
+import { resolveTemplateRefs } from "../../src/internal/executor/resolver.ts";
 import { buildDependencyGraph } from "../../src/internal/graph/dependency.ts";
 import { computeResourceHash } from "../../src/internal/planner/hasher.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
+import { ApiError } from "../../src/internal/providers/base-client.ts";
 import type { ProviderAdapter } from "../../src/internal/providers/interface.ts";
 import { QoderAdapter } from "../../src/internal/providers/qoder/adapter.ts";
 import { mapForwardTemplate } from "../../src/internal/providers/qoder/mapper.ts";
@@ -177,9 +180,65 @@ describe("Qoder Forward Template declaration", () => {
 		const managedHash = await computeResourceHash(address, config);
 		expect(forwardHash).not.toBe(managedHash);
 	});
+
+	test("keeps an unrelated Managed File in the Managed API domain", async () => {
+		const config = forwardConfig();
+		config.files = { handbook: { source: "README.md" } };
+		const address = { type: "file", name: "handbook", provider: "qoder" } as const;
+		const withForwardAgent = await computeResourceHash(address, config);
+		delete config.agents;
+		const managedOnly = await computeResourceHash(address, config);
+		expect(withForwardAgent).toBe(managedOnly);
+	});
 });
 
 describe("Qoder Forward Template mapping and lifecycle", () => {
+	test("routes self-created Forward Environments without changing Managed Environment routing", async () => {
+		const calls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			post: async (path: string) => {
+				calls.push(`managed POST ${path}`);
+				return { id: "env_managed" };
+			},
+		};
+		adapter.forwardClient = {
+			post: async (path: string, body: Record<string, any>) => {
+				calls.push(`forward POST ${path}`);
+				expect(body.config.networking).toBeUndefined();
+				return { id: "env_forward" };
+			},
+		};
+		await adapter.createEnvironment("managed", { config: { type: "cloud" } }, "managed");
+		await adapter.createEnvironment(
+			"forward",
+			{ config: { type: "cloud", networking: { type: "unrestricted" } } },
+			"forward",
+		);
+		expect(calls).toEqual(["managed POST /environments", "forward POST /environments"]);
+	});
+
+	test("resolves an external Environment id from either API domain", async () => {
+		const calls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			get: async (path: string) => {
+				calls.push(`managed GET ${path}`);
+				throw new ApiError(404, "not found", "test");
+			},
+		};
+		adapter.forwardClient = {
+			get: async (path: string) => {
+				calls.push(`forward GET ${path}`);
+				return { id: "env_forward", type: "environment", name: "external" };
+			},
+		};
+
+		const found = await adapter.findResource("environment", "external", "env_forward", "auto");
+		expect(found?.id).toBe("env_forward");
+		expect(calls).toEqual(["managed GET /environments/env_forward", "forward GET /environments/env_forward"]);
+	});
+
 	test("maps BYOC bindings and tool permissions", () => {
 		const decl = forwardConfig().agents!.assistant!;
 		decl.environment_variables = { BASE_MODE: "support" };
@@ -280,13 +339,17 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		]);
 	});
 
-	test("uses Forward lifecycle endpoints for Forward-owned Skills and Vault credentials", async () => {
+	test("appends Skill versions in both API domains and keeps Forward Vault credentials isolated", async () => {
 		const managedCalls: string[] = [];
 		const forwardCalls: string[] = [];
 		const adapter = new QoderAdapter("pt-test") as any;
 		adapter.client = {
 			post: async (path: string) => managedCalls.push(`POST ${path}`),
 			postFormData: async (path: string) => managedCalls.push(`POST_FORM ${path}`),
+			get: async (path: string) => {
+				managedCalls.push(`GET ${path}`);
+				return { id: "skill_managed" };
+			},
 			delete: async (path: string) => managedCalls.push(`DELETE ${path}`),
 		};
 		adapter.forwardClient = {
@@ -298,10 +361,16 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 				forwardCalls.push(`POST_FORM ${path}`);
 				return { id: "skill_forward" };
 			},
+			get: async (path: string) => {
+				forwardCalls.push(`GET ${path}`);
+				return { id: "skill_forward" };
+			},
 			delete: async (path: string) => forwardCalls.push(`DELETE ${path}`),
 		};
 
 		await adapter.createSkill("forward-skill", { source: "." }, [], "forward");
+		await adapter.updateSkill("skill_forward", "forward-skill", { source: "." }, [], "forward");
+		await adapter.updateSkill("skill_managed", "managed-skill", { source: "." }, [], "managed");
 		await adapter.deleteSkill("skill_forward", "forward");
 		await adapter.createVault(
 			"forward-vault",
@@ -313,14 +382,190 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		);
 		await adapter.deleteVault("vault_forward", "forward");
 
-		expect(managedCalls).toEqual([]);
+		expect(managedCalls).toEqual(["POST_FORM /skills/skill_managed/versions", "GET /skills/skill_managed"]);
 		expect(forwardCalls).toEqual([
 			"POST_FORM /skills",
+			"POST_FORM /skills/skill_forward/versions",
+			"GET /skills/skill_forward",
 			"DELETE /skills/skill_forward",
 			"POST /vaults",
 			"POST /vaults/vault_forward/credentials",
 			"DELETE /vaults/vault_forward",
 		]);
+	});
+
+	test("packages Skill versions under the SKILL.md manifest name", async () => {
+		let entries: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			postFormData: async (_path: string, form: FormData) => {
+				const archive = form.get("files") as File;
+				const zip = await JSZip.loadAsync(await archive.arrayBuffer());
+				entries = Object.keys(zip.files);
+			},
+			get: async () => ({ id: "skill_1" }),
+		};
+		await adapter.updateSkill(
+			"skill_1",
+			"display-alias",
+			{ source: "." },
+			[
+				{
+					relativePath: "SKILL.md",
+					content: "---\nname: manifest-name\ndescription: test\n---\n",
+				},
+			],
+			"managed",
+		);
+		expect(entries).toContain("manifest-name/SKILL.md");
+		expect(entries).not.toContain("display-alias/SKILL.md");
+	});
+
+	test("creates Forward Memory Stores with idempotency and reconciles Identity mounts", async () => {
+		const calls: Array<{ method: string; path: string; body?: unknown; options?: unknown }> = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			post: async (path: string, body: unknown, options?: unknown) => {
+				calls.push({ method: "POST", path, body, options });
+				if (path === "/memory_stores") return { id: "memstore_forward" };
+				if (path === "/templates") return { id: "tmpl_forward" };
+				return {};
+			},
+			get: async (path: string) => {
+				calls.push({ method: "GET", path });
+				return {
+					data: [
+						{ memory_store_id: "memstore_old", system_managed: false },
+						{ memory_store_id: "memstore_external", system_managed: false },
+					],
+				};
+			},
+			delete: async (path: string) => calls.push({ method: "DELETE", path }),
+		};
+		adapter.forwardMemoryApi = { createMemory: async () => ({}) };
+
+		await adapter.createMemoryStore("forward-memory", { description: "Forward memory" }, "forward");
+		await adapter.createTemplate("assistant", forwardConfig().agents!.assistant!, {
+			environment_id: "env_byoc",
+			vault_ids: [],
+			skill_ids: [],
+			identity_id: "idn_1",
+			memory_store_ids: ["memstore_forward"],
+			owned_memory_store_ids: ["memstore_old", "memstore_forward"],
+		});
+
+		const createStore = calls.find((call) => call.path === "/memory_stores");
+		expect(createStore?.options).toMatchObject({ headers: { "Idempotency-Key": expect.any(String) } });
+		expect(calls.map(({ method, path }) => `${method} ${path}`)).toContain(
+			"DELETE /identities/idn_1/templates/tmpl_forward/memory_stores/memstore_old",
+		);
+		expect(calls.map(({ method, path }) => `${method} ${path}`)).not.toContain(
+			"DELETE /identities/idn_1/templates/tmpl_forward/memory_stores/memstore_external",
+		);
+		expect(calls.find((call) => call.path.startsWith("/identities/") && call.body)?.body).toEqual({
+			memory_store_id: "memstore_forward",
+		});
+	});
+
+	test("permanently deletes an explicit Forward Memory Store through the Cloud endpoint", async () => {
+		const managedCalls: string[] = [];
+		const forwardCalls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			delete: async (path: string) => managedCalls.push(`DELETE ${path}`),
+		};
+		adapter.forwardClient = {
+			delete: async (path: string) => forwardCalls.push(`DELETE ${path}`),
+		};
+
+		await adapter.deleteMemoryStore("memstore_forward", "forward");
+
+		expect(managedCalls).toEqual(["DELETE /memory_stores/memstore_forward"]);
+		expect(forwardCalls).toEqual([]);
+	});
+
+	test("rolls back a partially created Forward Memory Store through the Cloud endpoint", async () => {
+		const managedCalls: string[] = [];
+		const forwardCalls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			delete: async (path: string) => managedCalls.push(`DELETE ${path}`),
+		};
+		adapter.forwardClient = {
+			post: async (path: string) => {
+				forwardCalls.push(`POST ${path}`);
+				return { id: "memstore_partial" };
+			},
+			delete: async (path: string) => forwardCalls.push(`DELETE ${path}`),
+		};
+		adapter.forwardMemoryApi = {
+			createMemory: async () => {
+				throw new Error("entry upload failed");
+			},
+		};
+
+		await expect(
+			adapter.createMemoryStore("partial", { entries: [{ key: "MEMORY.md", content: "partial" }] }, "forward"),
+		).rejects.toThrow("entry upload failed");
+
+		expect(managedCalls).toEqual(["DELETE /memory_stores/memstore_partial"]);
+		expect(forwardCalls).toEqual(["POST /memory_stores"]);
+	});
+
+	test("detaches only project-owned Memory Store mounts while archiving a Template", async () => {
+		const calls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			getAllPaged: async () => [{ id: "idn_1" }],
+			get: async () => ({
+				data: [
+					{ memory_store_id: "memstore_owned", system_managed: false },
+					{ memory_store_id: "memstore_external", system_managed: false },
+					{ memory_store_id: "memstore_default", system_managed: true },
+				],
+			}),
+			delete: async (path: string) => calls.push(`DELETE ${path}`),
+			post: async (path: string) => calls.push(`POST ${path}`),
+		};
+		await adapter.archiveTemplate("tmpl_1", ["memstore_owned"]);
+		expect(calls).toEqual([
+			"DELETE /identities/idn_1/templates/tmpl_1/memory_stores/memstore_owned",
+			"POST /templates/tmpl_1/archive",
+		]);
+	});
+
+	test("maps Forward Template file references using Forward file ids", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		decl.files = ["handbook"];
+		const body = mapForwardTemplate("assistant", decl, {
+			environment_id: "env_forward",
+			vault_ids: [],
+			skill_ids: [],
+			file_ids: ["file_forward"],
+		}) as Record<string, unknown>;
+		expect(body.files).toEqual({ file_forward: { enabled: true } });
+	});
+
+	test("sends an empty File map and Memory Store set when bindings are removed", async () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "user" };
+		config.identities = { user: { external_id: "user" } };
+		delete config.agents!.assistant!.vault;
+		const state = StateManager.initialize(tmpPath("forward-empty-bindings"));
+		state.setResource({
+			address: { type: "identity", name: "user", provider: "qoder" },
+			remote_id: "idn_1",
+			content_hash: "identity",
+		});
+		const refs = resolveTemplateRefs("assistant", config, "qoder", state);
+		expect(refs).toMatchObject({
+			file_ids: [],
+			memory_store_ids: [],
+			owned_memory_store_ids: [],
+			identity_id: "idn_1",
+		});
+		const body = mapForwardTemplate("assistant", config.agents!.assistant!, refs) as Record<string, unknown>;
+		expect(body.files).toEqual({});
 	});
 
 	test("reads a full Template drift snapshot including BYOC bindings", async () => {
@@ -441,6 +686,82 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 });
 
 describe("Forward delivery validation and runtime isolation", () => {
+	test("rejects Agent files outside Qoder Forward Templates", () => {
+		const config: ProjectConfig = {
+			version: "1",
+			providers: { claude: { api_key: "test" } },
+			defaults: { provider: "claude" },
+			files: { handbook: { source: "README.md" } },
+			agents: {
+				assistant: {
+					provider: "claude",
+					model: { claude: "claude-sonnet-4-5" },
+					instructions: "test",
+					files: ["handbook"],
+				},
+			},
+		};
+		expect(validateProjectConfig(config).some((item) => item.code === "config.agent.files.unsupported")).toBe(true);
+	});
+
+	test("migrates a locally owned Environment between API domains without orphaning the old resource", async () => {
+		const config = forwardConfig();
+		config.environments!.byoc = { config: { type: "cloud" } };
+		const state = StateManager.initialize(tmpPath("forward-environment-domain"));
+		state.setResource({
+			address: { type: "environment", name: "byoc", provider: "qoder" },
+			remote_id: "env_managed",
+			content_hash: "old",
+			api_mode: "managed",
+		});
+		const calls: string[] = [];
+		const provider = {
+			name: "qoder",
+			createEnvironment: async (_name: string, _decl: unknown, mode: unknown) => {
+				calls.push(`create:${mode}`);
+				return { id: "env_forward", type: "environment" };
+			},
+			deleteEnvironment: async (id: string, _cascade: boolean, mode: unknown) => {
+				calls.push(`delete:${id}:${mode}`);
+			},
+		} as unknown as ProviderAdapter;
+		await executePlan(
+			{
+				actions: [
+					{
+						action: "update",
+						address: { type: "environment", name: "byoc", provider: "qoder" },
+						dependencies: [],
+					},
+				],
+				diagnostics: [],
+			},
+			{ config, providers: new Map([["qoder", provider]]), state },
+		);
+		expect(calls).toEqual(["create:forward", "delete:env_managed:managed"]);
+		expect(state.getResource({ type: "environment", name: "byoc", provider: "qoder" })?.remote_id).toBe("env_forward");
+	});
+
+	test("rejects sharing locally owned Environments and Files but allows an external Environment reference", () => {
+		const config = forwardConfig();
+		config.environments!.byoc = { config: { type: "cloud" } };
+		config.files = { handbook: { source: "README.md" } };
+		config.agents!.assistant!.files = ["handbook"];
+		config.agents!.managed = {
+			model: { qoder: "auto" },
+			instructions: "Managed.",
+			environment: "byoc",
+			files: ["handbook"],
+		};
+		let diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code === "qoder.environment.delivery_domain.conflict")).toBe(true);
+		expect(diagnostics.some((item) => item.code === "qoder.file.delivery_domain.conflict")).toBe(true);
+
+		config.environments!.byoc!.environment_id = "env_existing";
+		diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code === "qoder.environment.delivery_domain.conflict")).toBe(false);
+	});
+
 	test("rejects sharing one Qoder Vault across Managed and Forward API domains", () => {
 		const config = forwardConfig();
 		config.agents!.managed = {
@@ -645,26 +966,28 @@ describe("Forward delivery validation and runtime isolation", () => {
 });
 
 describe("Qoder Forward default memory store", () => {
-	test("deletes a captured default Store through the Forward endpoint", async () => {
-		const calls: string[] = [];
+	test("deletes a captured default Store through the Cloud permanent-delete endpoint", async () => {
+		const managedCalls: string[] = [];
+		const forwardCalls: string[] = [];
 		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			delete: async (path: string) => managedCalls.push(`DELETE ${path}`),
+		};
 		adapter.forwardClient = {
 			get: async (path: string) => {
-				calls.push(`GET ${path}`);
+				forwardCalls.push(`GET ${path}`);
 				return {
 					data: [{ memory_store_id: "memstore_default", system_managed: true, access: "read_write" }],
 				};
 			},
-			delete: async (path: string) => calls.push(`DELETE ${path}`),
+			delete: async (path: string) => forwardCalls.push(`DELETE ${path}`),
 		};
 
 		const id = await adapter.findDefaultMemoryStoreId("idn_1", "tmpl_1");
 		await adapter.deleteDefaultMemoryStore(id!);
 
-		expect(calls).toEqual([
-			"GET /identities/idn_1/templates/tmpl_1/memory_stores",
-			"DELETE /memory_stores/memstore_default",
-		]);
+		expect(forwardCalls).toEqual(["GET /identities/idn_1/templates/tmpl_1/memory_stores"]);
+		expect(managedCalls).toEqual(["DELETE /memory_stores/memstore_default"]);
 	});
 
 	test("finds the writable system mount and updates changed metadata", async () => {

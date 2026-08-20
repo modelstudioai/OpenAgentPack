@@ -11,7 +11,7 @@ export interface ResourceState {
 	 */
 	externally_managed?: boolean;
 	/** Provider API domain that owns the remote resource (currently relevant to Qoder). */
-	api_mode?: "managed" | "forward";
+	api_mode?: "managed" | "forward" | "auto";
 	version?: number;
 	/**
 	 * Backward-compatible alias for desired_hash. Kept while older state files

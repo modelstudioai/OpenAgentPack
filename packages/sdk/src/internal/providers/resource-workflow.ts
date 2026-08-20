@@ -44,11 +44,21 @@ import type {
 export interface ResourceCrudAdapter {
 	readonly name: string;
 
-	findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null>;
+	findResource(
+		type: ResourceType,
+		name: string,
+		id?: string | null,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource | null>;
 
-	createEnvironment(name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	deleteEnvironment(id: string, cascade?: boolean): Promise<void>;
+	createEnvironment(name: string, decl: EnvironmentDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateEnvironment(
+		id: string,
+		name: string,
+		decl: EnvironmentDecl,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
 	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
 	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
@@ -69,7 +79,7 @@ export interface ResourceCrudAdapter {
 
 	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
-	archiveTemplate?(id: string): Promise<void>;
+	archiveTemplate?(id: string, ownedMemoryStoreIds?: string[]): Promise<void>;
 
 	createIdentity?(name: string, decl: IdentityDecl): Promise<RemoteResource>;
 	updateIdentity?(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource>;
@@ -114,8 +124,12 @@ export interface ResourceCrudAdapter {
 	): Promise<RemoteResource>;
 	deleteDeployment(id: string): Promise<void>;
 
-	uploadFile(filePath: string, options?: { name?: string; purpose?: string }): Promise<ProviderFileInfo>;
-	deleteFile(id: string): Promise<void>;
+	uploadFile(
+		filePath: string,
+		options?: { name?: string; purpose?: string },
+		mode?: ProviderResourceMode,
+	): Promise<ProviderFileInfo>;
+	deleteFile(id: string, mode?: ProviderResourceMode): Promise<void>;
 }
 
 /**
