@@ -328,7 +328,7 @@ async function executeActionInner(
 						break;
 					case "memory_store":
 						if (!provider.deleteMemoryStore) throw memoryStoreUnsupported(address.provider);
-						await provider.deleteMemoryStore(id);
+						await provider.deleteMemoryStore(id, apiMode);
 						break;
 					case "deployment":
 						await provider.deleteDeployment(id);
@@ -504,18 +504,22 @@ async function executeActionInner(
 				throw memoryStoreUnsupported(address.provider);
 			}
 			const reconcile = async (storeId: string): Promise<RemoteResource> => {
-				const store = await provider.updateMemoryStore!(storeId, {
-					name,
-					description: decl.description,
-					metadata: decl.metadata ?? {},
-				});
+				const store = await provider.updateMemoryStore!(
+					storeId,
+					{
+						name,
+						description: decl.description,
+						metadata: decl.metadata ?? {},
+					},
+					apiMode,
+				);
 
 				// Declarative entries are managed seeds. Update/create those paths in place,
 				// while preserving memories learned by agents at runtime.
 				const current = new Map<string, { id: string; content_sha256: string }>();
 				let cursor: string | undefined;
 				do {
-					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" });
+					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" }, apiMode);
 					for (const memory of page.data) {
 						if (memory.type === "memory") current.set(memory.path, memory);
 					}
@@ -526,22 +530,30 @@ async function executeActionInner(
 					const existing = current.get(entry.key.replace(/^\/+/, ""));
 					if (existing) {
 						if (existing.content_sha256 !== sha256(entry.content)) {
-							await provider.updateMemory!(storeId, existing.id, {
-								content: entry.content,
-								expected_content_sha256: existing.content_sha256,
-							});
+							await provider.updateMemory!(
+								storeId,
+								existing.id,
+								{
+									content: entry.content,
+									expected_content_sha256: existing.content_sha256,
+								},
+								apiMode,
+							);
 						}
 					} else {
-						await provider.createMemory!(storeId, { path: entry.key, content: entry.content });
+						await provider.createMemory!(storeId, { path: entry.key, content: entry.content }, apiMode);
 					}
 				}
 				return store;
 			};
-			if (isUpdate) {
+			if (apiModeChanged) {
+				result = await createMemoryStore(name, decl, apiMode);
+				if (existingId) await deleteMemoryStore(existingId, priorApiMode).catch(() => undefined);
+			} else if (isUpdate) {
 				result = await reconcile(existingId!);
 			} else {
 				try {
-					result = await createMemoryStore(name, decl);
+					result = await createMemoryStore(name, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						onExisting: async (existing) => reconcile(existing.id!),

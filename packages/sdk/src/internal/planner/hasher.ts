@@ -22,10 +22,16 @@ export async function computeResourceHash(
 
 	if (address.type === "skill") {
 		const skillDecl = decl as { source: string };
+		const apiMode = resolveQoderApiMode(address.type, address.name, address.provider, config);
 		if (basePath) {
 			const fileHash = computeSkillContentHash(skillDecl.source, basePath);
-			return contentHash({ decl, fileHash });
+			return contentHash({ decl, fileHash, apiMode });
 		}
+		return contentHash({ decl, apiMode });
+	}
+
+	if (address.type === "vault" || address.type === "memory_store") {
+		return contentHash({ decl, apiMode: resolveQoderApiMode(address.type, address.name, address.provider, config) });
 	}
 
 	if (address.type === "file" && basePath) {
@@ -56,6 +62,28 @@ export async function computeResourceHash(
 	}
 
 	return contentHash(decl);
+}
+
+function resolveQoderApiMode(
+	type: "skill" | "vault" | "memory_store",
+	name: string,
+	provider: string,
+	config: ProjectConfig,
+): "managed" | "forward" | undefined {
+	if (provider !== "qoder") return undefined;
+	for (const agent of Object.values(config.agents ?? {})) {
+		if (agent.provider && agent.provider !== provider) continue;
+		const referenced =
+			type === "skill"
+				? agent.skills?.some((skill) =>
+						typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
+					)
+				: type === "vault"
+					? agent.vault === name
+					: agent.memory_stores?.includes(name);
+		if (referenced && agent.delivery?.qoder?.type === "forward") return "forward";
+	}
+	return "managed";
 }
 
 /** Stable, non-reversible identity hint for resources whose YAML key may change. */

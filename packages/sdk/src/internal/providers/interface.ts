@@ -87,6 +87,8 @@ export interface ResolvedTemplateRefs extends ResolvedAgentRefs {
 	/** Qoder BYOC private-network route used by Forward Templates. */
 	tunnel_id?: string;
 	vault_ids: string[];
+	identity_id?: string;
+	memory_store_ids?: string[];
 }
 
 export interface ResolvedDeploymentRefs {
@@ -231,17 +233,26 @@ export interface ProviderAdapter {
 	updateChannel?(id: string, name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource>;
 	deleteChannel?(id: string): Promise<void>;
 
-	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
-	deleteMemoryStore?(id: string): Promise<void>;
+	createMemoryStore?(name: string, decl: MemoryStoreDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteMemoryStore?(id: string, mode?: ProviderResourceMode): Promise<void>;
 	listMemoryStores?(options?: MemoryStoreListOptions): Promise<MemoryPage<MemoryStoreInfo>>;
 	getMemoryStore?(id: string): Promise<MemoryStoreInfo>;
-	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo>;
+	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput, mode?: ProviderResourceMode): Promise<MemoryStoreInfo>;
 	archiveMemoryStore?(id: string): Promise<MemoryStoreInfo>;
-	createMemory?(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo>;
+	createMemory?(storeId: string, input: CreateMemoryInput, mode?: ProviderResourceMode): Promise<MemoryInfo>;
 	batchCreateMemories?(storeId: string, input: BatchCreateMemoryInput): Promise<BatchCreateMemoryResult>;
-	listMemories?(storeId: string, options?: MemoryListOptions): Promise<MemoryPage<MemoryListItem>>;
+	listMemories?(
+		storeId: string,
+		options?: MemoryListOptions,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryPage<MemoryListItem>>;
 	getMemory?(storeId: string, memoryId: string): Promise<MemoryInfo>;
-	updateMemory?(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo>;
+	updateMemory?(
+		storeId: string,
+		memoryId: string,
+		input: UpdateMemoryInput,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryInfo>;
 	deleteMemory?(storeId: string, memoryId: string, expectedContentSha256?: string): Promise<void>;
 	listMemoryVersions?(storeId: string, options?: MemoryVersionListOptions): Promise<MemoryPage<MemoryVersionInfo>>;
 	getMemoryVersion?(storeId: string, versionId: string): Promise<MemoryVersionInfo>;

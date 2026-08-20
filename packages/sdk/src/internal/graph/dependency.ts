@@ -88,7 +88,7 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				const agentAddr: ResourceAddress = { type: materialization.resourceType, name, provider };
 				addNode(agentAddr);
 
-				if (decl.default_memory_store && materialization.resourceType === "template") {
+				if ((decl.default_memory_store || decl.memory_stores?.length) && materialization.resourceType === "template") {
 					const identityName = config.defaults?.identity;
 					if (identityName) {
 						const identityAddr: ResourceAddress = { type: "identity", name: identityName, provider };

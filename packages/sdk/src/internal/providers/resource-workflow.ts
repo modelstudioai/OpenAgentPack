@@ -82,12 +82,21 @@ export interface ResourceCrudAdapter {
 	// Optional: only providers whose capability matrix marks `memory_store` supported
 	// implement these. The registry validates the matrix↔method match; unsupported
 	// providers omit them entirely (no throw-stubs).
-	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
-	deleteMemoryStore?(id: string): Promise<void>;
-	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo>;
-	createMemory?(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo>;
-	listMemories?(storeId: string, options?: MemoryListOptions): Promise<MemoryPage<MemoryListItem>>;
-	updateMemory?(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo>;
+	createMemoryStore?(name: string, decl: MemoryStoreDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteMemoryStore?(id: string, mode?: ProviderResourceMode): Promise<void>;
+	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput, mode?: ProviderResourceMode): Promise<MemoryStoreInfo>;
+	createMemory?(storeId: string, input: CreateMemoryInput, mode?: ProviderResourceMode): Promise<MemoryInfo>;
+	listMemories?(
+		storeId: string,
+		options?: MemoryListOptions,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryPage<MemoryListItem>>;
+	updateMemory?(
+		storeId: string,
+		memoryId: string,
+		input: UpdateMemoryInput,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryInfo>;
 
 	createDeployment(
 		name: string,

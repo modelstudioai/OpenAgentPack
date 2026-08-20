@@ -168,6 +168,15 @@ describe("Qoder Forward Template declaration", () => {
 		const second = await computeResourceHash(address, config, undefined, lookup);
 		expect(second).not.toBe(first);
 	});
+
+	test("changes dependent resource hashes when Qoder switches API domains", async () => {
+		const config = forwardConfig();
+		const address = { type: "vault", name: "mcp", provider: "qoder" } as const;
+		const forwardHash = await computeResourceHash(address, config);
+		delete config.agents!.assistant!.delivery;
+		const managedHash = await computeResourceHash(address, config);
+		expect(forwardHash).not.toBe(managedHash);
+	});
 });
 
 describe("Qoder Forward Template mapping and lifecycle", () => {
@@ -264,16 +273,53 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		await adapter.findResource("template", "assistant", "tmpl_1");
 
 		expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
-			"POST /resources/registry",
 			"POST /templates",
-			"POST /resources/registry",
 			"POST /templates/tmpl_1",
 			"POST /templates/tmpl_1/archive",
 			"GET /templates/tmpl_1",
 		]);
-		expect(calls.filter((call) => call.path === "/resources/registry").map((call) => call.body)).toEqual([
-			{ type: "vault", resource: { id: "vault_mcp" } },
-			{ type: "vault", resource: { id: "vault_mcp" } },
+	});
+
+	test("uses Forward lifecycle endpoints for Forward-owned Skills and Vault credentials", async () => {
+		const managedCalls: string[] = [];
+		const forwardCalls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.client = {
+			post: async (path: string) => managedCalls.push(`POST ${path}`),
+			postFormData: async (path: string) => managedCalls.push(`POST_FORM ${path}`),
+			delete: async (path: string) => managedCalls.push(`DELETE ${path}`),
+		};
+		adapter.forwardClient = {
+			post: async (path: string) => {
+				forwardCalls.push(`POST ${path}`);
+				return path === "/vaults" ? { id: "vault_forward" } : {};
+			},
+			postFormData: async (path: string) => {
+				forwardCalls.push(`POST_FORM ${path}`);
+				return { id: "skill_forward" };
+			},
+			delete: async (path: string) => forwardCalls.push(`DELETE ${path}`),
+		};
+
+		await adapter.createSkill("forward-skill", { source: "." }, [], "forward");
+		await adapter.deleteSkill("skill_forward", "forward");
+		await adapter.createVault(
+			"forward-vault",
+			{
+				display_name: "Forward vault",
+				credentials: [{ name: "api", type: "static_bearer", access_token: "secret" }],
+			},
+			"forward",
+		);
+		await adapter.deleteVault("vault_forward", "forward");
+
+		expect(managedCalls).toEqual([]);
+		expect(forwardCalls).toEqual([
+			"POST_FORM /skills",
+			"DELETE /skills/skill_forward",
+			"POST /vaults",
+			"POST /vaults/vault_forward/credentials",
+			"DELETE /vaults/vault_forward",
 		]);
 	});
 
@@ -395,6 +441,48 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 });
 
 describe("Forward delivery validation and runtime isolation", () => {
+	test("rejects sharing one Qoder Vault across Managed and Forward API domains", () => {
+		const config = forwardConfig();
+		config.agents!.managed = {
+			description: "Managed assistant",
+			model: { qoder: "auto" },
+			instructions: "Managed.",
+			vault: "mcp",
+		};
+		const diagnostics = validateProjectConfig(config);
+		expect(diagnostics.some((item) => item.code === "qoder.vault.delivery_domain.conflict")).toBe(true);
+	});
+
+	test("passes the Forward API domain through apply and persists it in state", async () => {
+		const config = forwardConfig();
+		const state = StateManager.initialize(tmpPath("forward-vault-domain"));
+		const modes: unknown[] = [];
+		const provider = {
+			name: "qoder",
+			findResource: async () => null,
+			createVault: async (_name: string, _decl: unknown, mode: unknown) => {
+				modes.push(mode);
+				return { id: "vault_forward", type: "vault" };
+			},
+			deleteVault: async () => {},
+		} as unknown as ProviderAdapter;
+		await executePlan(
+			{
+				actions: [
+					{
+						action: "create",
+						address: { type: "vault", name: "mcp", provider: "qoder" },
+						dependencies: [],
+					},
+				],
+				diagnostics: [],
+			},
+			{ config, providers: new Map([["qoder", provider]]), state },
+		);
+		expect(modes).toEqual(["forward"]);
+		expect(state.getResource({ type: "vault", name: "mcp", provider: "qoder" })?.api_mode).toBe("forward");
+	});
+
 	test("requires a default Identity for default memory reconciliation", () => {
 		const config = forwardConfig();
 		config.agents!.assistant!.default_memory_store = { name: "Support memory" };

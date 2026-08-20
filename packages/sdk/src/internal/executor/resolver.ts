@@ -87,12 +87,18 @@ export function resolveTemplateRefs(
 	if (!environment) throw new UserError(`Environment '${agent.environment}' is not defined in config.`);
 
 	const agentRefs = resolveAgentRefs(agentName, config, provider, state);
+	const memoryStoreIds = agent.memory_stores?.map((memoryStore) =>
+		requireRef(state, { type: "memory_store", name: memoryStore, provider }),
+	);
+	const identityName = config.defaults?.identity;
 	return {
 		...agentRefs,
 		environment_id:
 			environment.environment_id ?? requireRef(state, { type: "environment", name: agent.environment, provider }),
 		...(agent.tunnel ? { tunnel_id: resolveTunnelIdFromConfig(config, agent.tunnel, provider) } : {}),
 		vault_ids: agent.vault ? [requireRef(state, { type: "vault", name: agent.vault, provider })] : [],
+		...(memoryStoreIds ? { memory_store_ids: memoryStoreIds } : {}),
+		...(identityName ? { identity_id: requireRef(state, { type: "identity", name: identityName, provider }) } : {}),
 	};
 }
 

@@ -125,6 +125,7 @@ export class QoderAdapter implements ProviderAdapter {
 	private client: QoderClient;
 	private memoryApi: ProviderMemoryApi;
 	private forwardClient: QoderClient;
+	private forwardMemoryApi: ProviderMemoryApi;
 	private projectName: string;
 	private forwardSessionIds = new Set<string>();
 
@@ -146,6 +147,19 @@ export class QoderAdapter implements ProviderAdapter {
 		this.forwardClient = new QoderClient({
 			apiKey,
 			gateway: forwardGateway ?? deriveForwardGateway(gateway),
+		});
+		this.forwardMemoryApi = new ProviderMemoryApi(this.forwardClient, {
+			pathStyle: "relative",
+			cursorParam: "after_id",
+			updatePrecondition: "content_sha256",
+			prefixParam: "prefix",
+			versionsSegment: "versions",
+			storeMetadataMode: "merge_patch",
+			supportsView: false,
+			supportsMemoryMetadata: true,
+			supportsPathUpdate: false,
+			supportsDeletePrecondition: false,
+			supportsIncludeArchived: true,
 		});
 		this.projectName = projectName ?? "";
 	}
@@ -525,6 +539,7 @@ export class QoderAdapter implements ProviderAdapter {
 	async createTemplate(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
 		const body = mapForwardTemplate(name, decl, refs, this.projectName);
 		const res = (await this.forwardClient.post("/templates", body)) as Record<string, unknown>;
+		await this.reconcileForwardMemoryMounts(res.id as string, refs);
 		return toRemoteResource(res);
 	}
 
@@ -533,11 +548,36 @@ export class QoderAdapter implements ProviderAdapter {
 		// Forward updates are merge-style; null explicitly clears a previously inherited BYOC tunnel.
 		if (!refs.tunnel_id) body.tunnel_id = null;
 		const res = (await this.forwardClient.post(`/templates/${id}`, body)) as Record<string, unknown>;
+		await this.reconcileForwardMemoryMounts(id, refs);
 		return toRemoteResource(res);
 	}
 
 	async archiveTemplate(id: string): Promise<void> {
 		await this.forwardClient.post(`/templates/${id}/archive`, {});
+	}
+
+	private async reconcileForwardMemoryMounts(templateId: string, refs: ResolvedTemplateRefs): Promise<void> {
+		if (refs.memory_store_ids === undefined) return;
+		const desired = new Set(refs.memory_store_ids ?? []);
+		if (!refs.identity_id) {
+			if (desired.size > 0) throw new UserError("Qoder Forward Memory Store mounts require an Identity.");
+			return;
+		}
+		const path = `/identities/${refs.identity_id}/templates/${templateId}/memory_stores`;
+		const current = (await this.forwardClient.get(path)) as { data?: Array<Record<string, unknown>> };
+		const explicit = (current.data ?? []).filter((mount) => mount.system_managed !== true);
+		for (const mount of explicit) {
+			const storeId = mount.memory_store_id;
+			if (typeof storeId === "string" && !desired.has(storeId)) {
+				await this.forwardClient.delete(`${path}/${storeId}`);
+			}
+		}
+		const mounted = new Set(
+			explicit.map((mount) => mount.memory_store_id).filter((id): id is string => typeof id === "string"),
+		);
+		for (const memoryStoreId of desired) {
+			if (!mounted.has(memoryStoreId)) await this.forwardClient.post(path, { memory_store_id: memoryStoreId });
+		}
 	}
 
 	async reconcileDefaultMemoryStore(
@@ -658,24 +698,34 @@ export class QoderAdapter implements ProviderAdapter {
 		return body;
 	}
 
-	async createMemoryStore(name: string, decl: MemoryStoreDecl): Promise<RemoteResource> {
+	async createMemoryStore(
+		name: string,
+		decl: MemoryStoreDecl,
+		mode: ProviderResourceMode = "managed",
+	): Promise<RemoteResource> {
 		const body = mapMemoryStore(name, decl);
-		const res = (await this.client.post("/memory_stores", body)) as Record<string, unknown>;
+		const client = mode === "forward" ? this.forwardClient : this.client;
+		const memoryApi = mode === "forward" ? this.forwardMemoryApi : this.memoryApi;
+		const res = (await client.post(
+			"/memory_stores",
+			body,
+			mode === "forward" ? { headers: { "Idempotency-Key": crypto.randomUUID() } } : undefined,
+		)) as Record<string, unknown>;
 		const storeId = res.id as string;
 		try {
 			for (const entry of decl.entries ?? []) {
-				await this.memoryApi.createMemory(storeId, { content: entry.content, path: entry.key });
+				await memoryApi.createMemory(storeId, { content: entry.content, path: entry.key });
 			}
 		} catch (error) {
-			await this.client.delete(`/memory_stores/${storeId}`).catch(() => undefined);
+			await client.delete(`/memory_stores/${storeId}`).catch(() => undefined);
 			throw error;
 		}
 
 		return toRemoteResource(res);
 	}
 
-	async deleteMemoryStore(id: string): Promise<void> {
-		await this.client.delete(`/memory_stores/${id}`);
+	async deleteMemoryStore(id: string, mode: ProviderResourceMode = "managed"): Promise<void> {
+		await (mode === "forward" ? this.forwardClient : this.client).delete(`/memory_stores/${id}`);
 	}
 
 	listMemoryStores(options?: MemoryStoreListOptions) {
@@ -684,23 +734,23 @@ export class QoderAdapter implements ProviderAdapter {
 	getMemoryStore(id: string) {
 		return this.memoryApi.getStore(id);
 	}
-	updateMemoryStore(id: string, input: UpdateMemoryStoreInput) {
-		return this.memoryApi.updateStore(id, input);
+	updateMemoryStore(id: string, input: UpdateMemoryStoreInput, mode: ProviderResourceMode = "managed") {
+		return (mode === "forward" ? this.forwardMemoryApi : this.memoryApi).updateStore(id, input);
 	}
 	archiveMemoryStore(id: string) {
 		return this.memoryApi.archiveStore(id);
 	}
-	createMemory(storeId: string, input: CreateMemoryInput) {
-		return this.memoryApi.createMemory(storeId, input);
+	createMemory(storeId: string, input: CreateMemoryInput, mode: ProviderResourceMode = "managed") {
+		return (mode === "forward" ? this.forwardMemoryApi : this.memoryApi).createMemory(storeId, input);
 	}
-	listMemories(storeId: string, options?: MemoryListOptions) {
-		return this.memoryApi.listMemories(storeId, options);
+	listMemories(storeId: string, options?: MemoryListOptions, mode: ProviderResourceMode = "managed") {
+		return (mode === "forward" ? this.forwardMemoryApi : this.memoryApi).listMemories(storeId, options);
 	}
 	getMemory(storeId: string, memoryId: string) {
 		return this.memoryApi.getMemory(storeId, memoryId);
 	}
-	updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput) {
-		return this.memoryApi.updateMemory(storeId, memoryId, input);
+	updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput, mode: ProviderResourceMode = "managed") {
+		return (mode === "forward" ? this.forwardMemoryApi : this.memoryApi).updateMemory(storeId, memoryId, input);
 	}
 	deleteMemory(storeId: string, memoryId: string, expected?: string) {
 		return this.memoryApi.deleteMemory(storeId, memoryId, expected);
