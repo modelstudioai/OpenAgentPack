@@ -10,6 +10,8 @@ export interface ResourceState {
 	 * referenced by this project. It must never be deleted remotely.
 	 */
 	externally_managed?: boolean;
+	/** Provider API domain that owns the remote resource (currently relevant to Qoder). */
+	api_mode?: "managed" | "forward";
 	version?: number;
 	/**
 	 * Backward-compatible alias for desired_hash. Kept while older state files

@@ -44,6 +44,8 @@ export interface RemoteResource {
 	version?: number;
 }
 
+export type ProviderResourceMode = "managed" | "forward";
+
 export interface ModelInfo {
 	id: string;
 	display_name: string;
@@ -192,12 +194,18 @@ export interface ProviderAdapter {
 	updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
 	deleteEnvironment(id: string, cascade?: boolean): Promise<void>;
 
-	createVault(name: string, decl: VaultDecl): Promise<RemoteResource>;
-	deleteVault(id: string): Promise<void>;
+	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
 
-	createSkill(name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource>;
-	updateSkill(id: string, name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource>;
-	deleteSkill(id: string): Promise<void>;
+	createSkill(name: string, decl: SkillDecl, files: SkillFile[], mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateSkill(
+		id: string,
+		name: string,
+		decl: SkillDecl,
+		files: SkillFile[],
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteSkill(id: string, mode?: ProviderResourceMode): Promise<void>;
 
 	createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	updateAgent(id: string, name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;

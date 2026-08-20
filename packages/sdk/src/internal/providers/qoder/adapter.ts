@@ -52,6 +52,7 @@ import type {
 	ExportedResource,
 	ModelInfo,
 	ProviderAdapter,
+	ProviderResourceMode,
 	RemoteResource,
 	ResolvedAgentRefs,
 	ResolvedChannelRefs,
@@ -446,20 +447,21 @@ export class QoderAdapter implements ProviderAdapter {
 		}
 	}
 
-	async createVault(name: string, decl: VaultDecl): Promise<RemoteResource> {
+	async createVault(name: string, decl: VaultDecl, mode: ProviderResourceMode = "managed"): Promise<RemoteResource> {
+		const client = mode === "forward" ? this.forwardClient : this.client;
 		const body = mapVault(name, decl, this.projectName);
-		const res = (await this.client.post("/vaults", body)) as Record<string, unknown>;
+		const res = (await client.post("/vaults", body)) as Record<string, unknown>;
 		const vaultId = res.id as string;
 		// Credentials are not accepted inline at vault creation; add each via the
 		// dedicated endpoint (mirrors the bailian adapter's two-step flow).
 		for (const cred of decl.credentials ?? []) {
-			await this.client.post(`/vaults/${vaultId}/credentials`, mapCredential(cred));
+			await client.post(`/vaults/${vaultId}/credentials`, mapCredential(cred));
 		}
 		return toRemoteResource(res);
 	}
 
-	async deleteVault(id: string): Promise<void> {
-		await this.client.delete(`/vaults/${id}`);
+	async deleteVault(id: string, mode: ProviderResourceMode = "managed"): Promise<void> {
+		await (mode === "forward" ? this.forwardClient : this.client).delete(`/vaults/${id}`);
 	}
 
 	async exportResources(type: ResourceType): Promise<ExportedResource[]> {
@@ -472,19 +474,33 @@ export class QoderAdapter implements ProviderAdapter {
 		});
 	}
 
-	async createSkill(name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource> {
+	async createSkill(
+		name: string,
+		decl: SkillDecl,
+		files: SkillFile[],
+		mode: ProviderResourceMode = "managed",
+	): Promise<RemoteResource> {
 		const formData = await buildSkillFormData(name, decl, files);
-		const res = (await this.client.postFormData("/skills", formData)) as Record<string, unknown>;
+		const res = (await (mode === "forward" ? this.forwardClient : this.client).postFormData(
+			"/skills",
+			formData,
+		)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
 
-	async updateSkill(id: string, name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource> {
-		await this.client.delete(`/skills/${id}`);
-		return this.createSkill(name, decl, files);
+	async updateSkill(
+		id: string,
+		name: string,
+		decl: SkillDecl,
+		files: SkillFile[],
+		mode: ProviderResourceMode = "managed",
+	): Promise<RemoteResource> {
+		await (mode === "forward" ? this.forwardClient : this.client).delete(`/skills/${id}`);
+		return this.createSkill(name, decl, files, mode);
 	}
 
-	async deleteSkill(id: string): Promise<void> {
-		await this.client.delete(`/skills/${id}`);
+	async deleteSkill(id: string, mode: ProviderResourceMode = "managed"): Promise<void> {
+		await (mode === "forward" ? this.forwardClient : this.client).delete(`/skills/${id}`);
 	}
 
 	async createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource> {
@@ -507,14 +523,12 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async createTemplate(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
-		await this.registerForwardVaults(refs.vault_ids);
 		const body = mapForwardTemplate(name, decl, refs, this.projectName);
 		const res = (await this.forwardClient.post("/templates", body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
 
 	async updateTemplate(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
-		await this.registerForwardVaults(refs.vault_ids);
 		const body = mapForwardTemplate(name, decl, refs, this.projectName) as Record<string, unknown>;
 		// Forward updates are merge-style; null explicitly clears a previously inherited BYOC tunnel.
 		if (!refs.tunnel_id) body.tunnel_id = null;
@@ -642,15 +656,6 @@ export class QoderAdapter implements ProviderAdapter {
 			body.template_id = refs.agent_id;
 		}
 		return body;
-	}
-
-	private async registerForwardVaults(vaultIds: string[]): Promise<void> {
-		for (const id of vaultIds) {
-			await this.forwardClient.post("/resources/registry", {
-				type: "vault",
-				resource: { id },
-			});
-		}
 	}
 
 	async createMemoryStore(name: string, decl: MemoryStoreDecl): Promise<RemoteResource> {

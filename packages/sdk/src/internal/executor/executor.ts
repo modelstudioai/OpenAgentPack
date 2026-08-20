@@ -7,7 +7,7 @@ import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { ApiError, ConflictError } from "../providers/base-client.ts";
 import { DeploymentCreateConflictError } from "../providers/deployment-conflict.ts";
 import { readComparableIfSupported } from "../providers/drift-support.ts";
-import type { RemoteResource } from "../providers/interface.ts";
+import type { ProviderResourceMode, RemoteResource } from "../providers/interface.ts";
 import type { DriftReadAdapter, ResourceCrudAdapter } from "../providers/resource-workflow.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
@@ -291,6 +291,7 @@ async function executeActionInner(
 		const existing = ctx.state.getResource(address);
 		if (!existing) return false;
 		const id = existing.remote_id;
+		const apiMode = existing.api_mode;
 
 		// External-reference environments are owned outside OpenCMA; deleting them
 		// here would only remove the local state entry.
@@ -312,10 +313,10 @@ async function executeActionInner(
 						await provider.deleteEnvironment(id);
 						break;
 					case "vault":
-						await provider.deleteVault(id);
+						await provider.deleteVault(id, apiMode);
 						break;
 					case "skill":
-						await provider.deleteSkill(id);
+						await provider.deleteSkill(id, apiMode);
 						break;
 					case "agent":
 						await provider.deleteAgent(id);
@@ -363,6 +364,10 @@ async function executeActionInner(
 	const isUpdate = action.action === "update";
 	const priorAddress = action.previousAddress ?? address;
 	const existingId = isUpdate ? ctx.state.getResource(priorAddress)?.remote_id : undefined;
+	const apiMode = resolveResourceApiMode(type, name, address.provider, ctx.config);
+	const priorApiMode =
+		ctx.state.getResource(priorAddress)?.api_mode ?? (address.provider === "qoder" ? "managed" : undefined);
+	const apiModeChanged = isUpdate && apiMode !== undefined && priorApiMode !== apiMode;
 
 	let result: RemoteResource;
 
@@ -409,22 +414,25 @@ async function executeActionInner(
 		}
 		case "vault": {
 			const decl = ctx.config.vaults![name]!;
-			if (isUpdate) {
+			if (apiModeChanged) {
+				result = await provider.createVault(name, decl, apiMode);
+				if (existingId) await provider.deleteVault(existingId, priorApiMode).catch(() => undefined);
+			} else if (isUpdate) {
 				try {
-					result = await provider.createVault(name, decl);
-					await provider.deleteVault(existingId!);
+					result = await provider.createVault(name, decl, apiMode);
+					await provider.deleteVault(existingId!, apiMode);
 				} catch {
-					await provider.deleteVault(existingId!);
-					result = await provider.createVault(name, decl);
+					await provider.deleteVault(existingId!, apiMode);
+					result = await provider.createVault(name, decl, apiMode);
 				}
 			} else {
 				try {
-					result = await provider.createVault(name, decl);
+					result = await provider.createVault(name, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						onExisting: async (existing) => {
-							await provider.deleteVault(existing.id!);
-							return provider.createVault(name, decl);
+							await provider.deleteVault(existing.id!, apiMode);
+							return provider.createVault(name, decl, apiMode);
 						},
 					});
 					adopted = true;
@@ -449,8 +457,11 @@ async function executeActionInner(
 			}
 			const remoteName = decl.name ?? name;
 			const files = await resolveSkillFiles(decl, ctx);
-			if (isUpdate) {
-				result = await provider.updateSkill(existingId!, remoteName, decl, files);
+			if (apiModeChanged) {
+				result = await provider.createSkill(remoteName, decl, files, apiMode);
+				if (existingId) await provider.deleteSkill(existingId, priorApiMode).catch(() => undefined);
+			} else if (isUpdate) {
+				result = await provider.updateSkill(existingId!, remoteName, decl, files, apiMode);
 			} else {
 				// A skill's remote name is not always the agents.yaml key: providers register
 				// it under the SKILL.md frontmatter `name` (Bailian reads it server-side,
@@ -472,7 +483,7 @@ async function executeActionInner(
 					adopted = true;
 				} else {
 					try {
-						result = await provider.createSkill(remoteName, decl, files);
+						result = await provider.createSkill(remoteName, decl, files, apiMode);
 					} catch (err) {
 						result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 							searchNames,
@@ -732,6 +743,7 @@ async function executeActionInner(
 			(type === "identity" && ctx.config.identities?.[name]?.identity_id)
 				? true
 				: undefined,
+		api_mode: apiMode,
 		version: result.version,
 		content_hash: hash,
 		desired_hash: hash,
@@ -745,6 +757,42 @@ async function executeActionInner(
 	});
 	if (action.previousAddress) ctx.state.removeResource(action.previousAddress);
 	return adopted;
+}
+
+function resolveResourceApiMode(
+	type: ResourceType,
+	name: string,
+	provider: string,
+	config: ExecContext["config"],
+): ProviderResourceMode | undefined {
+	if (provider !== "qoder" || (type !== "skill" && type !== "vault" && type !== "memory_store" && type !== "file")) {
+		return undefined;
+	}
+
+	let managed = false;
+	let forward = false;
+	for (const agent of Object.values(config.agents ?? {})) {
+		if (agent.provider && agent.provider !== provider) continue;
+		const referenced =
+			type === "skill"
+				? agent.skills?.some((skill) =>
+						typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
+					)
+				: type === "vault"
+					? agent.vault === name
+					: type === "memory_store"
+						? agent.memory_stores?.includes(name)
+						: false;
+		if (!referenced) continue;
+		if (agent.delivery?.qoder?.type === "forward") forward = true;
+		else managed = true;
+	}
+	if (managed && forward) {
+		throw new UserError(
+			`Qoder ${type}.${name} is referenced by both Managed and Forward agents; declare separate resources for each API domain.`,
+		);
+	}
+	return forward ? "forward" : "managed";
 }
 
 async function findExistingByNames(
