@@ -1,5 +1,6 @@
 import * as p from "@clack/prompts";
 import {
+	type DestroyDefaultMemoryStoreResult,
 	type DestroyResourceResult,
 	destroyPlannedProjectResources,
 	planDestroyProjectContext,
@@ -14,7 +15,8 @@ export async function destroyCommand(options: { file: string; yes?: boolean; cas
 	const planned = planDestroyProjectContext(ctx);
 	const resources = planned.resources;
 
-	if (resources.length === 0) {
+	const pendingDefaultMemoryStores = planned.defaultMemoryStores.filter((store) => store.memoryStoreId);
+	if (resources.length === 0 && pendingDefaultMemoryStores.length === 0) {
 		log.info("No resources in state. Nothing to destroy.");
 		return;
 	}
@@ -22,6 +24,13 @@ export async function destroyCommand(options: { file: string; yes?: boolean; cas
 	console.log(chalk.red(`\nDestroy ${resources.length} resource(s):\n`));
 	for (const r of resources) {
 		console.log(chalk.red(`  - ${formatResourceLabel(r.address)} [${r.remote_id}]`));
+	}
+	for (const store of planned.defaultMemoryStores) {
+		const policy = store.deleteOnDestroy ? chalk.red.bold("permanently delete") : chalk.green("retain");
+		console.log(`  - default_memory_store.${store.agentName} [${policy}]`);
+	}
+	if (planned.defaultMemoryStores.some((store) => store.deleteOnDestroy)) {
+		console.log(chalk.red.bold("\nDefault Memory Store content and all version history will be permanently deleted."));
 	}
 
 	if (!options.yes) {
@@ -69,12 +78,20 @@ export async function destroyCommand(options: { file: string; yes?: boolean; cas
 			activeSpinner = undefined;
 		},
 	});
+	for (const store of result.defaultMemoryStoreResults) renderDefaultMemoryStoreResult(store);
 
-	const summary =
-		result.destroyed === result.resources.length
-			? chalk.green(`Destroy complete. ${result.destroyed}/${result.resources.length} resources removed.`)
-			: chalk.yellow(`Destroy complete. ${result.destroyed}/${result.resources.length} resources removed.`);
+	const summary = !result.partial
+		? chalk.green(`Destroy complete. ${result.destroyed}/${result.resources.length} resources removed.`)
+		: chalk.yellow(`Destroy partial. ${result.destroyed}/${result.resources.length} resources removed.`);
 	p.outro(summary, { output: process.stderr });
+}
+
+function renderDefaultMemoryStoreResult(result: DestroyDefaultMemoryStoreResult): void {
+	const label = `default_memory_store.${result.agentName}`;
+	if (result.status === "retained") log.success(`${label} — retained`);
+	else if (result.status === "deleted") log.success(`${label} — permanently deleted`);
+	else if (result.status === "already_gone") log.warn(`${label} — already absent`);
+	else log.error(`${label} — delete failed: ${result.error ?? "unknown error"}`);
 }
 
 function stopResourceSpinner(spinner: ReturnType<typeof p.spinner> | undefined, result: DestroyResourceResult): void {

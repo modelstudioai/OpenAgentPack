@@ -280,12 +280,61 @@ agents:
     skills: [ <string> | { type, skill_id, version? } ]
     vault: <string>
     memory_stores: [ <string> ]
+    default_memory_store:             # Qoder Forward only; requires defaults.identity
+      name: <string>                  # 1-255 characters
+      description: <string>           # optional; up to 1024 characters
+      delete_on_destroy: <boolean>    # optional; defaults to false (retain)
     environment_variables: { <key>: <string> }  # Qoder only
     managed_tool_config: { enabled_tools: [ <string> ] }  # Qoder Forward delivery only
     resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
     metadata: { <key>: <string> }
 ```
+
+### Qoder Forward default Memory Store
+
+Qoder creates one writable, system-managed Memory Store for an `(Identity, Template)` pair when its first Forward Session is created. `default_memory_store` lets OpenCMA manage the display metadata and destroy policy of that provider-created Store; it does not declare a second, ordinary entry under the top-level `memory_stores` collection.
+
+```yaml
+defaults:
+  provider: qoder
+  identity: support-user
+
+identities:
+  support-user:
+    external_id: support-user       # managed by OpenCMA
+
+agents:
+  support:
+    # ...
+    delivery:
+      qoder:
+        type: forward
+    default_memory_store:
+      name: "Support group memory"
+      description: "Confirmed support knowledge and operating rules"
+      delete_on_destroy: false
+```
+
+Apply behavior:
+
+- Requires Qoder Forward delivery and `defaults.identity`.
+- Locates the Store mounted as `system_managed: true` and `access: read_write`, then idempotently updates its `name` and optional `description`.
+- Does not create an initialization Session. Before the first real Session has created the Store, apply reports the reconciliation as pending. Run apply again after a Session exists.
+- `name` changes the provider Store's display name, so it can be meaningful instead of remaining the provider-generated default.
+
+Destroy behavior:
+
+| `delete_on_destroy` | Result |
+|---|---|
+| omitted or `false` | Retain the Store, its Memories, and all version history. This is the default. |
+| `true` | Permanently delete the Store, its Memories, and all version history after its system mount has been removed. |
+
+For permanent deletion, OpenCMA captures and persists the Store ID before archiving the Template and deleting the Identity. Qoder may remove the system mount asynchronously, so OpenCMA uses bounded retries for a `still mounted` conflict. If the conflict remains, it tries `archive → delete`, matching the lifecycle verified against the live Qoder service. A cleanup that still cannot finish is retained in state and reported as a partial destroy; a later `agents destroy` resumes it even when all ordinary resources are already gone.
+
+If the preflight cannot resolve the Identity, Template, or Store lookup, destroy aborts before deleting any project resource. Authentication, permission, and non-retryable validation errors fail immediately. `--cascade` does not override this field.
+
+`delete_on_destroy: true` requires an OpenCMA-managed Identity. An external `identity_id` is never deleted by OpenCMA, so it keeps the system Store mounted and fails configuration validation. Permanent deletion is irreversible; keep the default `false` unless data removal is explicitly required.
 
 | Field | Type | Required | Description |
 |-------|------|:--------:|-------------|
@@ -301,13 +350,25 @@ agents:
 | `mcp_servers[]` | `{ name, type?, url? }` | no | URL (`url`/`http`) or `official` MCP server. |
 | `skills[]` | string \| AgentSkillRef | no | Skill name or `{ type: "official"\|"custom", skill_id, version? }`. |
 | `vault` | string | no | Vault name. |
+| `files` | string[] | no | File declarations inherited by a Qoder Forward Template. These files are created through the Forward File API. |
 | `memory_stores` | string[] | no | Bound memory stores. |
+| `default_memory_store.name` | string | yes (with `default_memory_store`) | Display name for Qoder Forward's writable system-managed Store; 1–255 characters. |
+| `default_memory_store.description` | string | no | Display description for the system-managed Store; up to 1024 characters. |
+| `default_memory_store.delete_on_destroy` | boolean | no | Permanently delete the Store during destroy. Defaults to `false` (retain). |
 | `environment_variables` | map<string,string> | no | Qoder runtime variables. Managed Sessions use Qoder's `KEY=VALUE;...` wire format; Forward Templates store the map as defaults and Forward Sessions send it under `config.environment_variables`. |
 | `managed_tool_config.enabled_tools` | string[] | no | Provider-operated tools the Agent Harness exposes, e.g. `create_forward_schedule`, `list_forward_schedules`, `delete_forward_schedule`. Qoder Forward delivery only; declaring it on managed delivery is a validation error. |
 | `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
 | `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
+
+For Qoder Forward delivery, a locally declared Environment is created only through the Forward Environment API. An
+external `environment_id` may reference an Environment from either the Managed API or the Forward API; OpenCMA does
+not create or mutate such a reference and resolves its API domain when checking existence. Referenced custom Skills, Vaults and Credentials, Files, and explicit
+Memory Stores are created through their Forward APIs. A locally managed Environment, Skill, Vault, File, or Memory
+Store cannot be shared by Managed and Forward Agents under one logical declaration; declare separate resources for
+the two API domains. Explicit Forward Memory Stores require `defaults.identity` and are mounted read-only to that
+Identity and Template.
 
 ### Session resources
 

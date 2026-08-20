@@ -170,7 +170,11 @@ export interface AgentDecl {
 	mcp_servers?: McpServerDecl[];
 	skills?: AgentSkillDecl[];
 	vault?: string;
+	/** File declarations inherited by a Qoder Forward Template. */
+	files?: string[];
 	memory_stores?: string[];
+	/** Desired display metadata for Qoder Forward's system-managed writable Store. */
+	default_memory_store?: DefaultMemoryStoreDecl;
 	/** Resources mounted into every managed session created for this agent. */
 	resources?: SessionResourceDecl[];
 	multiagent?: MultiagentDecl;
@@ -181,6 +185,13 @@ export interface AgentDecl {
 	managed_tool_config?: ManagedToolConfigDecl;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
 	delivery?: Record<ProviderName, AgentDeliveryDecl>;
+}
+
+export interface DefaultMemoryStoreDecl {
+	name: string;
+	description?: string;
+	/** Permanently delete the system-managed Store during destroy. Defaults to false. */
+	delete_on_destroy?: boolean;
 }
 
 export interface ManagedToolConfigDecl {

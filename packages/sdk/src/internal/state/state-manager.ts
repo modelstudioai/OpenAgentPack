@@ -40,6 +40,7 @@ export class StateManager implements IStateManager {
 				address: r.address as ResourceState["address"],
 				remote_id: r.remote_id as string | null,
 				externally_managed: r.externally_managed === true ? true : undefined,
+				api_mode: r.api_mode === "forward" ? "forward" : r.api_mode === "managed" ? "managed" : undefined,
 				version: r.version as number | undefined,
 				content_hash: ((r.content_hash ?? r.desired_hash) as string) ?? "",
 				desired_hash: ((r.desired_hash ?? r.content_hash) as string) ?? "",
@@ -51,7 +52,13 @@ export class StateManager implements IStateManager {
 				drift_paths: r.drift_paths as string[] | undefined,
 				drift_status: r.drift_status as ResourceState["drift_status"],
 			}));
-			return new StateManager({ resources }, path);
+			const pending = Array.isArray(data.pending_default_memory_store_cleanups)
+				? (data.pending_default_memory_store_cleanups as StateFile["pending_default_memory_store_cleanups"])
+				: undefined;
+			return new StateManager(
+				{ resources, ...(pending ? { pending_default_memory_store_cleanups: pending } : {}) },
+				path,
+			);
 		} catch (err) {
 			if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
 				return StateManager.initialize(path);

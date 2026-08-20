@@ -88,6 +88,14 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				const agentAddr: ResourceAddress = { type: materialization.resourceType, name, provider };
 				addNode(agentAddr);
 
+				if ((decl.default_memory_store || decl.memory_stores?.length) && materialization.resourceType === "template") {
+					const identityName = config.defaults?.identity;
+					if (identityName) {
+						const identityAddr: ResourceAddress = { type: "identity", name: identityName, provider };
+						if (nodes.has(addressKey(identityAddr))) addEdge(agentAddr, identityAddr);
+					}
+				}
+
 				if (decl.environment && config.environments?.[decl.environment]) {
 					const envAddr: ResourceAddress = {
 						type: "environment",
@@ -114,6 +122,13 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 					const vaultAddr: ResourceAddress = { type: "vault", name: decl.vault, provider };
 					if (nodes.has(addressKey(vaultAddr))) {
 						addEdge(agentAddr, vaultAddr);
+					}
+				}
+
+				if (decl.files) {
+					for (const fileName of decl.files) {
+						const fileAddr: ResourceAddress = { type: "file", name: fileName, provider };
+						if (nodes.has(addressKey(fileAddr))) addEdge(agentAddr, fileAddr);
 					}
 				}
 

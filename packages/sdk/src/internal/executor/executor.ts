@@ -7,7 +7,7 @@ import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { ApiError, ConflictError } from "../providers/base-client.ts";
 import { DeploymentCreateConflictError } from "../providers/deployment-conflict.ts";
 import { readComparableIfSupported } from "../providers/drift-support.ts";
-import type { RemoteResource } from "../providers/interface.ts";
+import type { ProviderResourceMode, RemoteResource } from "../providers/interface.ts";
 import type { DriftReadAdapter, ResourceCrudAdapter } from "../providers/resource-workflow.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
@@ -136,6 +136,11 @@ export async function executePlan(
 		await ctx.state.save();
 	}
 
+	// Qoder creates the writable default Store lazily on the first Forward Session.
+	// Reconcile on every apply (including an otherwise no-op plan), so the first apply
+	// after that Session converges its display metadata without creating a throwaway Session.
+	await reconcileDefaultMemoryStores(ctx, new Set(plan.actions.map((action) => action.address.provider)));
+
 	// delete: run serially, preserving the planner's reverse dependency order.
 	for (const action of deletions) {
 		await runAction(action);
@@ -147,6 +152,44 @@ export async function executePlan(
 		results,
 		partial: results.some((r) => r.status === "failed"),
 	};
+}
+
+async function reconcileDefaultMemoryStores(ctx: ExecContext, plannedProviders: ReadonlySet<string>): Promise<void> {
+	const identityName = ctx.config.defaults?.identity;
+	for (const [agentName, agent] of Object.entries(ctx.config.agents ?? {})) {
+		const desired = agent.default_memory_store;
+		if (!desired || agent.delivery?.qoder?.type !== "forward") continue;
+		const providerName = "qoder";
+		if ((agent.provider && agent.provider !== providerName) || !plannedProviders.has(providerName)) continue;
+		const provider = ctx.providers.get(providerName);
+		if (!provider?.reconcileDefaultMemoryStore || !identityName) continue;
+
+		const identityId = ctx.state.getResource({
+			type: "identity",
+			name: identityName,
+			provider: providerName,
+		})?.remote_id;
+		const templateId = ctx.state.getResource({ type: "template", name: agentName, provider: providerName })?.remote_id;
+		if (!identityId || !templateId) continue;
+
+		const result = await provider.reconcileDefaultMemoryStore(identityId, templateId, desired);
+		const resource = { type: "template" as const, name: agentName, provider: providerName };
+		if (result.status === "pending") {
+			emitRuntimeFeedback(ctx.onFeedback, {
+				type: "provider_wait",
+				level: "warning",
+				resource,
+				message: `default memory store for template.${agentName} is pending — create the first Forward Session, then run apply again`,
+			});
+		} else if (result.status === "updated") {
+			emitRuntimeFeedback(ctx.onFeedback, {
+				type: "resource_action_success",
+				level: "success",
+				resource,
+				message: `updated default memory store for template.${agentName} to "${desired.name}"`,
+			});
+		}
+	}
 }
 
 // Run `worker` over `items` with at most `limit` concurrent executions.
@@ -248,6 +291,7 @@ async function executeActionInner(
 		const existing = ctx.state.getResource(address);
 		if (!existing) return false;
 		const id = existing.remote_id;
+		const apiMode = existing.api_mode;
 
 		// External-reference environments are owned outside OpenCMA; deleting them
 		// here would only remove the local state entry.
@@ -266,13 +310,13 @@ async function executeActionInner(
 			try {
 				switch (type) {
 					case "environment":
-						await provider.deleteEnvironment(id);
+						await provider.deleteEnvironment(id, false, apiMode);
 						break;
 					case "vault":
-						await provider.deleteVault(id);
+						await provider.deleteVault(id, apiMode);
 						break;
 					case "skill":
-						await provider.deleteSkill(id);
+						await provider.deleteSkill(id, apiMode);
 						break;
 					case "agent":
 						await provider.deleteAgent(id);
@@ -280,17 +324,17 @@ async function executeActionInner(
 					case "template":
 						if (!provider.archiveTemplate)
 							throw new UserError(`Provider '${address.provider}' does not support templates`);
-						await provider.archiveTemplate(id);
+						await provider.archiveTemplate(id, ownedForwardMemoryStoreIds(ctx, address.provider));
 						break;
 					case "memory_store":
 						if (!provider.deleteMemoryStore) throw memoryStoreUnsupported(address.provider);
-						await provider.deleteMemoryStore(id);
+						await provider.deleteMemoryStore(id, apiMode);
 						break;
 					case "deployment":
 						await provider.deleteDeployment(id);
 						break;
 					case "file":
-						await provider.deleteFile(id);
+						await provider.deleteFile(id, apiMode);
 						break;
 					case "identity":
 						if (!provider.deleteIdentity)
@@ -320,6 +364,10 @@ async function executeActionInner(
 	const isUpdate = action.action === "update";
 	const priorAddress = action.previousAddress ?? address;
 	const existingId = isUpdate ? ctx.state.getResource(priorAddress)?.remote_id : undefined;
+	const apiMode = resolveResourceApiMode(type, name, address.provider, ctx.config);
+	const priorApiMode =
+		ctx.state.getResource(priorAddress)?.api_mode ?? (address.provider === "qoder" ? "managed" : undefined);
+	const apiModeChanged = isUpdate && apiMode !== undefined && priorApiMode !== apiMode;
 
 	let result: RemoteResource;
 
@@ -338,6 +386,17 @@ async function executeActionInner(
 					resource: action.address,
 					message: `${action.action} ${action.address.type}.${action.address.name} (${action.address.provider}) — external reference, no remote mutation`,
 				});
+			} else if (apiModeChanged) {
+				try {
+					result = await provider.createEnvironment(remoteName, decl, apiMode);
+				} catch (err) {
+					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						mode: apiMode,
+						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl, apiMode),
+					});
+					adopted = true;
+				}
+				if (existingId) await provider.deleteEnvironment(existingId, false, priorApiMode);
 			} else if (isUpdate) {
 				// Defense in depth: ownership is a state-level fact. Never push the
 				// local config onto an environment recorded as externally managed —
@@ -351,13 +410,14 @@ async function executeActionInner(
 							`with 'agents state rm environment.${name}' (then 'agents state import' to adopt it as a managed resource).`,
 					);
 				}
-				result = await provider.updateEnvironment(existingId!, remoteName, decl);
+				result = await provider.updateEnvironment(existingId!, remoteName, decl, apiMode);
 			} else {
 				try {
-					result = await provider.createEnvironment(remoteName, decl);
+					result = await provider.createEnvironment(remoteName, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
-						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl),
+						mode: apiMode,
+						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl, apiMode),
 					});
 					adopted = true;
 				}
@@ -366,22 +426,26 @@ async function executeActionInner(
 		}
 		case "vault": {
 			const decl = ctx.config.vaults![name]!;
-			if (isUpdate) {
+			if (apiModeChanged) {
+				result = await provider.createVault(name, decl, apiMode);
+				if (existingId) await provider.deleteVault(existingId, priorApiMode).catch(() => undefined);
+			} else if (isUpdate) {
 				try {
-					result = await provider.createVault(name, decl);
-					await provider.deleteVault(existingId!);
+					result = await provider.createVault(name, decl, apiMode);
+					await provider.deleteVault(existingId!, apiMode);
 				} catch {
-					await provider.deleteVault(existingId!);
-					result = await provider.createVault(name, decl);
+					await provider.deleteVault(existingId!, apiMode);
+					result = await provider.createVault(name, decl, apiMode);
 				}
 			} else {
 				try {
-					result = await provider.createVault(name, decl);
+					result = await provider.createVault(name, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						mode: apiMode,
 						onExisting: async (existing) => {
-							await provider.deleteVault(existing.id!);
-							return provider.createVault(name, decl);
+							await provider.deleteVault(existing.id!, apiMode);
+							return provider.createVault(name, decl, apiMode);
 						},
 					});
 					adopted = true;
@@ -406,8 +470,11 @@ async function executeActionInner(
 			}
 			const remoteName = decl.name ?? name;
 			const files = await resolveSkillFiles(decl, ctx);
-			if (isUpdate) {
-				result = await provider.updateSkill(existingId!, remoteName, decl, files);
+			if (apiModeChanged) {
+				result = await provider.createSkill(remoteName, decl, files, apiMode);
+				if (existingId) await provider.deleteSkill(existingId, priorApiMode).catch(() => undefined);
+			} else if (isUpdate) {
+				result = await provider.updateSkill(existingId!, remoteName, decl, files, apiMode);
 			} else {
 				// A skill's remote name is not always the agents.yaml key: providers register
 				// it under the SKILL.md frontmatter `name` (Bailian reads it server-side,
@@ -417,7 +484,7 @@ async function executeActionInner(
 				const searchNames = manifestName && manifestName !== remoteName ? [remoteName, manifestName] : [remoteName];
 				// Pre-check: if a matching skill already exists, adopt it directly without
 				// uploading (avoids wasteful zip upload + OSS delay).
-				const existing = await findExistingByNames(provider, "skill", searchNames);
+				const existing = await findExistingByNames(provider, "skill", searchNames, apiMode);
 				if (existing) {
 					result = existing.resource;
 					emitRuntimeFeedback(ctx.onFeedback, {
@@ -429,9 +496,10 @@ async function executeActionInner(
 					adopted = true;
 				} else {
 					try {
-						result = await provider.createSkill(remoteName, decl, files);
+						result = await provider.createSkill(remoteName, decl, files, apiMode);
 					} catch (err) {
 						result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+							mode: apiMode,
 							searchNames,
 							onExisting: async (existing) => existing,
 						});
@@ -450,18 +518,22 @@ async function executeActionInner(
 				throw memoryStoreUnsupported(address.provider);
 			}
 			const reconcile = async (storeId: string): Promise<RemoteResource> => {
-				const store = await provider.updateMemoryStore!(storeId, {
-					name,
-					description: decl.description,
-					metadata: decl.metadata ?? {},
-				});
+				const store = await provider.updateMemoryStore!(
+					storeId,
+					{
+						name,
+						description: decl.description,
+						metadata: decl.metadata ?? {},
+					},
+					apiMode,
+				);
 
 				// Declarative entries are managed seeds. Update/create those paths in place,
 				// while preserving memories learned by agents at runtime.
 				const current = new Map<string, { id: string; content_sha256: string }>();
 				let cursor: string | undefined;
 				do {
-					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" });
+					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" }, apiMode);
 					for (const memory of page.data) {
 						if (memory.type === "memory") current.set(memory.path, memory);
 					}
@@ -472,24 +544,33 @@ async function executeActionInner(
 					const existing = current.get(entry.key.replace(/^\/+/, ""));
 					if (existing) {
 						if (existing.content_sha256 !== sha256(entry.content)) {
-							await provider.updateMemory!(storeId, existing.id, {
-								content: entry.content,
-								expected_content_sha256: existing.content_sha256,
-							});
+							await provider.updateMemory!(
+								storeId,
+								existing.id,
+								{
+									content: entry.content,
+									expected_content_sha256: existing.content_sha256,
+								},
+								apiMode,
+							);
 						}
 					} else {
-						await provider.createMemory!(storeId, { path: entry.key, content: entry.content });
+						await provider.createMemory!(storeId, { path: entry.key, content: entry.content }, apiMode);
 					}
 				}
 				return store;
 			};
-			if (isUpdate) {
+			if (apiModeChanged) {
+				result = await createMemoryStore(name, decl, apiMode);
+				if (existingId) await deleteMemoryStore(existingId, priorApiMode).catch(() => undefined);
+			} else if (isUpdate) {
 				result = await reconcile(existingId!);
 			} else {
 				try {
-					result = await createMemoryStore(name, decl);
+					result = await createMemoryStore(name, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						mode: apiMode,
 						onExisting: async (existing) => reconcile(existing.id!),
 					});
 					adopted = true;
@@ -645,16 +726,13 @@ async function executeActionInner(
 				const oldId = ctx.state.getResource(address)?.remote_id;
 				if (oldId) {
 					try {
-						await provider.deleteFile(oldId);
+						await provider.deleteFile(oldId, priorApiMode);
 					} catch {
 						// best effort — old file may already be gone
 					}
 				}
 			}
-			const info = await provider.uploadFile(filePath, {
-				name: decl.name,
-				purpose: decl.purpose,
-			});
+			const info = await provider.uploadFile(filePath, { name: decl.name, purpose: decl.purpose }, apiMode);
 			result = { id: info.id, type: "file" };
 			break;
 		}
@@ -689,6 +767,7 @@ async function executeActionInner(
 			(type === "identity" && ctx.config.identities?.[name]?.identity_id)
 				? true
 				: undefined,
+		api_mode: apiMode,
 		version: result.version,
 		content_hash: hash,
 		desired_hash: hash,
@@ -704,13 +783,70 @@ async function executeActionInner(
 	return adopted;
 }
 
+function ownedForwardMemoryStoreIds(ctx: ExecContext, provider: string): string[] {
+	return ctx.state
+		.listResources()
+		.filter(
+			(resource) =>
+				resource.address.provider === provider &&
+				resource.address.type === "memory_store" &&
+				resource.api_mode === "forward" &&
+				typeof resource.remote_id === "string",
+		)
+		.map((resource) => resource.remote_id as string);
+}
+
+function resolveResourceApiMode(
+	type: ResourceType,
+	name: string,
+	provider: string,
+	config: ExecContext["config"],
+): ProviderResourceMode | undefined {
+	if (
+		provider !== "qoder" ||
+		(type !== "environment" && type !== "skill" && type !== "vault" && type !== "memory_store" && type !== "file")
+	) {
+		return undefined;
+	}
+	// An external Environment reference can resolve in either Qoder API domain.
+	if (type === "environment" && config.environments?.[name]?.environment_id) return "auto";
+
+	let managed = false;
+	let forward = false;
+	for (const agent of Object.values(config.agents ?? {})) {
+		if (agent.provider && agent.provider !== provider) continue;
+		const referenced =
+			type === "environment"
+				? agent.environment === name
+				: type === "skill"
+					? agent.skills?.some((skill) =>
+							typeof skill === "string" ? skill === name : skill.type === "custom" && skill.skill_id === name,
+						)
+					: type === "vault"
+						? agent.vault === name
+						: type === "memory_store"
+							? agent.memory_stores?.includes(name)
+							: agent.files?.includes(name);
+		if (!referenced) continue;
+		if (agent.delivery?.qoder?.type === "forward") forward = true;
+		else managed = true;
+	}
+	if (managed && forward) {
+		throw new UserError(
+			`Qoder ${type}.${name} is referenced by both Managed and Forward agents; declare separate resources for each API domain.`,
+		);
+	}
+	return forward ? "forward" : "managed";
+}
+
 async function findExistingByNames(
 	provider: Pick<ResourceCrudAdapter, "findResource">,
 	type: ResourceType,
 	names: string[],
+	mode?: ProviderResourceMode,
 ): Promise<{ resource: RemoteResource; name: string } | null> {
 	for (const candidate of names) {
-		const found = await provider.findResource(type, candidate);
+		const found = await provider.findResource(type, candidate, undefined, mode);
 		if (found && found.id !== null) return { resource: found, name: candidate };
 	}
 	return null;
@@ -723,13 +859,14 @@ async function adoptOnConflict(
 	onFeedback: RuntimeFeedbackSink | undefined,
 	opts: {
 		searchNames?: string[];
+		mode?: ProviderResourceMode;
 		onExisting: (existing: RemoteResource) => Promise<RemoteResource>;
 	},
 ): Promise<RemoteResource> {
 	if (!(err instanceof ConflictError)) throw err;
 
 	const candidates = opts.searchNames?.length ? opts.searchNames : [address.name];
-	const existing = await findExistingByNames(provider, address.type, candidates);
+	const existing = await findExistingByNames(provider, address.type, candidates, opts.mode);
 	if (!existing) throw nameReservedError(err, address, candidates.join('" / "'));
 
 	emitRuntimeFeedback(onFeedback, {

@@ -262,7 +262,9 @@ describe("planner drift classification", () => {
 describe("Qoder archived resources are treated as gone", () => {
 	function adapterWith(getImpl: (path: string) => Promise<unknown>, paged: Record<string, unknown>[] = []) {
 		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
-		adapter.client = { get: getImpl, getAllPaged: async () => paged };
+		const client = { get: getImpl, getAllPaged: async () => paged };
+		adapter.client = client;
+		adapter.forwardClient = client;
 		return adapter;
 	}
 

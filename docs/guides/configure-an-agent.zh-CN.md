@@ -362,6 +362,77 @@ agents:
 
 `memory_stores` 字段接收存储名称数组。
 
+#### 配置 Qoder Forward 默认 Memory Store
+
+Qoder Forward 本地声明的 Environment 只通过 Forward Environment API 创建。外部 `environment_id`
+既可以引用 Managed API 的 Environment，也可以引用 Forward API 的 Environment；OpenCMA 不会创建或
+修改此类外部引用，并会在检查其是否存在时自动解析 API 域。Forward Agent 引用的自定义 Skill、Vault/Credential、File 和显式 Memory
+Store 均通过 Forward API 管理；本地管理的 Environment、Skill、Vault、File 或 Memory Store 不能同时
+供 Managed 与 Forward Agent 共用，应分别声明。Forward File 通过 Agent 的 `files` 字段绑定到 Template。
+显式 Memory Store 依赖 `defaults.identity`，并以只读方式挂载到对应的 Identity + Template。
+
+Qoder Forward 会在某个 `(Identity, Template)` 首次创建 Session 时自动建立唯一可写的系统默认
+Memory Store。`default_memory_store` 管理的是这个由 Qoder 创建的 Store，而不是在顶层
+`memory_stores` 中额外创建一个普通 Store。可以为它设置有业务含义的展示名称、描述以及销毁策略：
+
+```yaml
+defaults:
+  provider: qoder
+  identity: support-user
+
+identities:
+  support-user:
+    external_id: support-user # 由 OpenCMA 管理；不是 identity_id
+
+agents:
+  support-agent:
+    # ...其他配置
+    delivery:
+      qoder:
+        type: forward
+    default_memory_store:
+      name: "客服群长期记忆"
+      description: "群聊中确认过的业务知识和处理规则"
+      delete_on_destroy: false
+```
+
+##### apply 行为
+
+- 仅支持 Qoder Forward，并且必须配置 `defaults.identity`。
+- `agents apply` 会通过 `defaults.identity` 和当前 Template 定位 `system_managed=true`、
+  `access=read_write` 的 Store，然后幂等更新 `name` 和可选的 `description`。
+- `name` 会成为云端 Store 的展示名称，因此可以将系统生成的默认名称改为有业务含义的名字。
+- OpenCMA 不会为了生成 Store 而创建额外的初始化 Session。首次真实 Session 尚未创建时，apply 会提示
+  pending；Session 创建后再次执行 apply 即可完成名称和描述的收敛。
+
+##### destroy 行为
+
+`delete_on_destroy` 控制执行 `agents destroy` 时是否永久删除这个系统默认 Store：
+
+| 配置 | destroy 结果 |
+|---|---|
+| 未配置或 `false` | 保留 Store、全部 Memory 和版本历史。这是默认行为。 |
+| `true` | 系统挂载解除后，永久删除 Store、全部 Memory 和版本历史。 |
+
+永久删除的执行顺序如下：
+
+1. 删除任何项目资源前，先用 Identity ID 和 Template ID 查询并保存默认 Store ID。
+2. archive Template，并删除由 OpenCMA 管理的 Identity，以解除系统挂载。
+3. 使用之前保存的 Store ID 永久删除默认 Store。Qoder 可能异步解除系统挂载，因此遇到
+   `still mounted` 时会进行有界退避重试。
+4. 如果挂载冲突仍未解除，尝试 `archive → delete`。真机 Qoder 已验证该路径可以完成永久删除。
+
+如果预检阶段无法解析 Identity、Template，或无法完成 Store 查询，destroy 会在删除任何项目资源之前
+整体中止。如果最后的 Store 删除仍失败，命令会返回 `partial`，并把待清理 Store ID 保存在 state 中，
+不会把结果显示成完整成功。即使其他资源已经全部删除，之后再次执行 `agents destroy` 也会继续清理。
+Store 已不存在时按 `already absent` 处理。
+
+永久删除要求 `defaults.identity` 指向由 OpenCMA 管理的 Identity。外部 `identity_id` 永远不会被
+OpenCMA 删除，会继续挂载默认 Store，因此 `delete_on_destroy: true` 会直接校验失败。
+
+> **警告：** `true` 会不可恢复地删除 Store 内容和全部版本历史。除非明确需要清除数据，否则应保持默认
+> `false`。`--cascade` 不会覆盖 `delete_on_destroy`。
+
 ---
 
 ## 多 Agent 协作
