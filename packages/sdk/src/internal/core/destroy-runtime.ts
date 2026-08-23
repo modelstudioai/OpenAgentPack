@@ -86,13 +86,19 @@ export function planDestroyProjectContext(ctx: ProjectRuntimeContext): DestroyPl
 	for (const [agentName, agent] of Object.entries(ctx.config.agents ?? {})) {
 		if (!agent.default_memory_store || agent.delivery?.qoder?.type !== "forward") continue;
 		if (agent.provider && agent.provider !== "qoder") continue;
+		const identityId = identityName
+			? (ctx.state.getResource({ type: "identity", name: identityName, provider: "qoder" })?.remote_id ?? null)
+			: null;
+		const templateId =
+			ctx.state.getResource({ type: "template", name: agentName, provider: "qoder" })?.remote_id ?? null;
+		// A system-managed Store cannot exist until both of its owners have been applied.
+		// Do not block cleanup of an independently-created resource after an incomplete apply.
+		if (!identityId && !templateId) continue;
 		defaultMemoryStores.push({
 			agentName,
 			provider: "qoder",
-			identityId: identityName
-				? (ctx.state.getResource({ type: "identity", name: identityName, provider: "qoder" })?.remote_id ?? null)
-				: null,
-			templateId: ctx.state.getResource({ type: "template", name: agentName, provider: "qoder" })?.remote_id ?? null,
+			identityId,
+			templateId,
 			deleteOnDestroy: agent.default_memory_store.delete_on_destroy ?? false,
 		});
 	}

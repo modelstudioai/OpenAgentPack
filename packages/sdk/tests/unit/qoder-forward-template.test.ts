@@ -218,6 +218,22 @@ describe("Qoder Forward Template mapping and lifecycle", () => {
 		expect(calls).toEqual(["managed POST /environments", "forward POST /environments"]);
 	});
 
+	test("archives a Forward Environment with a stale session reference when cascade is enabled", async () => {
+		const calls: string[] = [];
+		const adapter = new QoderAdapter("pt-test") as any;
+		adapter.forwardClient = {
+			delete: async (path: string) => {
+				calls.push(`DELETE ${path}`);
+				throw new ApiError(409, "Environment is in use. Archive the environment instead.", "Forward API");
+			},
+			post: async (path: string) => calls.push(`POST ${path}`),
+		};
+
+		await adapter.deleteEnvironment("env_forward", true, "forward");
+
+		expect(calls).toEqual(["DELETE /environments/env_forward", "POST /environments/env_forward/archive"]);
+	});
+
 	test("resolves an external Environment id from either API domain", async () => {
 		const calls: string[] = [];
 		const adapter = new QoderAdapter("pt-test") as any;

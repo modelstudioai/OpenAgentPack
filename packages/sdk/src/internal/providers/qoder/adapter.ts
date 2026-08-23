@@ -459,8 +459,23 @@ export class QoderAdapter implements ProviderAdapter {
 
 	async deleteEnvironment(id: string, cascade = false, mode: ProviderResourceMode = "managed"): Promise<void> {
 		if (mode === "forward") {
-			await this.forwardClient.delete(`/environments/${id}`);
-			return;
+			try {
+				await this.forwardClient.delete(`/environments/${id}`);
+				return;
+			} catch (err) {
+				const isConflict = err instanceof ApiError && (err.statusCode === 409 || err.responseBody.includes("in use"));
+				if (!isConflict) throw err;
+				if (!cascade) {
+					throw new UserError(
+						`Environment ${id} is referenced by one or more Forward sessions. ` +
+							`Use --cascade to archive the environment.`,
+					);
+				}
+				// Qoder Forward may retain a session reference after the session is
+				// gone. Its API requires archiving the environment in that case.
+				await this.forwardClient.post(`/environments/${id}/archive`, {});
+				return;
+			}
 		}
 		try {
 			await this.client.delete(`/environments/${id}`);
