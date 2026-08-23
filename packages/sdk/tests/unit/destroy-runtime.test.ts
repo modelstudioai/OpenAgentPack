@@ -144,6 +144,32 @@ describe("destroy runtime", () => {
 		expect(result.partial).toBe(false);
 	});
 
+	test("does not block destroy for a default Store whose Template and Identity were never recorded", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx([resource("environment", "oncall-env", "env_1")], adapter(calls));
+		runtime.config.defaults = { provider: "qoder", identity: "oncall" };
+		runtime.config.identities = {
+			oncall: { external_id: "oncall" },
+		};
+		runtime.config.agents = {
+			"oncall-agent": {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Oncall memory", delete_on_destroy: true },
+			},
+		};
+
+		const plan = planDestroyProjectContext(runtime);
+		expect(plan.defaultMemoryStores).toEqual([]);
+
+		const result = await destroyPlannedProjectResources(plan);
+
+		expect(calls).toEqual(["environment:env_1:plain"]);
+		expect(result.destroyed).toBe(1);
+		expect(result.partial).toBe(false);
+	});
+
 	test("aborts destroy when the default Store preflight cannot capture its ID", async () => {
 		const calls: string[] = [];
 		const runtime = await ctx(
