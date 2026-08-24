@@ -79,7 +79,68 @@ export {
 	runDeploymentForContext,
 } from "./internal/core/deployment-runtime.ts";
 
-export type { DeploymentListFilter, DeploymentListResult } from "./internal/providers/interface.ts";
+export type {
+	DeploymentInfo,
+	DeploymentListFilter,
+	DeploymentListResult,
+	DeploymentRunResult,
+} from "./internal/providers/interface.ts";
+
+export {
+	archiveRemoteSession,
+	downloadRemoteFile,
+	downloadRemoteSkill,
+	getManagedAgentProviderCapabilities,
+	getRemoteAgent,
+	getRemoteDeployment,
+	getRemoteDeploymentRun,
+	getRemoteEnvironment,
+	getRemoteSkill,
+	getRemoteSkillDownloadInfo,
+	getRemoteSkillVersion,
+	getRemoteVault,
+	listRemoteAgents,
+	listRemoteAgentVersions,
+	listRemoteDeploymentRuns,
+	listRemoteDeployments,
+	listRemoteEnvironments,
+	listRemoteFiles,
+	listRemoteSkills,
+	listRemoteSkillVersions,
+	listRemoteVaults,
+	runRemoteDeployment,
+	sendRemoteSessionEvents,
+	setRemoteDeploymentPaused,
+	updateRemoteSession,
+} from "./internal/core/managed-api-runtime.ts";
+export type { ManagedApiTarget } from "./internal/core/managed-api-runtime.ts";
+export type {
+	AgentListOptions,
+	AgentPage,
+	AgentVersionListOptions,
+	CursorListOptions,
+	CursorPage,
+	DeploymentRunInfo,
+	DeploymentRunPage,
+	EnvironmentListOptions,
+	EnvironmentPage,
+	FileListOptions,
+	FilePage,
+	ManagedAgentOperationAuth,
+	ManagedAgentOperationCapability,
+	ManagedAgentProviderCapabilities,
+	SessionEventInput,
+	SessionEventSendResult,
+	SessionUpdateInput,
+	SkillDownloadInfo,
+	SkillListOptions,
+	SkillPage,
+	SkillVersionInfo,
+	SkillVersionListOptions,
+	SkillVersionPage,
+	VaultListOptions,
+	VaultPage,
+} from "./internal/types/managed-api.ts";
 
 export type {
 	DestroyDefaultMemoryStoreResult,
@@ -198,8 +259,13 @@ export {
 	type ProviderConfig,
 	type ProviderConfigProvider,
 } from "./internal/provider-config.ts";
-export type { ProviderSessionInfo } from "./internal/types/session.ts";
-export type { ProviderSessionEvent } from "./internal/types/session-event.ts";
+export type { ProviderSessionInfo, SessionFilter, SessionListResult } from "./internal/types/session.ts";
+export type {
+	EventListOptions,
+	EventStreamOptions,
+	ProviderSessionEvent,
+	ProviderSessionEventList,
+} from "./internal/types/session-event.ts";
 export type { ProviderFileInfo } from "./internal/types/file.ts";
 export type { ProviderSkillInfo } from "./internal/types/skill-info.ts";
 

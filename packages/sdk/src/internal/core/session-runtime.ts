@@ -383,17 +383,25 @@ export async function deleteSession(ctx: ProjectRuntimeContext, sessionId: strin
 export async function listSessionEvents(
 	ctx: ProjectRuntimeContext,
 	sessionId: string,
-	options: SessionRuntimeTarget & { limit?: number; order?: string; page_token?: string; page?: string } = {},
+	options: SessionRuntimeTarget & EventListOptions = {},
 ): Promise<ProviderSessionEventList> {
 	const listOptions: EventListOptions = {};
 	if (options.limit !== undefined) listOptions.limit = options.limit;
 	if (options.order !== undefined) listOptions.order = options.order;
+	if (options.types !== undefined) listOptions.types = options.types;
+	if (options.created_at_gt !== undefined) listOptions.created_at_gt = options.created_at_gt;
+	if (options.created_at_gte !== undefined) listOptions.created_at_gte = options.created_at_gte;
+	if (options.created_at_lt !== undefined) listOptions.created_at_lt = options.created_at_lt;
+	if (options.created_at_lte !== undefined) listOptions.created_at_lte = options.created_at_lte;
 	const pageToken = options.page_token ?? options.page;
 	if (pageToken !== undefined) listOptions.page_token = pageToken;
-	return resolveDirectAdapter(ctx, options.provider).listSessionEvents(
+	const result = await resolveDirectAdapter(ctx, options.provider).listSessionEvents(
 		sessionId,
 		Object.keys(listOptions).length > 0 ? listOptions : undefined,
 	);
+	if (!options.types || options.types.length === 0) return result;
+	const allowedTypes = new Set(options.types);
+	return { ...result, events: result.events.filter((event) => allowedTypes.has(event.raw_type)) };
 }
 
 /**
@@ -503,21 +511,115 @@ export async function deleteSkill(
 }
 
 /**
- * Subscribe to a session's live event stream by id (native SSE). The underlying provider
- * stream pushes only post-connect events, so callers that need full history must replay it
- * via listSessionEvents and de-dupe by ProviderSessionEvent.id.
+ * Subscribe to a session's event stream by id. Providers with native cursor support receive
+ * `after_id` directly; providers without it resume by replaying paginated history and polling
+ * for new events with event-id de-duplication.
  */
 export function streamSessionEvents(
 	ctx: ProjectRuntimeContext,
 	sessionId: string,
 	options: SessionRuntimeTarget & EventStreamOptions = {},
 ): AsyncIterable<ProviderSessionEvent> {
+	const adapter = resolveDirectAdapter(ctx, options.provider);
+	if (options.after_id && !adapter.eventResume) {
+		return replaySessionEventsByPolling(adapter, sessionId, options.after_id);
+	}
 	const streamOptions: EventStreamOptions = {};
 	if (options.after_id !== undefined) streamOptions.after_id = options.after_id;
-	return resolveDirectAdapter(ctx, options.provider).streamSessionEvents(
-		sessionId,
-		Object.keys(streamOptions).length > 0 ? streamOptions : undefined,
-	);
+	return adapter.streamSessionEvents(sessionId, Object.keys(streamOptions).length > 0 ? streamOptions : undefined);
+}
+
+async function* replaySessionEventsByPolling(
+	adapter: SessionWorkflowAdapter,
+	sessionId: string,
+	afterId: string,
+): AsyncIterable<ProviderSessionEvent> {
+	const history = await listAllSessionEventHistory(adapter, sessionId);
+	const markerIndex = history.findIndex((event) => event.id === afterId);
+	if (markerIndex < 0) {
+		throw new UserError(`Session event '${afterId}' was not found; list session events and choose a valid event id.`);
+	}
+
+	const knownEventKeys = new Set(history.slice(0, markerIndex + 1).map(sessionEventKey));
+	for (const event of history.slice(markerIndex + 1)) {
+		const eventKey = sessionEventKey(event);
+		if (knownEventKeys.has(eventKey)) continue;
+		knownEventKeys.add(eventKey);
+		yield event;
+		if (event.type === "status" && isTerminalSessionStatus(event.status)) return;
+	}
+
+	while (true) {
+		const newEvents = await listNewSessionEvents(adapter, sessionId, knownEventKeys);
+		for (const event of newEvents) {
+			const eventKey = sessionEventKey(event);
+			if (knownEventKeys.has(eventKey)) continue;
+			knownEventKeys.add(eventKey);
+			yield event;
+			if (event.type === "status" && isTerminalSessionStatus(event.status)) return;
+		}
+		const session = await adapter.getSession(sessionId);
+		if (isTerminalSessionStatus(session.status)) return;
+		await delay(DEFAULT_POLL_INTERVAL_MS);
+	}
+}
+
+async function listAllSessionEventHistory(
+	adapter: SessionWorkflowAdapter,
+	sessionId: string,
+): Promise<ProviderSessionEvent[]> {
+	const events: ProviderSessionEvent[] = [];
+	const seenPageTokens = new Set<string>();
+	let pageToken: string | undefined;
+	while (true) {
+		const result = await adapter.listSessionEvents(sessionId, {
+			limit: 100,
+			order: "asc",
+			...(pageToken ? { page_token: pageToken } : {}),
+		});
+		events.push(...result.events);
+		if (!result.next_page) return events;
+		if (seenPageTokens.has(result.next_page)) {
+			throw new UserError("Session event pagination returned a repeated cursor.");
+		}
+		seenPageTokens.add(result.next_page);
+		pageToken = result.next_page;
+	}
+}
+
+async function listNewSessionEvents(
+	adapter: SessionWorkflowAdapter,
+	sessionId: string,
+	knownEventKeys: ReadonlySet<string>,
+): Promise<ProviderSessionEvent[]> {
+	const descendingEvents: ProviderSessionEvent[] = [];
+	const seenPageTokens = new Set<string>();
+	let pageToken: string | undefined;
+	while (true) {
+		const result = await adapter.listSessionEvents(sessionId, {
+			limit: 100,
+			order: "desc",
+			...(pageToken ? { page_token: pageToken } : {}),
+		});
+		let reachedKnownEvent = false;
+		for (const event of result.events) {
+			if (knownEventKeys.has(sessionEventKey(event))) {
+				reachedKnownEvent = true;
+				break;
+			}
+			descendingEvents.push(event);
+		}
+		if (reachedKnownEvent || !result.next_page) return descendingEvents.reverse();
+		if (seenPageTokens.has(result.next_page)) {
+			throw new UserError("Session event pagination returned a repeated cursor.");
+		}
+		seenPageTokens.add(result.next_page);
+		pageToken = result.next_page;
+	}
+}
+
+function sessionEventKey(event: ProviderSessionEvent): string {
+	return event.id ?? `raw:${event.raw_type}:${JSON.stringify(event.raw)}`;
 }
 
 function resolveDirectAdapter(ctx: ProjectRuntimeContext, overrideProvider?: string): SessionRuntimeAdapter {

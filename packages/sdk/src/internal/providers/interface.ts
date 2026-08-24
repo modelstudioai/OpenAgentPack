@@ -12,6 +12,29 @@ import type {
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../types/dto.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
 import type {
+	AgentListOptions,
+	AgentPage,
+	AgentVersionListOptions,
+	CursorListOptions,
+	DeploymentRunInfo,
+	DeploymentRunPage,
+	EnvironmentListOptions,
+	EnvironmentPage,
+	FileListOptions,
+	FilePage,
+	SessionEventInput,
+	SessionEventSendResult,
+	SessionUpdateInput,
+	SkillDownloadInfo,
+	SkillListOptions,
+	SkillPage,
+	SkillVersionInfo,
+	SkillVersionListOptions,
+	SkillVersionPage,
+	VaultListOptions,
+	VaultPage,
+} from "../types/managed-api.ts";
+import type {
 	BatchCreateMemoryInput,
 	BatchCreateMemoryResult,
 	CreateMemoryInput,
@@ -138,6 +161,8 @@ export interface DeploymentInfo {
 
 export interface DeploymentListFilter {
 	agent_id?: string;
+	/** Bailian server-side fuzzy match against deployment id or name. */
+	keyword?: string;
 	status?: "active" | "paused";
 	include_archived?: boolean;
 	limit?: number;
@@ -178,13 +203,21 @@ export interface ProviderAdapter {
 	// providers that can enumerate their remote agents implement it. `prefix` filters
 	// by display-name prefix (e.g. "Agents/") server-side where supported.
 	listAgents?(filter?: { prefix?: string; limit?: number }): Promise<CloudAgent[]>;
+	/** Cursor-preserving API listing used by command surfaces. */
+	listAgentResources?(options?: AgentListOptions): Promise<AgentPage>;
+	getRemoteAgent?(id: string, version?: number): Promise<CloudAgent>;
+	listAgentVersions?(id: string, options?: AgentVersionListOptions): Promise<AgentPage>;
 	// Raw cloud environment list (full remote objects). Optional: only providers that can
 	// enumerate their remote environments implement it. Environments are a shared base
 	// resource (sandbox), not tied to any playbook/agent.
 	listEnvironments?(filter?: { limit?: number }): Promise<CloudEnvironment[]>;
+	listEnvironmentResources?(options?: EnvironmentListOptions): Promise<EnvironmentPage>;
+	getRemoteEnvironment?(id: string): Promise<CloudEnvironment>;
 	// Raw cloud vault list (full remote objects). Optional: only providers that can enumerate
 	// their remote vaults implement it. Vaults are a shared credential store, not tied to a playbook.
 	listVaults?(filter?: { limit?: number }): Promise<CloudVault[]>;
+	listVaultResources?(options?: VaultListOptions): Promise<VaultPage>;
+	getRemoteVault?(id: string): Promise<CloudVault>;
 	getDriftSupport?(type: ResourceType): DriftSupport;
 	readComparableResource?(
 		type: ResourceType,
@@ -289,6 +322,12 @@ export interface ProviderAdapter {
 	runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult>;
 	getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo>;
 	listDeployments?(filter?: DeploymentListFilter): Promise<DeploymentListResult>;
+	getDeploymentById?(id: string): Promise<DeploymentInfo>;
+	runDeploymentById?(id: string): Promise<DeploymentRunResult>;
+	pauseDeploymentById?(id: string): Promise<DeploymentInfo>;
+	unpauseDeploymentById?(id: string): Promise<DeploymentInfo>;
+	listDeploymentRuns?(deploymentId: string, options?: CursorListOptions): Promise<DeploymentRunPage>;
+	getDeploymentRun?(runId: string): Promise<DeploymentRunInfo>;
 	pauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 	unpauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 
@@ -314,6 +353,8 @@ export interface ProviderAdapter {
 	getFileDownloadUrl?(id: string): Promise<{ url: string; expires_at?: string }>;
 	/** List workspace user-uploaded files (newest first). Optional — only providers with a list API implement it. */
 	listFiles?(): Promise<ProviderFileInfo[]>;
+	listFileResources?(options?: FileListOptions): Promise<FilePage>;
+	downloadFileContent?(id: string): Promise<Uint8Array>;
 
 	/**
 	 * List skills (newest first). `source` selects the catalog: "custom" (workspace-uploaded, the
@@ -321,8 +362,12 @@ export interface ProviderAdapter {
 	 * list API implement it.
 	 */
 	listSkills?(source?: "custom" | "official"): Promise<ProviderSkillInfo[]>;
+	listSkillResources?(options?: SkillListOptions): Promise<SkillPage>;
 	/** Fetch a single skill's metadata (incl. scan `status`); used to poll create → active. */
 	getSkillInfo?(id: string): Promise<ProviderSkillInfo>;
+	listSkillVersions?(id: string, options?: SkillVersionListOptions): Promise<SkillVersionPage>;
+	getSkillVersion?(id: string, version: string): Promise<SkillVersionInfo>;
+	getSkillDownloadInfo?(id: string, version: string): Promise<SkillDownloadInfo>;
 	/**
 	 * Create a skill from an already-uploaded zip's file_id and return immediately with the
 	 * initial (usually `checking`) status. NON-blocking — unlike `createSkill`, it does NOT wait
@@ -333,9 +378,12 @@ export interface ProviderAdapter {
 	createSession(bindings: SessionBindings): Promise<ProviderSessionInfo>;
 	listSessions(filter?: SessionFilter): Promise<SessionListResult>;
 	getSession(id: string): Promise<ProviderSessionInfo>;
+	updateSession?(id: string, input: SessionUpdateInput): Promise<ProviderSessionInfo>;
+	archiveSession?(id: string): Promise<ProviderSessionInfo>;
 	deleteSession(id: string): Promise<void>;
 
 	sendSessionMessage(sessionId: string, message: string): Promise<string | undefined>;
+	sendSessionEvents?(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult>;
 	streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent>;
 	listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList>;
 

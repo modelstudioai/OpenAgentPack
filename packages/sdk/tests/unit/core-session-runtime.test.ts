@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { ProjectRuntimeContext } from "../../src/internal/core/project-runtime.ts";
 import {
 	createSessionForAgent,
+	listSessionEvents,
 	sendSessionMessageAndCollectEvents,
 	startSessionRun,
 	streamMessageEvents,
+	streamSessionEvents,
 } from "../../src/internal/core/session-runtime.ts";
 import { BailianAdapter } from "../../src/internal/providers/bailian/adapter.ts";
 import { ClaudeAdapter } from "../../src/internal/providers/claude/adapter.ts";
@@ -262,6 +264,61 @@ describe("core session runtime", () => {
 		expect(result.eventId).toBe("evt_user");
 		expect(result.terminalStatus).toBe("idle");
 		expect(calls).toEqual(["send:poll", "list:evt_user"]);
+	});
+
+	test("filters raw event types client-side", async () => {
+		const provider = {
+			...adapter("bailian", [], false),
+			listSessionEvents: async () => ({
+				events: [
+					{ id: "evt_message", type: "message", raw_type: "message", raw: {} },
+					{ id: "evt_tool", type: "tool_call", raw_type: "tool_call", raw: {} },
+				],
+				has_more: false,
+			}),
+		};
+
+		const result = await listSessionEvents(ctx(provider), "sess_1", { types: ["tool_call"] });
+
+		expect(result.events.map((event) => event.id)).toEqual(["evt_tool"]);
+	});
+
+	test("replays after-id with history polling when native stream cursors are unsupported", async () => {
+		const calls: string[] = [];
+		const marker: ProviderSessionEvent = {
+			id: "evt_marker",
+			type: "message",
+			raw_type: "message",
+			raw: {},
+		};
+		const terminal: ProviderSessionEvent = {
+			id: "evt_terminal",
+			type: "status",
+			raw_type: "session_status",
+			status: "idle",
+			raw: {},
+		};
+		const provider = {
+			...adapter("bailian", calls, false),
+			streamSessionEvents: async function* () {
+				calls.push("native-stream");
+				yield terminal;
+			},
+			listSessionEvents: async (_sessionId: string, options?: { order?: string }) => {
+				calls.push(`list:${options?.order ?? "none"}`);
+				return options?.order === "asc"
+					? { events: [marker], has_more: false }
+					: { events: [terminal, marker], has_more: false };
+			},
+		};
+		const seen: ProviderSessionEvent[] = [];
+
+		for await (const event of streamSessionEvents(ctx(provider), "sess_1", { after_id: marker.id })) {
+			seen.push(event);
+		}
+
+		expect(seen.map((event) => event.id)).toEqual(["evt_terminal"]);
+		expect(calls).toEqual(["list:asc", "list:desc"]);
 	});
 });
 

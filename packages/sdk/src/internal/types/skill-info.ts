@@ -7,4 +7,5 @@ export interface ProviderSkillInfo {
 	latest_version?: string;
 	created_at?: string;
 	updated_at?: string;
+	attributes?: Record<string, unknown>;
 }
