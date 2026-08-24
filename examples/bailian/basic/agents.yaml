@@ -27,7 +27,7 @@ environments:
 agents:
   assistant:
     description: "General-purpose coding assistant"
-    model: qwen3.6-max
+    model: qwen3.7-plus
     instructions: |
       You are a helpful coding assistant. You can run shell commands,
       read files, and search the codebase to help with tasks.
