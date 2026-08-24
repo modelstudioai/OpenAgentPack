@@ -23,11 +23,12 @@ environments:
       type: cloud
       networking:
         type: unrestricted
+    description: ssss
 
 agents:
   assistant:
-    description: "General-purpose coding assistant"
-    model: qwen3.7-plus
+    description: General-purpose coding assistantsss
+    model: qwen3.8-plus
     instructions: |
       You are a helpful coding assistant. You can run shell commands,
       read files, and search the codebase to help with tasks.
