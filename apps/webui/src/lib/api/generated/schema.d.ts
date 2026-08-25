@@ -870,6 +870,9 @@ export interface paths {
 								created_at?: string;
 								updated_at?: string;
 								archived_at?: string | null;
+								attributes?: {
+									[key: string]: unknown;
+								};
 							}[];
 						};
 					};
@@ -1116,6 +1119,9 @@ export interface paths {
 								created_at?: string;
 								updated_at?: string;
 								archived_at?: string | null;
+								attributes?: {
+									[key: string]: unknown;
+								};
 							}[];
 						};
 					};
@@ -1346,6 +1352,9 @@ export interface paths {
 								created_at?: string | null;
 								updated_at?: string | null;
 								archived_at?: string | null;
+								attributes?: {
+									[key: string]: unknown;
+								};
 							}[];
 						};
 					};
