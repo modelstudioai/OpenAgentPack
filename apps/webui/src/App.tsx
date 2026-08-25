@@ -29,10 +29,13 @@ import {
 	deleteAttachment,
 	getOperation,
 	getProject,
+	getProjectGit,
+	initializeProjectGit,
 	listAttachments,
 	type OperationEvent,
 	operationEventSource,
 	type ProjectAgent,
+	type ProjectGitStatus,
 	type ProjectPlan,
 	type ProjectSummary,
 	planProject,
@@ -45,13 +48,15 @@ import {
 } from "@/lib/project-api";
 import { comparePlanActions } from "@/resources/plan-impact";
 import { ResourcesPanel } from "@/resources/ResourcesPanel";
+import { VersionsPanel } from "@/versions/VersionsPanel";
 
-type WorkbenchTab = "overview" | "resources" | "changes" | "debug" | "artifacts" | "deployments";
+type WorkbenchTab = "overview" | "resources" | "changes" | "versions" | "debug" | "artifacts" | "deployments";
 
 const TAB_LABELS: Array<{ id: WorkbenchTab; label: string }> = [
 	{ id: "overview", label: "Overview" },
 	{ id: "resources", label: "Resources" },
 	{ id: "changes", label: "Changes" },
+	{ id: "versions", label: "Versions" },
 	{ id: "debug", label: "Debug" },
 	{ id: "artifacts", label: "Artifacts" },
 	{ id: "deployments", label: "Deployments" },
@@ -73,6 +78,9 @@ export default function App() {
 	const [applyBusy, setApplyBusy] = useState(false);
 	const [operationEvents, setOperationEvents] = useState<OperationEvent[]>([]);
 	const [actionError, setActionError] = useState<string>();
+	const [gitStatus, setGitStatus] = useState<ProjectGitStatus>();
+	const [gitError, setGitError] = useState<string>();
+	const [gitLoading, setGitLoading] = useState(true);
 	const [attachments, setAttachments] = useState<Attachment[]>([]);
 	const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
 	const [uploadBusy, setUploadBusy] = useState(false);
@@ -85,7 +93,40 @@ export default function App() {
 	const sessionSourceRef = useRef<EventSource | null>(null);
 	const projectRef = useRef<ProjectSummary | undefined>(undefined);
 	const projectRequestGenerationRef = useRef(0);
+	const gitInitializationRef = useRef(false);
 	const projectValid = project?.status === "valid";
+	const writeBlockedReason = project?.active_mutation
+		? `Project ${project.active_mutation.kind.replace(/_/g, " ")} is running. Drafts remain editable, but YAML and version writes are disabled until it finishes.`
+		: undefined;
+
+	const loadGitStatus = useCallback(async () => {
+		setGitLoading(true);
+		try {
+			let next = await getProjectGit();
+			setGitStatus(next);
+			const currentProject = projectRef.current;
+			if (
+				next.git_available &&
+				!next.repository_root &&
+				currentProject?.revision &&
+				!currentProject.active_mutation &&
+				!gitInitializationRef.current
+			) {
+				gitInitializationRef.current = true;
+				try {
+					next = await initializeProjectGit(currentProject.revision);
+					setGitStatus(next);
+				} finally {
+					gitInitializationRef.current = false;
+				}
+			}
+			setGitError(undefined);
+		} catch (error) {
+			setGitError(errorMessage(error));
+		} finally {
+			setGitLoading(false);
+		}
+	}, []);
 
 	const loadProject = useCallback(async (refresh = false, preserveEmptySelection = false) => {
 		const requestGeneration = ++projectRequestGenerationRef.current;
@@ -109,6 +150,7 @@ export default function App() {
 
 	useEffect(() => {
 		void loadProject();
+		void loadGitStatus();
 		const source = projectEventSource();
 		source.addEventListener("project.snapshot", (event) => {
 			let snapshot: { status?: unknown; revision?: unknown } | undefined;
@@ -147,8 +189,32 @@ export default function App() {
 				void loadProject();
 			});
 		}
+		source.addEventListener("project.mutation", (event) => {
+			let change: { active_mutation?: ProjectSummary["active_mutation"] } | undefined;
+			try {
+				change = JSON.parse((event as MessageEvent<string>).data) as typeof change;
+			} catch {
+				void loadProject();
+				return;
+			}
+			setProject((current) => {
+				if (!current) return current;
+				const next = { ...current, active_mutation: change?.active_mutation ?? null };
+				projectRef.current = next;
+				return next;
+			});
+			if (!change?.active_mutation) void loadGitStatus();
+		});
 		return () => source.close();
-	}, [loadProject]);
+	}, [loadGitStatus, loadProject]);
+
+	useEffect(() => {
+		if (project?.revision) void loadGitStatus();
+	}, [loadGitStatus, project?.revision]);
+
+	useEffect(() => {
+		if (tab === "versions") void loadGitStatus();
+	}, [loadGitStatus, tab]);
 
 	useEffect(() => {
 		setActionError(undefined);
@@ -220,7 +286,17 @@ export default function App() {
 				setBaselinePlan(undefined);
 				sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
 				if (result.error) setActionError(result.error);
-				void loadProject(true);
+				void (async () => {
+					await loadProject(true);
+					setPlanBusy(true);
+					try {
+						setPlan(await planProject());
+					} catch (error) {
+						if (!result.error) setActionError(errorMessage(error));
+					} finally {
+						setPlanBusy(false);
+					}
+				})();
 				source.close();
 			});
 			source.onerror = () => {
@@ -299,6 +375,24 @@ export default function App() {
 		} catch (error) {
 			setPlan(undefined);
 			setBaselinePlan(undefined);
+			setActionError(errorMessage(error));
+		} finally {
+			setPlanBusy(false);
+		}
+	};
+
+	const handleVersionRestored = async () => {
+		setTab("changes");
+		setActionError(undefined);
+		await loadProject(false, !selectedAgentId);
+		await loadGitStatus();
+		setPlanBusy(true);
+		setBaselinePlan(undefined);
+		setOperationEvents([]);
+		try {
+			setPlan(await planProject());
+		} catch (error) {
+			setPlan(undefined);
 			setActionError(errorMessage(error));
 		} finally {
 			setPlanBusy(false);
@@ -436,6 +530,7 @@ export default function App() {
 					message={`${diagnostic.code}: ${diagnostic.message}`}
 				/>
 			))}
+			{writeBlockedReason && <Banner tone="warning" message={writeBlockedReason} />}
 
 			<div className="workbench-layout">
 				<aside className="agent-sidebar">
@@ -490,7 +585,7 @@ export default function App() {
 				</aside>
 
 				<main className="agent-workspace">
-					{selectedAgent || projectValid ? (
+					{project ? (
 						<>
 							<section className="agent-title-row">
 								{selectedAgent ? (
@@ -549,6 +644,7 @@ export default function App() {
 									projectRevision={project?.revision}
 									projectValid={projectValid}
 									selectedAgentId={selectedAgent.agent.id}
+									writeBlockedReason={writeBlockedReason}
 									onCommitted={handleDeclarationCommitted}
 								/>
 							)}
@@ -560,9 +656,22 @@ export default function App() {
 									planBusy={planBusy}
 									applyBusy={applyBusy}
 									projectValid={projectValid}
+									versioned={gitStatus?.config_versioned ?? false}
+									mutationActive={Boolean(project.active_mutation)}
 									operationEvents={operationEvents}
 									onPlan={handlePlan}
 									onApply={handleApply}
+								/>
+							)}
+							{tab === "versions" && (
+								<VersionsPanel
+									projectRevision={project.revision}
+									git={gitStatus}
+									gitLoading={gitLoading}
+									gitError={gitError}
+									writeBlockedReason={writeBlockedReason}
+									onGitChange={setGitStatus}
+									onRestored={handleVersionRestored}
 								/>
 							)}
 							{tab === "debug" && selectedAgent && (
@@ -668,6 +777,8 @@ function ChangesPanel({
 	planBusy,
 	applyBusy,
 	projectValid,
+	versioned,
+	mutationActive,
 	operationEvents,
 	onPlan,
 	onApply,
@@ -677,6 +788,8 @@ function ChangesPanel({
 	planBusy: boolean;
 	applyBusy: boolean;
 	projectValid: boolean;
+	versioned: boolean;
+	mutationActive: boolean;
 	operationEvents: OperationEvent[];
 	onPlan(): void;
 	onApply(): void;
@@ -693,16 +806,30 @@ function ChangesPanel({
 					<button
 						type="button"
 						className="secondary-button"
-						disabled={!projectValid || planBusy || applyBusy}
+						disabled={!projectValid || planBusy || applyBusy || mutationActive}
 						onClick={onPlan}
 					>
 						{planBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}Plan
 					</button>
-					<button type="button" className="primary-button" disabled={!plan || applyBusy} onClick={onApply}>
+					<button
+						type="button"
+						className="primary-button"
+						disabled={!plan || applyBusy || mutationActive}
+						onClick={onApply}
+					>
 						{applyBusy ? <LoaderCircle className="spin" /> : <Play />}Apply reviewed plan
 					</button>
 				</div>
 			</div>
+			{!versioned && (
+				<div className="version-notice warning">
+					<AlertTriangle />
+					<span>
+						Automatic versioning: Apply will commit the current agents.yaml before changing remote resources. If it
+						already matches HEAD, the existing version is reused.
+					</span>
+				</div>
+			)}
 			{plan ? (
 				<div className="plan-card">
 					<div className="plan-meta">

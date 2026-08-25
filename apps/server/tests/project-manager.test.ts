@@ -76,6 +76,23 @@ describe("ProjectRuntimeManager", () => {
 		await waitFor(() => manager.getSnapshot().status === "valid");
 		expect(manager.getSnapshot().sourcePaths).toContain(join(directory, "prompts/system.md"));
 	});
+
+	test("keeps a content revision while agents.yaml is syntactically invalid", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "openagentpack-project-invalid-revision-"));
+		const configPath = join(directory, "agents.yaml");
+		await writeFile(configPath, "version: [\n");
+		const manager = new ProjectRuntimeManager(configPath);
+		managers.push(manager);
+
+		await manager.ensureStarted();
+		const firstRevision = manager.getSnapshot().revision;
+		expect(manager.getSnapshot().status).toBe("invalid");
+		expect(firstRevision).toBeString();
+
+		await writeFile(configPath, "version: {\n");
+		await manager.refreshAfterSourceMutation();
+		expect(manager.getSnapshot().revision).not.toBe(firstRevision);
+	});
 });
 
 function validProjectYaml(instructions = "./instructions.md"): string {

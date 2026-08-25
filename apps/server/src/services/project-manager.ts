@@ -14,6 +14,7 @@ import {
 	validateProjectConfig,
 } from "@openagentpack/sdk";
 import { type FSWatcher, watch } from "chokidar";
+import { type ProjectMutationSnapshot, projectMutationCoordinator } from "@/services/project-mutations";
 
 export type ProjectStatus = "loading" | "valid" | "invalid" | "missing";
 export type ProjectChangeType = "project.reloading" | "project.valid" | "project.invalid" | "project.missing";
@@ -62,6 +63,7 @@ export interface ProjectSummary {
 	diagnostics: Diagnostic[];
 	agents: ProjectAgentSummary[];
 	deployments: ProjectDeploymentSummary[];
+	active_mutation: ProjectMutationSnapshot | null;
 }
 
 type ProjectListener = (event: ProjectChangeEvent) => void;
@@ -150,6 +152,7 @@ export class ProjectRuntimeManager {
 				details: projectAgentDetails(snapshot.config, entry.agent.id),
 			})),
 			deployments: projectDeployments(snapshot.config),
+			active_mutation: projectMutationCoordinator.getSnapshot(),
 		};
 	}
 
@@ -226,10 +229,12 @@ export class ProjectRuntimeManager {
 				error && typeof error === "object" && "sourcePaths" in error && Array.isArray(error.sourcePaths)
 					? error.sourcePaths.filter((sourcePath): sourcePath is string => typeof sourcePath === "string")
 					: [this.configPath];
+			const revision = await computeProjectRevision(failedSourcePaths).catch(() => undefined);
 			next = {
 				status: "invalid",
 				configPath: this.configPath,
 				projectName: basename(dirname(this.configPath)),
+				revision,
 				diagnostics: [
 					{
 						severity: "error",

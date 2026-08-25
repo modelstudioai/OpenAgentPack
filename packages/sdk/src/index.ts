@@ -53,6 +53,9 @@ export {
 } from "./internal/core/validate-config.ts";
 export type { ValidateProjectConfigOptions } from "./internal/core/validate-config.ts";
 
+export { inspectProjectSource } from "./internal/core/project-source-security.ts";
+export type { ProjectSourceInspection } from "./internal/core/project-source-security.ts";
+
 export {
 	resolveSyncProvider,
 	syncProviderResourcesFromContext,

@@ -9,6 +9,11 @@ export type ProjectDeclaration = ProjectDeclarations["resources"][number];
 export type DeclarationType = ProjectDeclaration["type"];
 export type DeclarationPreview = components["schemas"]["DeclarationPreviewResponse"];
 export type DeclarationCommit = components["schemas"]["DeclarationCommitResponse"];
+export type ProjectGitStatus = components["schemas"]["ProjectGitStatus"];
+export type ProjectVersion = components["schemas"]["ProjectVersion"];
+export type ProjectVersions = components["schemas"]["ProjectVersionsResponse"];
+export type ProjectVersionPreview = components["schemas"]["ProjectVersionPreview"];
+export type ProjectVersionRestore = components["schemas"]["ProjectVersionRestoreResponse"];
 export type SessionDetail = components["schemas"]["CreateProjectSessionResponse"];
 export type Operation = components["schemas"]["OperationResponse"];
 export type OperationEvent = components["schemas"]["OperationResponse"]["events"][number];
@@ -104,6 +109,61 @@ export async function applyProject(
 	});
 }
 
+export async function getProjectGit(): Promise<ProjectGitStatus> {
+	return requestJson("/api/project/git");
+}
+
+export async function initializeProjectGit(baseRevision: string): Promise<ProjectGitStatus> {
+	return requestJson("/api/project/git/init", {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision }),
+	});
+}
+
+export async function setProjectGitVersioning(baseRevision: string, enabled: boolean): Promise<ProjectGitStatus> {
+	return requestJson(`/api/project/git/${enabled ? "enable" : "disable"}`, {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision }),
+	});
+}
+
+export async function listProjectVersions(cursor?: string): Promise<ProjectVersions> {
+	return requestJson(`/api/project/versions${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+}
+
+export async function createProjectVersion(
+	baseRevision: string,
+	baseHead: string | null,
+	message: string,
+): Promise<{ version: ProjectVersion; git: ProjectGitStatus }> {
+	return requestJson("/api/project/versions", {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision, base_head: baseHead, message }),
+	});
+}
+
+export async function previewProjectVersion(
+	commit: string,
+	baseRevision: string,
+	baseHead: string,
+): Promise<ProjectVersionPreview> {
+	return requestJson(`/api/project/versions/${encodeURIComponent(commit)}/preview`, {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision, base_head: baseHead }),
+	});
+}
+
+export async function restoreProjectVersion(
+	commit: string,
+	baseRevision: string,
+	baseHead: string,
+): Promise<ProjectVersionRestore> {
+	return requestJson(`/api/project/versions/${encodeURIComponent(commit)}/restore`, {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision, base_head: baseHead }),
+	});
+}
+
 export async function getOperation(operationId: string): Promise<Operation> {
 	return requestJson(`/api/operations/${encodeURIComponent(operationId)}`);
 }
@@ -180,7 +240,7 @@ function declarationUrl(type: DeclarationType, id: string, suffix = ""): string 
 async function requestJson<T>(url: string, init: RequestInit = {}): Promise<T> {
 	const headers = new Headers(init.headers);
 	if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
-	if (init.method && init.method !== "GET" && accessToken) headers.set("X-Agents-Playground-Token", accessToken);
+	if (accessToken) headers.set("X-Agents-Playground-Token", accessToken);
 	const response = await fetch(url, { ...init, headers, cache: "no-store" });
 	const text = await response.text();
 	const payload = text ? safeJson(text) : undefined;

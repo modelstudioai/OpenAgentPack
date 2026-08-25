@@ -38,7 +38,9 @@ Launch the local web UI and open an `agents.yaml` Agent directly in Preview.
 
 Playground opens the project selected by `-f`, watches the YAML and its local dependencies, and uses each Agent's declared Provider. A single Agent is selected automatically. For multiple Agents, pass `--agent <id>`; otherwise the Workbench opens for selection. Missing or invalid projects also open the diagnostic Workbench.
 
-The Workbench Resources tab edits or removes declarations already present in `agents.yaml`; it has no create action. Agent, Environment, Skill, Vault, Memory Store, and File changes require a server-generated YAML Diff before save. Local file-backed content and external ownership fields remain read-only, and referenced declarations cannot be removed. Saving writes only `agents.yaml`, refreshes the project, and automatically opens a new project runtime Plan. Apply remains a separate confirmation, while Git commit and push remain outside the Workbench. Deployment and Channel declarations are read-only and excluded from this project Apply.
+The Workbench Resources tab edits or removes declarations already present in `agents.yaml`; it has no create action. Agent, Environment, Skill, Vault, Memory Store, and File changes require a server-generated YAML Diff before save. Local file-backed content and external ownership fields remain read-only, and referenced declarations cannot be removed. Saving writes only `agents.yaml`, refreshes the project, and automatically opens a new project runtime Plan. Apply remains a separate confirmation.
+
+Workbench uses the nearest parent Git repository containing `agents.yaml`. If none exists, the UI automatically initializes `main` in the configuration directory and creates an `Initialize agents.yaml` commit. Before every Agent- or project-scoped Apply, Workbench commits the current `agents.yaml` when it differs from HEAD; an already-versioned YAML reuses HEAD without creating an empty commit. Automatic versioning commits only `agents.yaml` without changing other staged, modified, or untracked files, and a Git blocker prevents the remote Apply. Restore reads a full-SHA commit reachable from the current HEAD and writes that historical YAML back as an uncommitted forward working-tree change; it does not reset HEAD or restore `agents.state.json` and referenced files. Workbench does not push, fetch, pull, switch branches, create tags, or configure Git identity. Apply and Workbench YAML/Git writes are mutually exclusive, while historical browsing remains available during Apply.
 
 | Option | Description |
 |--------|-------------|
@@ -58,6 +60,27 @@ Launch the same local Server and open the `agents.yaml` project Workbench withou
 | `-f, --file <path>` | Project configuration to open (default `agents.yaml`). |
 | `--port <n>` | Port to serve on (default `4848`). |
 | `--no-open` | Do not open a browser automatically. |
+
+## `agents version`
+
+Manage local Git history for the selected `agents.yaml`. CLI Apply-time commits are disabled by default even when the project already belongs to a Git repository.
+
+All version subcommands accept `--file <path>` to select the project configuration. They intentionally do not define a command-level `-f` alias, so the option is not confused with force.
+
+| Subcommand | Description |
+|------------|-------------|
+| `version enable` | Discover the nearest parent repository, or initialize `main` in the YAML directory, then record a checkout-local opt-in and create a baseline commit when needed. |
+| `version disable` | Remove the opt-in for this YAML without deleting the repository, commits, or working-tree changes. |
+| `version status` | Show the opt-in, repository, branch, HEAD, YAML status, and operation blockers. |
+| `version list` | List current-branch commits that changed this YAML; supports `--limit`, `--cursor`, and `--json`. |
+| `version preview <full-sha>` | Show a redacted Git-style Diff and restore diagnostics for a reachable full commit SHA. |
+| `version restore <full-sha>` | Atomically write historical YAML to the working tree; accepts `--yes` and `--json`. |
+
+The shared CLI/Workbench switch is stored as a marker in the selected worktree's private Git directory and keyed by the YAML's repository-relative path. It is isolated between linked worktrees and does not travel through clone or push, so enable it separately in each checkout that should use automatic versions. Either host can enable or disable it; Workbench only enables it automatically when creating a new repository. There is no manual `version create` command.
+
+When enabled, `agents apply` validates Git and YAML before remote mutations and commits dirty YAML as `Apply agents.yaml` only after all actions succeed. A no-op Apply can record a still-dirty YAML, while cancelled, failed, incomplete, or `--refresh-only` runs do not commit. An unchanged YAML reuses HEAD without an empty commit. If YAML, HEAD, or the branch changes during Apply, the remote run may already have completed but the commit is rejected; fix the Git state and rerun Apply to retry it.
+
+Version commits use a temporary index and contain only `agents.yaml`, leaving unrelated staged, modified, and untracked files unchanged. Plaintext credentials, staged/conflicted YAML, detached HEAD, missing Git identity, and in-progress merge/rebase operations block commits. Restore does not move HEAD and never restores `agents.state.json` or referenced files. These commands do not push, fetch, pull, switch branches, or create tags.
 
 ## `agents validate`
 

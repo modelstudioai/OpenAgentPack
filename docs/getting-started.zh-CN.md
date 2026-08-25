@@ -49,6 +49,8 @@ cd my-agents
 
 启用流水线前，需要把 `agents.yaml` 引用的环境变量配置为 Aone 密钥，给 checkout 身份授予 `main` 写权限，把流水线并发度设为 `1`，并在 Aone 中配置合并请求检查或人工审批。Workbench 从本地 `.env` 取值；CI 可以使用相同变量名，但指向另一套 Base URL 和 API Key。
 
+Workbench 会发现包含 `agents.yaml` 的最近父级 Git 仓库；如果不存在，会在配置目录自动初始化 `main`、创建 `Initialize agents.yaml` 提交并启用共享版本开关。Versions 页面与 CLI 的 `agents version enable|disable` 读写同一个开关；关闭后两边的 Apply 都不会自动提交，Workbench 启动也不会擅自重新开启。开关启用时，只有成功的 Agent 或项目 Apply 才会提交有变化的 `agents.yaml`，已经与 HEAD 一致时不创建空提交。Git 身份、冲突、detached HEAD 或暂存状态等阻断会阻止自动版本提交。恢复不会 reset HEAD，而是把历史 YAML 写成当前工作区的新变更。`agents.state.json`、外部引用文件、remote、push 和 tag 都不在版本管理范围内。
+
 如果此前已经执行过 `agents init`，可以在原项目中补齐仓库能力：
 
 ```bash

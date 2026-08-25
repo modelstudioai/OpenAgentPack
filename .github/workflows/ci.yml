@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Full consumer smoke (sdk + playground + cli) on the repo baseline.
+          # Full consumer smoke (sdk + local-git + playground + cli) on the repo baseline.
           - node: 22
             scope: all
           - node: 24

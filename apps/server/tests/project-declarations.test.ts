@@ -8,6 +8,7 @@ import {
 	previewDeclarationChange,
 } from "../src/services/project-declarations";
 import { ProjectRuntimeManager } from "../src/services/project-manager";
+import { projectMutationCoordinator } from "../src/services/project-mutations";
 
 const directories: string[] = [];
 const managers: ProjectRuntimeManager[] = [];
@@ -140,6 +141,28 @@ describe("project declaration editing", () => {
 				manager,
 			),
 		).rejects.toMatchObject({ status: 409 });
+	});
+
+	test("preserves a draft but rejects declaration writes while Apply owns the project mutation lease", async () => {
+		const { manager } = await projectFixture();
+		const listed = await listProjectDeclarations(manager);
+		const lease = projectMutationCoordinator.acquire("project_apply");
+		try {
+			await expect(
+				commitDeclarationChange(
+					{
+						type: "agent",
+						id: "assistant",
+						baseRevision: listed.revision,
+						action: "update",
+						operations: [{ op: "set", path: ["description"], value: "draft" }],
+					},
+					manager,
+				),
+			).rejects.toMatchObject({ status: 409 });
+		} finally {
+			lease.release();
+		}
 	});
 
 	test("blocks referenced deletes and reports every declaration path", async () => {

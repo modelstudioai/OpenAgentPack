@@ -7,6 +7,12 @@ import { planProjectWithRefresh } from "../plan-workflow.ts";
 import { diagnosticsHaveErrors, renderDiagnostics } from "../render-diagnostics.ts";
 import { renderRuntimeFeedback } from "../render-feedback.ts";
 import { formatResourceAddress, formatResourceLabel } from "../utils/address-utils.ts";
+import {
+	commitAutomaticVersion,
+	type PreparedAutomaticVersion,
+	prepareAutomaticVersion,
+	readVersionSource,
+} from "../versioning/local-git.ts";
 
 type ApplyPromptKind = "combined_drift" | "remote_drift" | "local_change" | "planned_change";
 
@@ -114,6 +120,7 @@ export async function applyCommand(options: {
 	if (options.ci && options.refresh === false) {
 		throw new UserError("--ci requires remote state refresh and cannot be combined with --refresh false.");
 	}
+	const versionSource = await readVersionSource(options.file);
 	const ctx = await buildCliRuntime(options.file);
 	assertProviderConfigured(ctx, options.provider);
 
@@ -130,6 +137,10 @@ export async function applyCommand(options: {
 
 	const actionable = plan.actions.filter((a) => a.action !== "no-op");
 	if (actionable.length === 0) {
+		if (!options.refreshOnly) {
+			const preparedVersion = await prepareAutomaticVersion(ctx.configPath, versionSource.source);
+			await commitSuccessfulApplyVersion(preparedVersion);
+		}
 		log.success("No changes. Infrastructure is up-to-date.");
 		return;
 	}
@@ -186,6 +197,8 @@ export async function applyCommand(options: {
 		}
 	}
 
+	const preparedVersion = await prepareAutomaticVersion(ctx.configPath, versionSource.source);
+
 	const s = p.spinner({ output: process.stderr });
 	s.start("Applying changes...");
 
@@ -201,10 +214,17 @@ export async function applyCommand(options: {
 
 	s.stop("Apply finished.");
 
-	if (failed > 0) {
+	if (failed > 0 || skipped > 0) {
 		p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, { output: process.stderr });
-		throw new UserError("Apply failed.");
+		throw new UserError(failed > 0 ? "Apply failed." : "Apply incomplete: one or more actions were skipped.");
 	} else {
+		await commitSuccessfulApplyVersion(preparedVersion);
 		p.log.success(`Apply complete! ${succeeded} actions executed successfully.`, { output: process.stderr });
 	}
+}
+
+async function commitSuccessfulApplyVersion(prepared: PreparedAutomaticVersion | null): Promise<void> {
+	if (!prepared) return;
+	const version = await commitAutomaticVersion(prepared);
+	if (version) log.success(`Created local version ${version.short_commit} (${version.message}).`);
 }

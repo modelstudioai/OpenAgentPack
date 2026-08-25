@@ -1,6 +1,6 @@
 # npm 发布流程
 
-OpenAgentPack 将 `@openagentpack/sdk`、`@openagentpack/playground` 和 `@openagentpack/cli` 作为同一版本组发布。真实发布只能在 GitHub Actions 中执行；本地只能构建和 dry-run，不能把包发布到 npm。
+OpenAgentPack 将 `@openagentpack/sdk`、`@openagentpack/local-git`、`@openagentpack/playground` 和 `@openagentpack/cli` 作为同一版本组发布。真实发布只能在 GitHub Actions 中执行；本地只能构建和 dry-run，不能把包发布到 npm。
 
 ## 一次性配置
 

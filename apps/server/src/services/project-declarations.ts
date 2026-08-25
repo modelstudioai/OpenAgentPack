@@ -8,6 +8,7 @@ import {
 } from "@openagentpack/sdk";
 import { type Document, isMap, isNode, isSeq, type Pair, type ParsedNode, parseDocument, stringify } from "yaml";
 import { type ProjectRuntimeManager, projectRuntimeManager } from "@/services/project-manager";
+import { projectMutationCoordinator } from "@/services/project-mutations";
 
 export const DECLARATION_TYPES = ["agent", "environment", "skill", "vault", "memory_store", "file"] as const;
 export type DeclarationType = (typeof DECLARATION_TYPES)[number];
@@ -154,38 +155,43 @@ export async function commitDeclarationChange(
 	manager: ProjectRuntimeManager = projectRuntimeManager,
 ): Promise<DeclarationPreview & { new_revision: string }> {
 	return serializeSourceMutation(async () => {
-		const prepared = await prepareDeclarationChange(input, manager);
-		if (!prepared.can_commit) {
-			const blockedByReferences = prepared.action === "delete" && prepared.references.length > 0;
-			const status = blockedByReferences ? 409 : 422;
-			const message = blockedByReferences
-				? `Cannot delete ${prepared.type}.${prepared.id}; it is still referenced by ${prepared.references
-						.map((reference) => reference.path)
-						.join(", ")}.`
-				: (prepared.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ??
-					"The declaration change is invalid.");
-			throw new DeclarationProtocolError(message, status);
-		}
-
-		const configPath = manager.configPath;
-		const fileStat = await stat(configPath);
-		const temporaryPath = resolve(
-			dirname(configPath),
-			`.${basename(configPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
-		);
+		const lease = projectMutationCoordinator.acquire("declaration_write");
 		try {
-			await writeFile(temporaryPath, prepared.source, { encoding: "utf8", mode: fileStat.mode });
-			if ((await manager.computeCurrentSourceRevision()) !== prepared.base_revision) {
-				throw new DeclarationProtocolError("Project configuration changed. Reload before saving this edit.", 409);
+			const prepared = await prepareDeclarationChange(input, manager);
+			if (!prepared.can_commit) {
+				const blockedByReferences = prepared.action === "delete" && prepared.references.length > 0;
+				const status = blockedByReferences ? 409 : 422;
+				const message = blockedByReferences
+					? `Cannot delete ${prepared.type}.${prepared.id}; it is still referenced by ${prepared.references
+							.map((reference) => reference.path)
+							.join(", ")}.`
+					: (prepared.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ??
+						"The declaration change is invalid.");
+				throw new DeclarationProtocolError(message, status);
 			}
-			await rename(temporaryPath, configPath);
-		} catch (error) {
-			await unlink(temporaryPath).catch(() => undefined);
-			throw error;
+
+			const configPath = manager.configPath;
+			const fileStat = await stat(configPath);
+			const temporaryPath = resolve(
+				dirname(configPath),
+				`.${basename(configPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+			);
+			try {
+				await writeFile(temporaryPath, prepared.source, { encoding: "utf8", mode: fileStat.mode });
+				if ((await manager.computeCurrentSourceRevision()) !== prepared.base_revision) {
+					throw new DeclarationProtocolError("Project configuration changed. Reload before saving this edit.", 409);
+				}
+				await rename(temporaryPath, configPath);
+			} catch (error) {
+				await unlink(temporaryPath).catch(() => undefined);
+				throw error;
+			}
+			const newRevision = await manager.refreshAfterSourceMutation();
+			if (!newRevision) throw new DeclarationProtocolError("The saved project has no revision.", 500);
+			return { ...publicPreview(prepared), new_revision: newRevision };
+		} finally {
+			lease.release();
 		}
-		const newRevision = await manager.refreshAfterSourceMutation();
-		if (!newRevision) throw new DeclarationProtocolError("The saved project has no revision.", 500);
-		return { ...publicPreview(prepared), new_revision: newRevision };
 	});
 }
 

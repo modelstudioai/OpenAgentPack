@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 
 const appSource = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
 const resourcesSource = await Bun.file(new URL("../src/resources/ResourcesPanel.tsx", import.meta.url)).text();
+const versionsSource = await Bun.file(new URL("../src/versions/VersionsPanel.tsx", import.meta.url)).text();
 
 test("project workbench is agents.yaml-driven with no Playbook or runtime model/provider override", () => {
 	expect(appSource).toContain(
-		'type WorkbenchTab = "overview" | "resources" | "changes" | "debug" | "artifacts" | "deployments"',
+		'type WorkbenchTab = "overview" | "resources" | "changes" | "versions" | "debug" | "artifacts" | "deployments"',
 	);
 	expect(appSource).toContain("planProject(");
 	expect(appSource).toContain("applyProject(");
@@ -16,6 +17,32 @@ test("project workbench is agents.yaml-driven with no Playbook or runtime model/
 	expect(appSource).not.toContain("SettingsDialog");
 	expect(appSource).not.toContain("ModelSelector");
 	expect(appSource).not.toContain("ProviderSelect");
+});
+
+test("Versions is project-scoped, automatic on initialization and Apply, and supports redacted restore", () => {
+	expect(appSource).toContain('{tab === "versions" && (');
+	expect(appSource).toContain("Automatic versioning:");
+	expect(appSource).toContain("initializeProjectGit(currentProject.revision)");
+	expect(appSource).toContain('addEventListener("project.mutation"');
+	expect(versionsSource).toContain("Retry Initialization");
+	expect(versionsSource).toContain("Workbench and CLI share one local versioning switch");
+	expect(versionsSource).toContain("Successful Apply creates a local version.");
+	expect(versionsSource).toContain("setProjectGitVersioning(projectRevision, !git.enabled)");
+	expect(versionsSource).not.toContain("Create Version");
+	expect(versionsSource).toContain("Restore to working tree");
+	expect(versionsSource).toContain("buildYamlLineDiff(preview.before_yaml, preview.after_yaml)");
+	expect(versionsSource).toContain("previewRequestGenerationRef");
+	expect(versionsSource).toContain("preview.base_revision, preview.base_head");
+	expect(versionsSource).toContain("Workbench never");
+	expect(versionsSource).toContain("pushes or switches branches.");
+	expect(versionsSource).not.toContain("git push");
+});
+
+test("Apply mutation state blocks YAML/version writes while preserving resource drafts", () => {
+	expect(appSource).toContain("writeBlockedReason={writeBlockedReason}");
+	expect(resourcesSource).toContain("this draft is preserved, but saving is temporarily disabled");
+	expect(resourcesSource).toContain("Boolean(writeBlockedReason)");
+	expect(versionsSource).toContain("Boolean(writeBlockedReason)");
 });
 
 test("resource declarations require Preview before save and expose no create action", () => {

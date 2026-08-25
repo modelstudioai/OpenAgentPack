@@ -31,6 +31,7 @@ interface ResourcesPanelProps {
 	projectRevision?: string;
 	projectValid: boolean;
 	selectedAgentId: string;
+	writeBlockedReason?: string;
 	onCommitted(
 		change: { type: DeclarationType; id: string; action: EditorAction },
 		baselinePlan?: ProjectPlan,
@@ -130,7 +131,13 @@ const TYPE_ICONS: Record<DeclarationType, typeof Braces> = {
 	file: FileText,
 };
 
-export function ResourcesPanel({ projectRevision, projectValid, selectedAgentId, onCommitted }: ResourcesPanelProps) {
+export function ResourcesPanel({
+	projectRevision,
+	projectValid,
+	selectedAgentId,
+	writeBlockedReason,
+	onCommitted,
+}: ResourcesPanelProps) {
 	const [resources, setResources] = useState<ProjectDeclaration[]>([]);
 	const [revision, setRevision] = useState("");
 	const [loading, setLoading] = useState(true);
@@ -192,6 +199,7 @@ export function ResourcesPanel({ projectRevision, projectValid, selectedAgentId,
 				</div>
 			</div>
 			{error && <InlineNotice tone="error">{error}</InlineNotice>}
+			{writeBlockedReason && <InlineNotice tone="info">{writeBlockedReason}</InlineNotice>}
 			{loading ? (
 				<div className="empty-panel">
 					<LoaderCircle className="spin" />
@@ -254,6 +262,7 @@ export function ResourcesPanel({ projectRevision, projectValid, selectedAgentId,
 					resource={editor.resource}
 					revision={revision}
 					action={editor.action}
+					writeBlockedReason={writeBlockedReason}
 					onClose={() => setEditor(undefined)}
 					onCommitted={onCommitted}
 				/>
@@ -266,12 +275,14 @@ function DeclarationEditor({
 	resource,
 	revision,
 	action,
+	writeBlockedReason,
 	onClose,
 	onCommitted,
 }: {
 	resource: ProjectDeclaration;
 	revision: string;
 	action: EditorAction;
+	writeBlockedReason?: string;
 	onClose(): void;
 	onCommitted(
 		change: { type: DeclarationType; id: string; action: EditorAction },
@@ -341,7 +352,7 @@ function DeclarationEditor({
 	};
 
 	const handleCommit = async () => {
-		if (!preview?.can_commit || !previewIsCurrent) return;
+		if (!preview?.can_commit || !previewIsCurrent || writeBlockedReason) return;
 		setBusy(true);
 		setLocalError(undefined);
 		try {
@@ -485,7 +496,11 @@ function DeclarationEditor({
 				</div>
 
 				<footer className="declaration-editor-footer">
-					<span>Saving updates agents.yaml only; Git commit and push remain manual.</span>
+					<span>
+						{writeBlockedReason
+							? "Apply is running; this draft is preserved, but saving is temporarily disabled."
+							: "Saving updates agents.yaml only. The next Apply creates its local Git version automatically; push remains manual."}
+					</span>
 					<div>
 						<button type="button" className="secondary-button" onClick={onClose}>
 							Cancel
@@ -493,7 +508,7 @@ function DeclarationEditor({
 						<button
 							type="button"
 							className={action === "delete" ? "danger-button" : "primary-button"}
-							disabled={busy || !preview?.can_commit || !previewIsCurrent}
+							disabled={busy || !preview?.can_commit || !previewIsCurrent || Boolean(writeBlockedReason)}
 							onClick={() => void handleCommit()}
 						>
 							{busy ? <LoaderCircle className="spin" /> : action === "delete" ? <Trash2 /> : <CheckCircle2 />}

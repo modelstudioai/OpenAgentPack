@@ -6,6 +6,8 @@ import {
 	AgentApplyResponseSchema,
 	AgentPlanBodySchema,
 	AgentPlanResponseSchema,
+	CreateProjectVersionBodySchema,
+	CreateProjectVersionResponseSchema,
 	DeclarationCommitResponseSchema,
 	DeclarationDeleteBodySchema,
 	DeclarationParamsSchema,
@@ -16,16 +18,37 @@ import {
 	ProjectApplyBodySchema,
 	ProjectApplyResponseSchema,
 	ProjectDeclarationsResponseSchema,
+	ProjectGitInitBodySchema,
+	ProjectGitStatusSchema,
+	ProjectGitToggleBodySchema,
 	ProjectPlanBodySchema,
 	ProjectPlanResponseSchema,
 	ProjectSummarySchema,
+	ProjectVersionActionBodySchema,
+	ProjectVersionParamsSchema,
+	ProjectVersionPreviewSchema,
+	ProjectVersionRestoreResponseSchema,
+	ProjectVersionsQuerySchema,
+	ProjectVersionsResponseSchema,
 } from "@/schemas/project";
 import {
 	commitDeclarationChange,
 	listProjectDeclarations,
 	previewDeclarationChange,
 } from "@/services/project-declarations";
+import {
+	commitProjectVersionAfterApply,
+	createProjectVersion,
+	getProjectGitStatus,
+	initializeProjectGit,
+	listProjectVersions,
+	prepareProjectVersionForApply,
+	previewProjectVersion,
+	restoreProjectVersion,
+	setProjectVersioning,
+} from "@/services/project-git";
 import { projectRuntimeManager } from "@/services/project-manager";
+import { projectMutationCoordinator } from "@/services/project-mutations";
 import { planTokenStore, projectOperationStore } from "@/services/project-operations";
 import { applyProjectRuntimeResources, planProjectRuntimeResources } from "@/services/project-runtime-plan";
 
@@ -72,6 +95,7 @@ projectRoute.openapi(streamProjectRoute, async (context) => {
 	const initial = projectRuntimeManager.getSnapshot();
 	const encoder = new TextEncoder();
 	let unsubscribe: (() => void) | undefined;
+	let unsubscribeMutation: (() => void) | undefined;
 	let ping: ReturnType<typeof setInterval> | undefined;
 	const stream = new ReadableStream({
 		start(controller) {
@@ -81,17 +105,23 @@ projectRoute.openapi(streamProjectRoute, async (context) => {
 			send("project.snapshot", {
 				status: initial.status,
 				revision: initial.revision,
+				active_mutation: projectMutationCoordinator.getSnapshot(),
 			});
 			unsubscribe = projectRuntimeManager.subscribe((event) => send(event.type, event));
+			unsubscribeMutation = projectMutationCoordinator.subscribe((mutation) =>
+				send("project.mutation", { active_mutation: mutation }),
+			);
 			ping = setInterval(() => send("ping", {}), 15_000);
 		},
 		cancel() {
 			unsubscribe?.();
+			unsubscribeMutation?.();
 			if (ping) clearInterval(ping);
 		},
 	});
 	context.req.raw.signal.addEventListener("abort", () => {
 		unsubscribe?.();
+		unsubscribeMutation?.();
 		if (ping) clearInterval(ping);
 	});
 	return new Response(stream, { headers: sseHeaders() });
@@ -177,6 +207,154 @@ projectRoute.openapi(deleteDeclarationRoute, async (context) => {
 	return context.json(await commitDeclarationChange({ type, id, baseRevision, action: "delete" }), 200);
 });
 
+const getProjectGitRoute = createRoute({
+	method: "get",
+	path: "/project/git",
+	responses: {
+		200: {
+			description: "Local Git repository and agents.yaml version status",
+			content: { "application/json": { schema: ProjectGitStatusSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(getProjectGitRoute, async (context) => context.json(await getProjectGitStatus(), 200));
+
+const initProjectGitRoute = createRoute({
+	method: "post",
+	path: "/project/git/init",
+	request: { body: { content: { "application/json": { schema: ProjectGitInitBodySchema } } } },
+	responses: {
+		200: {
+			description: "Initialize local Git and create the first agents.yaml version",
+			content: { "application/json": { schema: ProjectGitStatusSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(initProjectGitRoute, async (context) => {
+	const { base_revision: baseRevision } = context.req.valid("json");
+	return context.json(await initializeProjectGit({ baseRevision }), 200);
+});
+
+const enableProjectGitRoute = createRoute({
+	method: "post",
+	path: "/project/git/enable",
+	request: { body: { content: { "application/json": { schema: ProjectGitToggleBodySchema } } } },
+	responses: {
+		200: {
+			description: "Enable shared automatic agents.yaml versions and create a baseline when needed",
+			content: { "application/json": { schema: ProjectGitStatusSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(enableProjectGitRoute, async (context) => {
+	const { base_revision: baseRevision } = context.req.valid("json");
+	return context.json(await setProjectVersioning({ baseRevision, enabled: true }), 200);
+});
+
+const disableProjectGitRoute = createRoute({
+	method: "post",
+	path: "/project/git/disable",
+	request: { body: { content: { "application/json": { schema: ProjectGitToggleBodySchema } } } },
+	responses: {
+		200: {
+			description: "Disable shared automatic agents.yaml versions without changing Git history",
+			content: { "application/json": { schema: ProjectGitStatusSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(disableProjectGitRoute, async (context) => {
+	const { base_revision: baseRevision } = context.req.valid("json");
+	return context.json(await setProjectVersioning({ baseRevision, enabled: false }), 200);
+});
+
+const listProjectVersionsRoute = createRoute({
+	method: "get",
+	path: "/project/versions",
+	request: { query: ProjectVersionsQuerySchema },
+	responses: {
+		200: {
+			description: "Current-branch commits that modified agents.yaml",
+			content: { "application/json": { schema: ProjectVersionsResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(listProjectVersionsRoute, async (context) => {
+	const { cursor, limit } = context.req.valid("query");
+	return context.json(await listProjectVersions({ cursor, limit }), 200);
+});
+
+const createProjectVersionRoute = createRoute({
+	method: "post",
+	path: "/project/versions",
+	request: { body: { content: { "application/json": { schema: CreateProjectVersionBodySchema } } } },
+	responses: {
+		201: {
+			description: "Commit only the current agents.yaml to the current branch",
+			content: { "application/json": { schema: CreateProjectVersionResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(createProjectVersionRoute, async (context) => {
+	const { base_revision: baseRevision, base_head: baseHead, message } = context.req.valid("json");
+	return context.json(await createProjectVersion({ baseRevision, baseHead, message }), 201);
+});
+
+const previewProjectVersionRoute = createRoute({
+	method: "post",
+	path: "/project/versions/{commit}/preview",
+	request: {
+		params: ProjectVersionParamsSchema,
+		body: { content: { "application/json": { schema: ProjectVersionActionBodySchema } } },
+	},
+	responses: {
+		200: {
+			description: "Validate and preview restoring a historical agents.yaml",
+			content: { "application/json": { schema: ProjectVersionPreviewSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(previewProjectVersionRoute, async (context) => {
+	const { commit } = context.req.valid("param");
+	const { base_revision: baseRevision, base_head: baseHead } = context.req.valid("json");
+	return context.json(await previewProjectVersion({ commit, baseRevision, baseHead }), 200);
+});
+
+const restoreProjectVersionRoute = createRoute({
+	method: "post",
+	path: "/project/versions/{commit}/restore",
+	request: {
+		params: ProjectVersionParamsSchema,
+		body: { content: { "application/json": { schema: ProjectVersionActionBodySchema } } },
+	},
+	responses: {
+		200: {
+			description: "Restore historical agents.yaml content to the working tree without moving HEAD",
+			content: { "application/json": { schema: ProjectVersionRestoreResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(restoreProjectVersionRoute, async (context) => {
+	const { commit } = context.req.valid("param");
+	const { base_revision: baseRevision, base_head: baseHead } = context.req.valid("json");
+	return context.json(await restoreProjectVersion({ commit, baseRevision, baseHead }), 200);
+});
+
 const planProjectRoute = createRoute({
 	method: "post",
 	path: "/project/plan",
@@ -227,7 +405,7 @@ const applyProjectRoute = createRoute({
 	request: { body: { content: { "application/json": { schema: ProjectApplyBodySchema } } } },
 	responses: {
 		202: {
-			description: "Project runtime apply accepted as an asynchronous operation",
+			description: "Automatically version agents.yaml and accept a project runtime apply",
 			content: { "application/json": { schema: ProjectApplyResponseSchema } },
 		},
 		...errorResponses,
@@ -246,20 +424,40 @@ projectRoute.openapi(applyProjectRoute, async (context) => {
 			422,
 		);
 	}
-	const input = projectRuntimeManager.requireRuntimeInput();
-	const freshPlan = await planProjectRuntimeResources(input, { refresh: true });
-	if (freshPlan.fingerprint !== token.fingerprint) {
-		planTokenStore.consume(planToken);
-		throw statusError("Plan is stale because project or remote resources changed. Create a new plan.", 409);
-	}
-	planTokenStore.require(planToken, scope, projectRuntimeManager.getSnapshot().revision ?? "");
-
-	const operation = projectOperationStore.create(scope, async (reporter) => {
-		const run = await applyProjectRuntimeResources(input, token.fingerprint, { onFeedback: reporter.feedback });
-		planTokenStore.invalidateAll();
-		await projectRuntimeManager.refreshAfterMutation();
-		return redactForWire(run);
+	const versionMessage = `Apply project revision ${token.projectRevision.slice(0, 12)}`;
+	const preparedVersion = await prepareProjectVersionForApply({
+		baseRevision: token.projectRevision,
+		baselineMessage: "Initialize agents.yaml",
 	});
+	const input = projectRuntimeManager.requireRuntimeInput();
+	const lease = projectMutationCoordinator.acquire("project_apply");
+	let operation: ReturnType<typeof projectOperationStore.create>;
+	try {
+		if ((await projectRuntimeManager.computeCurrentSourceRevision()) !== token.projectRevision) {
+			throw statusError("Plan is stale because project configuration changed. Create a new plan.", 409);
+		}
+		const freshPlan = await planProjectRuntimeResources(input, { refresh: true });
+		if (freshPlan.fingerprint !== token.fingerprint) {
+			planTokenStore.consume(planToken);
+			throw statusError("Plan is stale because project or remote resources changed. Create a new plan.", 409);
+		}
+		planTokenStore.require(planToken, scope, projectRuntimeManager.getSnapshot().revision ?? "");
+		operation = projectOperationStore.create(scope, async (reporter) => {
+			try {
+				const run = await applyProjectRuntimeResources(input, token.fingerprint, { onFeedback: reporter.feedback });
+				await commitProjectVersionAfterApply(preparedVersion, versionMessage);
+				planTokenStore.invalidateAll();
+				await projectRuntimeManager.refreshAfterMutation();
+				return redactForWire(run);
+			} finally {
+				lease.release();
+			}
+		});
+		lease.setOperationId(operation.id);
+	} catch (error) {
+		lease.release();
+		throw error;
+	}
 	planTokenStore.consume(planToken);
 	return context.json({ operation_id: operation.id, status: "queued" as const }, 202);
 });
@@ -324,7 +522,7 @@ const applyAgentRoute = createRoute({
 	},
 	responses: {
 		202: {
-			description: "Agent apply accepted as an asynchronous operation",
+			description: "Automatically version agents.yaml and accept an Agent apply",
 			content: { "application/json": { schema: AgentApplyResponseSchema } },
 		},
 		...errorResponses,
@@ -345,41 +543,60 @@ projectRoute.openapi(applyAgentRoute, async (context) => {
 			422,
 		);
 	}
-
-	const freshPlan = await planAgentResourcesWithStateBackend(input, agentId, {
-		refresh: true,
-		scope: "runtime",
+	const versionMessage = `Apply agent ${agentId.slice(0, 60)} revision ${token.projectRevision.slice(0, 12)}`;
+	const preparedVersion = await prepareProjectVersionForApply({
+		baseRevision: token.projectRevision,
+		baselineMessage: "Initialize agents.yaml",
 	});
-	if (freshPlan.fingerprint !== token.fingerprint) {
-		planTokenStore.consume(planToken);
-		throw statusError("Plan is stale because project or remote resources changed. Create a new plan.", 409);
-	}
-	const currentSnapshot = projectRuntimeManager.getSnapshot();
-	try {
-		planTokenStore.require(planToken, scope, currentSnapshot.revision ?? "");
-	} catch {
-		planTokenStore.consume(planToken);
-		throw statusError("Plan is stale because project configuration changed. Create a new plan.", 409);
-	}
 
-	const operation = projectOperationStore.create(scope, async (reporter) => {
-		const run = await syncAgentResourcesWithStateBackend(input, agentId, {
+	const lease = projectMutationCoordinator.acquire("agent_apply");
+	let operation: ReturnType<typeof projectOperationStore.create>;
+	try {
+		if ((await projectRuntimeManager.computeCurrentSourceRevision()) !== token.projectRevision) {
+			throw statusError("Plan is stale because project configuration changed. Create a new plan.", 409);
+		}
+		const freshPlan = await planAgentResourcesWithStateBackend(input, agentId, {
 			refresh: true,
 			scope: "runtime",
-			expectedPlanFingerprint: token.fingerprint,
-			policy: confirmDestructive ? "force" : "block",
-			onFeedback: reporter.feedback,
 		});
-		if (run.status !== "completed") {
-			throw statusError(
-				run.error ?? `Agent apply ended with status '${run.status}'.`,
-				run.reason === "plan_stale" ? 409 : 422,
-			);
+		if (freshPlan.fingerprint !== token.fingerprint) {
+			planTokenStore.consume(planToken);
+			throw statusError("Plan is stale because project or remote resources changed. Create a new plan.", 409);
 		}
-		planTokenStore.invalidateAll();
-		await projectRuntimeManager.refreshAfterMutation();
-		return redactForWire(run);
-	});
+		try {
+			planTokenStore.require(planToken, scope, projectRuntimeManager.getSnapshot().revision ?? "");
+		} catch {
+			planTokenStore.consume(planToken);
+			throw statusError("Plan is stale because project configuration changed. Create a new plan.", 409);
+		}
+		operation = projectOperationStore.create(scope, async (reporter) => {
+			try {
+				const run = await syncAgentResourcesWithStateBackend(input, agentId, {
+					refresh: true,
+					scope: "runtime",
+					expectedPlanFingerprint: token.fingerprint,
+					policy: confirmDestructive ? "force" : "block",
+					onFeedback: reporter.feedback,
+				});
+				if (run.status !== "completed") {
+					throw statusError(
+						run.error ?? `Agent apply ended with status '${run.status}'.`,
+						run.reason === "plan_stale" ? 409 : 422,
+					);
+				}
+				await commitProjectVersionAfterApply(preparedVersion, versionMessage);
+				planTokenStore.invalidateAll();
+				await projectRuntimeManager.refreshAfterMutation();
+				return redactForWire(run);
+			} finally {
+				lease.release();
+			}
+		});
+		lease.setOperationId(operation.id);
+	} catch (error) {
+		lease.release();
+		throw error;
+	}
 	planTokenStore.consume(planToken);
 	return context.json({ operation_id: operation.id, status: "queued" as const }, 202);
 });

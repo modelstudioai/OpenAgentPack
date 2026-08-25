@@ -10,7 +10,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-export const REGISTRY_PACKAGES = ["sdk", "playground", "cli"] as const;
+export const REGISTRY_PACKAGES = ["sdk", "local-git", "playground", "cli"] as const;
 const REGISTRY = "https://registry.npmjs.org";
 const root = resolve(import.meta.dirname, "../..");
 
@@ -159,6 +159,18 @@ function smokeSdk(directory: string): void {
 	);
 }
 
+function smokeLocalGit(directory: string): void {
+	run(
+		[
+			"node",
+			"--input-type=module",
+			"--eval",
+			'import { createLocalGitVersionService } from "@openagentpack/local-git"; if (typeof createLocalGitVersionService !== "function") throw new Error("local-git export missing");',
+		],
+		directory,
+	);
+}
+
 function smokeCli(directory: string, version: string): void {
 	const entry = join(directory, "node_modules", "@openagentpack", "cli", "dist", "bin", "agents.js");
 	const cliVersion = run(["node", entry, "--version"], directory, "pipe");
@@ -242,6 +254,12 @@ export async function smokePublishedPackages(requested: string): Promise<void> {
 		installPackage(sdkDirectory, "@openagentpack/sdk", version);
 		assertInstalledPackage(sdkDirectory, "@openagentpack/sdk", version);
 		smokeSdk(sdkDirectory);
+
+		const localGitDirectory = join(temporaryRoot, "local-git-consumer");
+		writeConsumerManifest(localGitDirectory, "openagentpack-local-git-consumer");
+		installPackage(localGitDirectory, "@openagentpack/local-git", version);
+		assertInstalledPackage(localGitDirectory, "@openagentpack/local-git", version);
+		smokeLocalGit(localGitDirectory);
 
 		const cliDirectory = join(temporaryRoot, "cli-consumer");
 		writeConsumerManifest(cliDirectory, "openagentpack-cli-consumer");

@@ -44,6 +44,14 @@ import {
 import { stateImportCommand, stateListCommand, stateRemoveCommand, stateShowCommand } from "./commands/state.ts";
 import { syncCommand } from "./commands/sync.ts";
 import { validateCommand } from "./commands/validate.ts";
+import {
+	versionDisableCommand,
+	versionEnableCommand,
+	versionListCommand,
+	versionPreviewCommand,
+	versionRestoreCommand,
+	versionStatusCommand,
+} from "./commands/version.ts";
 import { configureLogger } from "./logger.ts";
 import {
 	configFileOption,
@@ -225,6 +233,53 @@ stateCmd
 		),
 	)
 	.action(withResolvedConfigFile(stateImportCommand));
+
+const versionCmd = program.command("version").description("Manage local Git versions of agents.yaml");
+
+versionCmd
+	.command("enable")
+	.description("Enable Apply-time Git versioning for this agents.yaml")
+	.addOption(configFileOption({ short: false }))
+	.option("--json", "Output as JSON")
+	.action(withResolvedConfigFile(versionEnableCommand));
+
+versionCmd
+	.command("disable")
+	.description("Disable Apply-time Git versioning without removing history")
+	.addOption(configFileOption({ short: false }))
+	.option("--json", "Output as JSON")
+	.action(withResolvedConfigFile(versionDisableCommand));
+
+versionCmd
+	.command("status")
+	.description("Show local Git versioning status for this agents.yaml")
+	.addOption(configFileOption({ short: false }))
+	.option("--json", "Output as JSON")
+	.action(withResolvedConfigFile(versionStatusCommand));
+
+versionCmd
+	.command("list")
+	.description("List current-branch commits that changed this agents.yaml")
+	.addOption(configFileOption({ short: false }))
+	.option("--limit <n>", "Maximum versions to return (default 50, max 100)", parsePositiveInteger)
+	.option("--cursor <cursor>", "Pagination cursor returned by the previous page")
+	.option("--json", "Output as JSON")
+	.action(withResolvedConfigFile(versionListCommand));
+
+versionCmd
+	.command("preview <commit>")
+	.description("Preview a historical agents.yaml version")
+	.addOption(configFileOption({ short: false }))
+	.option("--json", "Output as JSON")
+	.action(withResolvedConfigFile(versionPreviewCommand));
+
+versionCmd
+	.command("restore <commit>")
+	.description("Restore a historical agents.yaml version to the working tree")
+	.addOption(configFileOption({ short: false }))
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--json", "Output as JSON")
+	.action(withResolvedConfigFile(versionRestoreCommand));
 
 const sessionCmd = program.command("session").description("Manage agent sessions (runtime)");
 

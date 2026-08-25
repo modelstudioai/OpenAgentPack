@@ -441,9 +441,33 @@
 							},
 							"required": ["id", "agent", "initial_event_types", "resource_types"]
 						}
+					},
+					"active_mutation": {
+						"type": "object",
+						"nullable": true,
+						"properties": {
+							"kind": {
+								"type": "string",
+								"enum": [
+									"agent_apply",
+									"project_apply",
+									"declaration_write",
+									"git_init",
+									"git_commit",
+									"version_restore"
+								]
+							},
+							"started_at": {
+								"type": "string"
+							},
+							"operation_id": {
+								"type": "string"
+							}
+						},
+						"required": ["kind", "started_at"]
 					}
 				},
-				"required": ["status", "config_file", "project_name", "diagnostics", "agents", "deployments"]
+				"required": ["status", "config_file", "project_name", "diagnostics", "agents", "deployments", "active_mutation"]
 			},
 			"ErrorResponse": {
 				"type": "object",
@@ -625,6 +649,214 @@
 				"allOf": [
 					{
 						"$ref": "#/components/schemas/DeclarationPreviewResponse"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"new_revision": {
+								"type": "string"
+							}
+						},
+						"required": ["new_revision"]
+					}
+				]
+			},
+			"ProjectGitStatus": {
+				"type": "object",
+				"properties": {
+					"git_available": {
+						"type": "boolean"
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"repository_root": {
+						"type": "string",
+						"nullable": true
+					},
+					"config_path": {
+						"type": "string",
+						"nullable": true
+					},
+					"branch": {
+						"type": "string",
+						"nullable": true
+					},
+					"head": {
+						"type": "string",
+						"nullable": true
+					},
+					"config_status": {
+						"type": "string",
+						"enum": ["clean", "modified", "untracked", "staged", "conflicted"]
+					},
+					"config_versioned": {
+						"type": "boolean"
+					},
+					"commit_blockers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"restore_blockers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": [
+					"git_available",
+					"enabled",
+					"repository_root",
+					"config_path",
+					"branch",
+					"head",
+					"config_status",
+					"config_versioned",
+					"commit_blockers",
+					"restore_blockers"
+				]
+			},
+			"ProjectVersionsResponse": {
+				"type": "object",
+				"properties": {
+					"versions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ProjectVersion"
+						}
+					},
+					"next_cursor": {
+						"type": "string",
+						"nullable": true
+					}
+				},
+				"required": ["versions", "next_cursor"]
+			},
+			"ProjectVersion": {
+				"type": "object",
+				"properties": {
+					"commit": {
+						"type": "string"
+					},
+					"short_commit": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					},
+					"author_name": {
+						"type": "string"
+					},
+					"authored_at": {
+						"type": "string"
+					}
+				},
+				"required": ["commit", "short_commit", "message", "author_name", "authored_at"]
+			},
+			"CreateProjectVersionResponse": {
+				"type": "object",
+				"properties": {
+					"version": {
+						"$ref": "#/components/schemas/ProjectVersion"
+					},
+					"git": {
+						"$ref": "#/components/schemas/ProjectGitStatus"
+					}
+				},
+				"required": ["version", "git"]
+			},
+			"ProjectVersionPreview": {
+				"type": "object",
+				"properties": {
+					"commit": {
+						"type": "string"
+					},
+					"base_revision": {
+						"type": "string"
+					},
+					"base_head": {
+						"type": "string"
+					},
+					"before_yaml": {
+						"type": "string"
+					},
+					"after_yaml": {
+						"type": "string"
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"can_restore": {
+						"type": "boolean"
+					},
+					"blockers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": [
+					"commit",
+					"base_revision",
+					"base_head",
+					"before_yaml",
+					"after_yaml",
+					"diagnostics",
+					"can_restore",
+					"blockers"
+				]
+			},
+			"ProjectVersionRestoreResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ProjectVersionPreview"
 					},
 					{
 						"type": "object",
@@ -1374,6 +1606,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -1440,6 +1682,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -1498,6 +1750,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1636,6 +1898,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -1763,6 +2035,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -1863,6 +2145,777 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/git": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "Local Git repository and agents.yaml version status",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectGitStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/git/init": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Initialize local Git and create the first agents.yaml version",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectGitStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/git/enable": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Enable shared automatic agents.yaml versions and create a baseline when needed",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectGitStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/git/disable": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Disable shared automatic agents.yaml versions without changing Git history",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectGitStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versions": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string"
+						},
+						"required": false,
+						"name": "cursor",
+						"in": "query"
+					},
+					{
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100
+						},
+						"required": false,
+						"name": "limit",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Current-branch commits that modified agents.yaml",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersionsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									},
+									"base_head": {
+										"type": "string",
+										"nullable": true
+									},
+									"message": {
+										"type": "string",
+										"minLength": 1,
+										"maxLength": 120
+									}
+								},
+								"required": ["base_revision", "base_head", "message"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Commit only the current agents.yaml to the current branch",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreateProjectVersionResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versions/{commit}/preview": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "commit",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									},
+									"base_head": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision", "base_head"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Validate and preview restoring a historical agents.yaml",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersionPreview"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versions/{commit}/restore": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "commit",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									},
+									"base_head": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision", "base_head"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Restore historical agents.yaml content to the working tree without moving HEAD",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersionRestoreResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -1943,6 +2996,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -2009,7 +3072,7 @@
 				},
 				"responses": {
 					"202": {
-						"description": "Project runtime apply accepted as an asynchronous operation",
+						"description": "Automatically version agents.yaml and accept a project runtime apply",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2020,6 +3083,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2119,6 +3192,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -2196,7 +3279,7 @@
 				},
 				"responses": {
 					"202": {
-						"description": "Agent apply accepted as an asynchronous operation",
+						"description": "Automatically version agents.yaml and accept an Agent apply",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2207,6 +3290,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2315,6 +3408,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -2408,6 +3511,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -2477,6 +3590,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2563,6 +3686,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2658,6 +3791,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -2739,6 +3882,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2863,6 +4016,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3003,6 +4166,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -3090,6 +4263,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"404": {
 						"description": "Not found",
 						"content": {
@@ -3159,6 +4342,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3245,6 +4438,16 @@
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {

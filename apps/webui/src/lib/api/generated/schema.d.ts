@@ -40,6 +40,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -120,6 +129,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -193,6 +211,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -299,6 +326,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -389,6 +425,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -471,6 +516,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -511,6 +565,749 @@ export interface paths {
 		};
 		trace?: never;
 	};
+	"/api/project/git": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Local Git repository and agents.yaml version status */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectGitStatus"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/git/init": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Initialize local Git and create the first agents.yaml version */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectGitStatus"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/git/enable": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Enable shared automatic agents.yaml versions and create a baseline when needed */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectGitStatus"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/git/disable": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Disable shared automatic agents.yaml versions without changing Git history */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectGitStatus"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/versions": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get: {
+			parameters: {
+				query?: {
+					cursor?: string;
+					limit?: number;
+				};
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: never;
+			responses: {
+				/** @description Current-branch commits that modified agents.yaml */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectVersionsResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+						base_head: string | null;
+						message: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Commit only the current agents.yaml to the current branch */
+				201: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["CreateProjectVersionResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/versions/{commit}/preview": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					commit: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+						base_head: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Validate and preview restoring a historical agents.yaml */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectVersionPreview"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/versions/{commit}/restore": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path: {
+					commit: string;
+				};
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+						base_head: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Restore historical agents.yaml content to the working tree without moving HEAD */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectVersionRestoreResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	"/api/project/plan": {
 		parameters: {
 			query?: never;
@@ -546,6 +1343,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -622,7 +1428,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Project runtime apply accepted as an asynchronous operation */
+				/** @description Automatically version agents.yaml and accept a project runtime apply */
 				202: {
 					headers: {
 						[name: string]: unknown;
@@ -633,6 +1439,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -728,6 +1543,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -799,7 +1623,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Agent apply accepted as an asynchronous operation */
+				/** @description Automatically version agents.yaml and accept an Agent apply */
 				202: {
 					headers: {
 						[name: string]: unknown;
@@ -810,6 +1634,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -907,6 +1740,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -995,6 +1837,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -1068,6 +1919,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -1151,6 +2011,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -1246,6 +2115,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -1328,6 +2206,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -1429,6 +2316,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -1507,6 +2403,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -1610,6 +2515,15 @@ export interface paths {
 						"application/json": components["schemas"]["ErrorResponse"];
 					};
 				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
 				/** @description Not found */
 				404: {
 					headers: {
@@ -1682,6 +2596,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -1766,6 +2689,15 @@ export interface paths {
 				};
 				/** @description Bad request */
 				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
 					headers: {
 						[name: string]: unknown;
 					};
@@ -2006,6 +2938,12 @@ export interface components {
 				initial_event_types: string[];
 				resource_types: string[];
 			}[];
+			active_mutation: {
+				/** @enum {string} */
+				kind: "agent_apply" | "project_apply" | "declaration_write" | "git_init" | "git_commit" | "version_restore";
+				started_at: string;
+				operation_id?: string;
+			} | null;
 		};
 		ErrorResponse: {
 			error: {
@@ -2068,6 +3006,68 @@ export interface components {
 			can_commit: boolean;
 		};
 		DeclarationCommitResponse: components["schemas"]["DeclarationPreviewResponse"] & {
+			new_revision: string;
+		};
+		ProjectGitStatus: {
+			git_available: boolean;
+			enabled: boolean;
+			repository_root: string | null;
+			config_path: string | null;
+			branch: string | null;
+			head: string | null;
+			/** @enum {string} */
+			config_status: "clean" | "modified" | "untracked" | "staged" | "conflicted";
+			config_versioned: boolean;
+			commit_blockers: string[];
+			restore_blockers: string[];
+		};
+		ProjectVersionsResponse: {
+			versions: components["schemas"]["ProjectVersion"][];
+			next_cursor: string | null;
+		};
+		ProjectVersion: {
+			commit: string;
+			short_commit: string;
+			message: string;
+			author_name: string;
+			authored_at: string;
+		};
+		CreateProjectVersionResponse: {
+			version: components["schemas"]["ProjectVersion"];
+			git: components["schemas"]["ProjectGitStatus"];
+		};
+		ProjectVersionPreview: {
+			commit: string;
+			base_revision: string;
+			base_head: string;
+			before_yaml: string;
+			after_yaml: string;
+			diagnostics: {
+				/** @enum {string} */
+				severity: "error" | "warning" | "info";
+				code: string;
+				message: string;
+				resource?: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+			}[];
+			can_restore: boolean;
+			blockers: string[];
+		};
+		ProjectVersionRestoreResponse: components["schemas"]["ProjectVersionPreview"] & {
 			new_revision: string;
 		};
 		ProjectPlanResponse: {
