@@ -3,34 +3,34 @@ import { UserError } from "@openagentpack/sdk";
 import chalk from "chalk";
 import { writeJson } from "../runtime.ts";
 import {
-	disableLocalVersioning,
-	enableLocalVersioning,
-	getLocalVersionStatus,
-	type LocalProjectVersion,
-	type LocalVersionPreview,
-	type LocalVersionStatus,
-	listLocalVersions,
-	previewLocalVersion,
-	restoreLocalVersion,
-} from "../versioning/local-git.ts";
+	disableProjectVersioning,
+	enableProjectVersioning,
+	getProjectVersionStatus,
+	listProjectVersions,
+	type ProjectVersion,
+	type ProjectVersionPreview,
+	type ProjectVersionStatus,
+	previewProjectVersion,
+	restoreProjectVersion,
+} from "../versioning/project-versions.ts";
 
 export async function versionStatusCommand(options: { file: string; json?: boolean }): Promise<void> {
-	const status = await getLocalVersionStatus(options.file);
+	const status = await getProjectVersionStatus(options.file);
 	if (options.json) return writeJson(status);
 	renderStatus(status);
 }
 
 export async function versionEnableCommand(options: { file: string; json?: boolean }): Promise<void> {
-	const result = await enableLocalVersioning(options.file);
+	const result = await enableProjectVersioning(options.file);
 	if (options.json) return writeJson(result);
-	if (result.version) console.log(`Created baseline version ${result.version.short_commit} ${result.version.message}`);
-	else console.log("Current agents.yaml is already versioned; no commit was created.");
+	if (result.version) console.log(`Created baseline version ${result.version.short_version} ${result.version.message}`);
+	else console.log("Current agents.yaml is already versioned; no snapshot was created.");
 	console.log("Automatic versioning is enabled for this agents.yaml.");
-	renderStatus(result.git);
+	renderStatus(result.versioning);
 }
 
 export async function versionDisableCommand(options: { file: string; json?: boolean }): Promise<void> {
-	const status = await disableLocalVersioning(options.file);
+	const status = await disableProjectVersioning(options.file);
 	if (options.json) return writeJson(status);
 	console.log("Automatic versioning is disabled for this agents.yaml.");
 	renderStatus(status);
@@ -42,27 +42,27 @@ export async function versionListCommand(options: {
 	cursor?: string;
 	json?: boolean;
 }): Promise<void> {
-	const page = await listLocalVersions(options.file, { limit: options.limit, cursor: options.cursor });
+	const page = await listProjectVersions(options.file, { limit: options.limit, cursor: options.cursor });
 	if (options.json) return writeJson(page);
 	if (page.versions.length === 0) {
-		console.log("No versions of agents.yaml exist on the current branch.");
+		console.log("No local versions of agents.yaml exist.");
 		return;
 	}
 	for (const version of page.versions) console.log(formatVersion(version));
 	if (page.next_cursor) console.log(chalk.dim(`Next cursor: ${page.next_cursor}`));
 }
 
-export async function versionPreviewCommand(commit: string, options: { file: string; json?: boolean }): Promise<void> {
-	const preview = await previewLocalVersion(options.file, commit);
+export async function versionPreviewCommand(version: string, options: { file: string; json?: boolean }): Promise<void> {
+	const preview = await previewProjectVersion(options.file, version);
 	if (options.json) return writeJson(preview);
 	renderPreview(preview);
 }
 
 export async function versionRestoreCommand(
-	commit: string,
+	version: string,
 	options: { file: string; yes?: boolean; json?: boolean },
 ): Promise<void> {
-	const preview = await previewLocalVersion(options.file, commit);
+	const preview = await previewProjectVersion(options.file, version);
 	if (!options.json) renderPreview(preview);
 	if (!preview.can_restore) {
 		throw new UserError(
@@ -81,34 +81,32 @@ export async function versionRestoreCommand(
 			return;
 		}
 	}
-	const restored = await restoreLocalVersion(options.file, commit, {
-		head: preview.base_head,
+	const restored = await restoreProjectVersion(options.file, version, {
+		headVersion: preview.base_head_version,
 		sourceRevision: preview.base_source_revision,
 	});
 	if (options.json) return writeJson(restored);
-	console.log(`Restored ${commit.slice(0, 12)} to the working tree. HEAD was not changed.`);
+	console.log(`Restored ${version.slice(0, 12)} to the working tree. The version history was not changed.`);
 }
 
-function renderStatus(status: LocalVersionStatus): void {
-	console.log(`Git available: ${status.git_available ? "yes" : "no"}`);
+function renderStatus(status: ProjectVersionStatus): void {
 	console.log(`Automatic versioning: ${status.enabled ? "enabled" : "disabled"}`);
-	console.log(`Repository: ${status.repository_root ?? "none"}`);
-	console.log(`Config path: ${status.config_path ?? "none"}`);
-	console.log(`Branch: ${status.branch ?? "none"}`);
-	console.log(`HEAD: ${status.head ?? "none"}`);
-	console.log(`agents.yaml: ${status.config_status}${status.config_versioned ? ", versioned" : ", unversioned"}`);
-	const blockers = [...new Set([...status.commit_blockers, ...status.restore_blockers])];
+	console.log(`Version store: ${status.initialized ? status.store_root : "not initialized"}`);
+	console.log(`Config path: ${status.config_path}`);
+	console.log(`Current version: ${status.head_version ?? "none"}`);
+	console.log(`agents.yaml: ${status.source_status}${status.source_versioned ? ", versioned" : ", unversioned"}`);
+	const blockers = [...new Set([...status.write_blockers, ...status.restore_blockers])];
 	for (const blocker of blockers) console.log(chalk.yellow(`Blocker: ${blocker}`));
 }
 
-function formatVersion(version: LocalProjectVersion): string {
-	return `${chalk.yellow(version.short_commit)} ${version.authored_at} ${version.message} ${chalk.dim(`(${version.author_name})`)}`;
+function formatVersion(version: ProjectVersion): string {
+	return `${chalk.yellow(version.short_version)} ${version.created_at} ${version.message} ${chalk.dim(`(${version.created_by})`)}`;
 }
 
-function renderPreview(preview: LocalVersionPreview): void {
-	console.log(chalk.bold(`Version ${preview.commit}`));
+function renderPreview(preview: ProjectVersionPreview): void {
+	console.log(chalk.bold(`Version ${preview.version_id}`));
 	console.log(chalk.red("--- working tree"));
-	console.log(chalk.green(`+++ ${preview.commit}`));
+	console.log(chalk.green(`+++ ${preview.version_id}`));
 	for (const line of buildLineDiff(preview.before_yaml, preview.after_yaml)) {
 		if (line.kind === "deletion") console.log(chalk.red(`-${line.text}`));
 		else if (line.kind === "addition") console.log(chalk.green(`+${line.text}`));

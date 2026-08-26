@@ -512,18 +512,11 @@ test("destroy with empty state is handled through the core runtime", async () =>
 	expect(result.stderr).toContain("No resources in state");
 });
 
-test("apply CI mode cannot be combined with unconditional yes", async () => {
-	const result = await runAgents(["apply", "--ci", "--yes"]);
+test("apply help does not expose the removed CI mode", async () => {
+	const result = await runAgents(["apply", "--help"]);
 
-	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("--ci cannot be combined with --yes");
-});
-
-test("apply CI mode cannot disable remote state refresh", async () => {
-	const result = await runAgents(["apply", "--ci", "--refresh", "false"]);
-
-	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("--ci requires remote state refresh");
+	expect(result.exitCode).toBe(0);
+	expect(result.stdout).not.toContain("--ci");
 });
 
 test("validate reports reference errors through the core runtime", async () => {
@@ -665,95 +658,34 @@ test("global --no-color disables colored output", async () => {
 	expect(result.stderr).not.toContain("\x1b[");
 });
 
-test("init help exposes backward-compatible template and Git repository modes", async () => {
+test("init help exposes only the agents.yaml template mode", async () => {
 	const result = await runAgents(["init", "--help"]);
 
 	expect(result.exitCode).toBe(0);
 	expect(result.stdout).toContain("init [options]");
 	expect(result.stdout).toContain("--provider <provider>");
 	expect(result.stdout).toContain("--agent-name <name>");
-	expect(result.stdout).toContain("--git <directory>");
-	expect(result.stdout).not.toContain("--no-git");
+	expect(result.stdout).not.toContain("--git");
 });
 
-test("init without --git retains the original current-directory behavior", async () => {
+test("init retains the current-directory template behavior", async () => {
 	const directory = await makeTempDir();
 	const result = await runAgents(["init", "--provider", "bailian", "--agent-name", "assistant"], {}, directory);
 
 	expect(result.exitCode).toBe(0);
 	expect(await Bun.file(join(directory, "agents.yaml")).exists()).toBe(true);
 	expect(await Bun.file(join(directory, ".gitignore")).exists()).toBe(true);
+	expect(await readFile(join(directory, ".gitignore"), "utf8")).toContain(".openagentpack/versions/");
 	expect(await Bun.file(join(directory, ".aoneci/openagentpack.yml")).exists()).toBe(false);
 	expect(await Bun.file(join(directory, "agents.state.json")).exists()).toBe(false);
 	expect(await Bun.file(join(directory, ".git/HEAD")).exists()).toBe(false);
 });
 
-test("init --git upgrades an existing agents.yaml project in place", async () => {
-	const directory = await makeTempDir();
-	const initial = await runAgents(["init", "--provider", "bailian", "--agent-name", "existing"], {}, directory);
-	expect(initial.exitCode).toBe(0);
-	const configBeforeUpgrade = await readFile(join(directory, "agents.yaml"), "utf8");
-
-	const result = await runAgents(["init", "--git", "."], {}, directory);
-
-	expect(result.exitCode).toBe(0);
-	expect(result.stderr).toContain("Added Git scaffolding");
-	expect(result.stderr).toContain("Preserved existing content: agents.yaml");
-	expect(await readFile(join(directory, "agents.yaml"), "utf8")).toBe(configBeforeUpgrade);
-	expect(await Bun.file(join(directory, ".aoneci/openagentpack.yml")).exists()).toBe(true);
-	expect(await Bun.file(join(directory, ".aoneci/openagentpack-check.yml")).exists()).toBe(true);
-	expect(await Bun.file(join(directory, "agents.state.json")).exists()).toBe(true);
-	expect(await Bun.file(join(directory, "package.json")).exists()).toBe(true);
-	expect(await Bun.file(join(directory, ".env.example")).exists()).toBe(true);
-	expect(await Bun.file(join(directory, ".git/HEAD")).exists()).toBe(true);
-});
-
-test("init scaffolds an Aone-ready repository non-interactively", async () => {
-	const parentDirectory = await makeTempDir();
-	const projectDirectory = join(parentDirectory, "generated-agent");
-	const result = await runAgents([
-		"init",
-		"--git",
-		projectDirectory,
-		"--provider",
-		"bailian",
-		"--agent-name",
-		"assistant",
-	]);
-
-	expect(result.exitCode).toBe(0);
-	expect(result.stderr).toContain("Created Aone-ready project");
-	expect(await readFile(join(projectDirectory, "agents.yaml"), "utf8")).toContain("assistant:");
-	expect(await readFile(join(projectDirectory, ".aoneci/openagentpack.yml"), "utf8")).toContain(
-		"apply-and-persist-state",
-	);
-	expect(await readFile(join(projectDirectory, ".aoneci/openagentpack-check.yml"), "utf8")).toContain(
-		"Validate and plan Agent resources",
-	);
-	expect(JSON.parse(await readFile(join(projectDirectory, "agents.state.json"), "utf8"))).toEqual({ resources: [] });
-	await Bun.write(join(projectDirectory, ".env"), await readFile(join(projectDirectory, ".env.example"), "utf8"));
-
-	const validate = await runAgents(["validate", "--file", "agents.yaml"], {}, projectDirectory);
-	expect(validate.exitCode).toBe(0);
-
-	const plan = await runAgents(["plan", "--file", "agents.yaml", "--refresh", "false", "--json"], {}, projectDirectory);
-	expect(plan.exitCode).toBe(0);
-	expect(JSON.parse(plan.stdout).actions.length).toBeGreaterThan(0);
-});
-
-test("init requires --git when a target directory is provided", async () => {
+test("init rejects a target directory because repository scaffolding is not supported", async () => {
 	const parentDirectory = await makeTempDir();
 	const projectDirectory = join(parentDirectory, "generated-agent");
 	const result = await runAgents(["init", projectDirectory, "--provider", "bailian", "--agent-name", "assistant"]);
 
 	expect(result.exitCode).toBe(1);
 	expect(result.stderr).toContain("too many arguments");
-});
-
-test("init requires a target directory when --git is provided", async () => {
-	const directory = await makeTempDir();
-	const result = await runAgents(["init", "--git"], {}, directory);
-
-	expect(result.exitCode).toBe(1);
-	expect(result.stderr).toContain("option '--git <directory>' argument missing");
 });

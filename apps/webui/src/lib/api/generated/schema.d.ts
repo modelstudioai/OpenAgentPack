@@ -565,7 +565,7 @@ export interface paths {
 		};
 		trace?: never;
 	};
-	"/api/project/git": {
+	"/api/project/versioning": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -581,13 +581,13 @@ export interface paths {
 			};
 			requestBody?: never;
 			responses: {
-				/** @description Local Git repository and agents.yaml version status */
+				/** @description Local agents.yaml snapshot store and versioning status */
 				200: {
 					headers: {
 						[name: string]: unknown;
 					};
 					content: {
-						"application/json": components["schemas"]["ProjectGitStatus"];
+						"application/json": components["schemas"]["ProjectVersioningStatus"];
 					};
 				};
 				/** @description Bad request */
@@ -654,102 +654,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/api/project/git/init": {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		get?: never;
-		put?: never;
-		post: {
-			parameters: {
-				query?: never;
-				header?: never;
-				path?: never;
-				cookie?: never;
-			};
-			requestBody?: {
-				content: {
-					"application/json": {
-						base_revision: string;
-					};
-				};
-			};
-			responses: {
-				/** @description Initialize local Git and create the first agents.yaml version */
-				200: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ProjectGitStatus"];
-					};
-				};
-				/** @description Bad request */
-				400: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Forbidden */
-				403: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Not found */
-				404: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Conflict */
-				409: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Unprocessable entity */
-				422: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Server error */
-				500: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-			};
-		};
-		delete?: never;
-		options?: never;
-		head?: never;
-		patch?: never;
-		trace?: never;
-	};
-	"/api/project/git/enable": {
+	"/api/project/versioning/enable": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -779,7 +684,7 @@ export interface paths {
 						[name: string]: unknown;
 					};
 					content: {
-						"application/json": components["schemas"]["ProjectGitStatus"];
+						"application/json": components["schemas"]["ProjectVersioningStatus"];
 					};
 				};
 				/** @description Bad request */
@@ -844,7 +749,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/api/project/git/disable": {
+	"/api/project/versioning/disable": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -868,13 +773,13 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Disable shared automatic agents.yaml versions without changing Git history */
+				/** @description Disable shared automatic agents.yaml versions without removing snapshots */
 				200: {
 					headers: {
 						[name: string]: unknown;
 					};
 					content: {
-						"application/json": components["schemas"]["ProjectGitStatus"];
+						"application/json": components["schemas"]["ProjectVersioningStatus"];
 					};
 				};
 				/** @description Bad request */
@@ -958,7 +863,7 @@ export interface paths {
 			};
 			requestBody?: never;
 			responses: {
-				/** @description Current-branch commits that modified agents.yaml */
+				/** @description Local snapshots of agents.yaml */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -1024,95 +929,14 @@ export interface paths {
 			};
 		};
 		put?: never;
-		post: {
-			parameters: {
-				query?: never;
-				header?: never;
-				path?: never;
-				cookie?: never;
-			};
-			requestBody?: {
-				content: {
-					"application/json": {
-						base_revision: string;
-						base_head: string | null;
-						message: string;
-					};
-				};
-			};
-			responses: {
-				/** @description Commit only the current agents.yaml to the current branch */
-				201: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["CreateProjectVersionResponse"];
-					};
-				};
-				/** @description Bad request */
-				400: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Forbidden */
-				403: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Not found */
-				404: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Conflict */
-				409: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Unprocessable entity */
-				422: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-				/** @description Server error */
-				500: {
-					headers: {
-						[name: string]: unknown;
-					};
-					content: {
-						"application/json": components["schemas"]["ErrorResponse"];
-					};
-				};
-			};
-		};
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
 		patch?: never;
 		trace?: never;
 	};
-	"/api/project/versions/{commit}/preview": {
+	"/api/project/versions/{versionId}/preview": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -1126,7 +950,7 @@ export interface paths {
 				query?: never;
 				header?: never;
 				path: {
-					commit: string;
+					versionId: string;
 				};
 				cookie?: never;
 			};
@@ -1134,7 +958,7 @@ export interface paths {
 				content: {
 					"application/json": {
 						base_revision: string;
-						base_head: string;
+						base_head_version: string;
 					};
 				};
 			};
@@ -1210,7 +1034,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/api/project/versions/{commit}/restore": {
+	"/api/project/versions/{versionId}/restore": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -1224,7 +1048,7 @@ export interface paths {
 				query?: never;
 				header?: never;
 				path: {
-					commit: string;
+					versionId: string;
 				};
 				cookie?: never;
 			};
@@ -1232,12 +1056,12 @@ export interface paths {
 				content: {
 					"application/json": {
 						base_revision: string;
-						base_head: string;
+						base_head_version: string;
 					};
 				};
 			};
 			responses: {
-				/** @description Restore historical agents.yaml content to the working tree without moving HEAD */
+				/** @description Restore historical agents.yaml content without changing local version history */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -2940,7 +2764,13 @@ export interface components {
 			}[];
 			active_mutation: {
 				/** @enum {string} */
-				kind: "agent_apply" | "project_apply" | "declaration_write" | "git_init" | "git_commit" | "version_restore";
+				kind:
+					| "agent_apply"
+					| "project_apply"
+					| "declaration_write"
+					| "version_enable"
+					| "version_write"
+					| "version_restore";
 				started_at: string;
 				operation_id?: string;
 			} | null;
@@ -3008,17 +2838,16 @@ export interface components {
 		DeclarationCommitResponse: components["schemas"]["DeclarationPreviewResponse"] & {
 			new_revision: string;
 		};
-		ProjectGitStatus: {
-			git_available: boolean;
+		ProjectVersioningStatus: {
+			initialized: boolean;
 			enabled: boolean;
-			repository_root: string | null;
-			config_path: string | null;
-			branch: string | null;
-			head: string | null;
+			store_root: string;
+			config_path: string;
+			head_version: string | null;
 			/** @enum {string} */
-			config_status: "clean" | "modified" | "untracked" | "staged" | "conflicted";
-			config_versioned: boolean;
-			commit_blockers: string[];
+			source_status: "clean" | "modified" | "unversioned";
+			source_versioned: boolean;
+			write_blockers: string[];
 			restore_blockers: string[];
 		};
 		ProjectVersionsResponse: {
@@ -3026,20 +2855,18 @@ export interface components {
 			next_cursor: string | null;
 		};
 		ProjectVersion: {
-			commit: string;
-			short_commit: string;
+			version_id: string;
+			short_version: string;
+			parent_version: string | null;
+			source_hash: string;
 			message: string;
-			author_name: string;
-			authored_at: string;
-		};
-		CreateProjectVersionResponse: {
-			version: components["schemas"]["ProjectVersion"];
-			git: components["schemas"]["ProjectGitStatus"];
+			created_by: string;
+			created_at: string;
 		};
 		ProjectVersionPreview: {
-			commit: string;
+			version_id: string;
 			base_revision: string;
-			base_head: string;
+			base_head_version: string;
 			before_yaml: string;
 			after_yaml: string;
 			diagnostics: {

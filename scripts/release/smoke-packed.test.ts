@@ -23,10 +23,10 @@ describe("--sdk-only mode", () => {
 	});
 
 	test("restricts the package set to sdk when enabled", () => {
-		expect(smokePackages(true)).toEqual(["sdk", "local-git"]);
+		expect(smokePackages(true)).toEqual(["sdk", "project-versions"]);
 	});
 
 	test("keeps the full package set when disabled", () => {
-		expect(smokePackages(false)).toEqual(["sdk", "local-git", "playground", "cli"]);
+		expect(smokePackages(false)).toEqual(["sdk", "project-versions", "playground", "cli"]);
 	});
 });

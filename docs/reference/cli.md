@@ -16,21 +16,12 @@ Provider-backed commands such as `plan`, `apply`, `models`, `session`, and `depl
 
 ## `agents init`
 
-Create a new `agents.yaml` template via an interactive wizard (provider selection + agent name). Appends `agents.state.json` and `.env` to `.gitignore`.
-
-Pass a directory to scaffold a local Aone-ready project repository:
-
-```bash
-agents init --git my-agent --provider bailian --agent-name assistant
-```
-
-For a directory that already contains `agents.yaml`, `agents init --git .` upgrades the project in place: it preserves the declaration and existing README/Aone workflows, creates or preserves `agents.state.json`, removes that file from `.gitignore`, merges missing package and environment-example entries, and initializes Git only when `.git` is absent. For a new or empty directory, repository mode creates `agents.yaml`, an external instructions file, `.env.example`, `.gitignore`, `package.json`, `README.md`, `agents.state.json`, `.aoneci/openagentpack-check.yml`, and `.aoneci/openagentpack.yml`, then initializes a local Git repository on `main`. The check pipeline validates, plans, and uploads the plan artifact without applying; bind it to Codeup merge-request events in Aone. The main-push pipeline repeats validation/plan, applies through the non-interactive `--ci` policy, and commits updated state back to `main`. CI policy blocks deletes and remote drift for a separate approved workflow. Init itself does not create a Codeup remote, commit, push, or apply cloud changes. Aone secrets, checkout write permission, serial execution, merge-request binding, and approval gates are platform-side settings.
+Create a new `agents.yaml` template via an interactive wizard (provider selection + agent name). Appends `agents.state.json`, `.openagentpack/versions/`, and `.env` to `.gitignore`.
 
 | Option | Description |
 |--------|-------------|
 | `--provider <provider>` | Configure `bailian`, `claude`, `qoder`, `ark`, or `all` without prompting. |
 | `--agent-name <name>` | Set the first Agent name without prompting. |
-| `--git <directory>` | Create an Aone-ready project in a new/empty directory, or add Git CI scaffolding when the directory already contains `agents.yaml`. Without it, `agents init` keeps the original current-directory behavior. |
 
 ## `agents playground`
 
@@ -40,7 +31,7 @@ Playground opens the project selected by `-f`, watches the YAML and its local de
 
 The Workbench Resources tab edits or removes declarations already present in `agents.yaml`; it has no create action. Agent, Environment, Skill, Vault, Memory Store, and File changes require a server-generated YAML Diff before save. Local file-backed content and external ownership fields remain read-only, and referenced declarations cannot be removed. Saving writes only `agents.yaml`, refreshes the project, and automatically opens a new project runtime Plan. Apply remains a separate confirmation.
 
-Workbench uses the nearest parent Git repository containing `agents.yaml`. If none exists, the UI automatically initializes `main` in the configuration directory and creates an `Initialize agents.yaml` commit. Before every Agent- or project-scoped Apply, Workbench commits the current `agents.yaml` when it differs from HEAD; an already-versioned YAML reuses HEAD without creating an empty commit. Automatic versioning commits only `agents.yaml` without changing other staged, modified, or untracked files, and a Git blocker prevents the remote Apply. Restore reads a full-SHA commit reachable from the current HEAD and writes that historical YAML back as an uncommitted forward working-tree change; it does not reset HEAD or restore `agents.state.json` and referenced files. Workbench does not push, fetch, pull, switch branches, create tags, or configure Git identity. Apply and Workbench YAML/Git writes are mutually exclusive, while historical browsing remains available during Apply.
+Workbench does not initialize version storage automatically. The user must explicitly enable versions in the Versions tab or through `agents version enable`; that action creates a baseline when needed and updates the shared switch. `store.json` contains only the switch and head, immutable linked metadata lives under `entries/`, and complete YAML lives in content-addressed `blobs/<sha256>.yaml` files. Before every Agent- or project-scoped Apply, Workbench versions changed YAML; unchanged YAML does not create an empty version. Restore validates the selected full version ID and blob hash, then writes historical YAML back as a forward working-tree change without changing version history. `agents.state.json` and referenced files are never included. Apply, declaration writes, version writes, and restore remain mutually exclusive, while historical browsing is available during Apply.
 
 | Option | Description |
 |--------|-------------|
@@ -63,24 +54,24 @@ Launch the same local Server and open the `agents.yaml` project Workbench withou
 
 ## `agents version`
 
-Manage local Git history for the selected `agents.yaml`. CLI Apply-time commits are disabled by default even when the project already belongs to a Git repository.
+Manage Git-independent local snapshot history for the selected `agents.yaml`. CLI Apply-time snapshots are disabled until versioning is enabled.
 
 All version subcommands accept `--file <path>` to select the project configuration. They intentionally do not define a command-level `-f` alias, so the option is not confused with force.
 
 | Subcommand | Description |
 |------------|-------------|
-| `version enable` | Discover the nearest parent repository, or initialize `main` in the YAML directory, then record a checkout-local opt-in and create a baseline commit when needed. |
-| `version disable` | Remove the opt-in for this YAML without deleting the repository, commits, or working-tree changes. |
-| `version status` | Show the opt-in, repository, branch, HEAD, YAML status, and operation blockers. |
-| `version list` | List current-branch commits that changed this YAML; supports `--limit`, `--cursor`, and `--json`. |
-| `version preview <full-sha>` | Show a redacted Git-style Diff and restore diagnostics for a reachable full commit SHA. |
-| `version restore <full-sha>` | Atomically write historical YAML to the working tree; accepts `--yes` and `--json`. |
+| `version enable` | Initialize the local store, enable automatic versions, and create a baseline snapshot when needed. |
+| `version disable` | Disable automatic versions without deleting snapshots or working-tree changes. |
+| `version status` | Show the opt-in, store location, current version, YAML status, and operation blockers. |
+| `version list` | List local snapshots; supports `--limit`, `--cursor`, and `--json`. |
+| `version preview <full-id>` | Show a redacted Git-style Diff and restore diagnostics for a full version ID. |
+| `version restore <full-id>` | Atomically write historical YAML to the working tree; accepts `--yes` and `--json`. |
 
-The shared CLI/Workbench switch is stored as a marker in the selected worktree's private Git directory and keyed by the YAML's repository-relative path. It is isolated between linked worktrees and does not travel through clone or push, so enable it separately in each checkout that should use automatic versions. Either host can enable or disable it; Workbench only enables it automatically when creating a new repository. There is no manual `version create` command.
+The shared CLI/Workbench switch lives in the YAML-local `store.json`. Each project directory has independent history. Either host can enable or disable it, and there is no manual `version create` command.
 
-When enabled, `agents apply` validates Git and YAML before remote mutations and commits dirty YAML as `Apply agents.yaml` only after all actions succeed. A no-op Apply can record a still-dirty YAML, while cancelled, failed, incomplete, or `--refresh-only` runs do not commit. An unchanged YAML reuses HEAD without an empty commit. If YAML, HEAD, or the branch changes during Apply, the remote run may already have completed but the commit is rejected; fix the Git state and rerun Apply to retry it.
+When enabled, `agents apply` validates YAML and the local store before remote mutations and records dirty YAML as `Apply agents.yaml` only after all actions succeed. A no-op Apply can record a still-dirty YAML, while cancelled, failed, incomplete, or `--refresh-only` runs do not create a version. An unchanged YAML does not create an empty snapshot. If YAML or the current version changes during Apply, the remote run may already have completed but the snapshot is rejected; resolve the local conflict and rerun Apply to retry it.
 
-Version commits use a temporary index and contain only `agents.yaml`, leaving unrelated staged, modified, and untracked files unchanged. Plaintext credentials, staged/conflicted YAML, detached HEAD, missing Git identity, and in-progress merge/rebase operations block commits. Restore does not move HEAD and never restores `agents.state.json` or referenced files. These commands do not push, fetch, pull, switch branches, or create tags.
+`store.json` contains only the shared switch and head. Immutable linked metadata under `entries/` points to full content-addressed YAML in `blobs/`, which is verified before restore. Plaintext credentials, invalid YAML, concurrent store writes, and stale version/source identities block creation or restore. `agents.state.json` and referenced files are never restored.
 
 ## `agents validate`
 
@@ -104,7 +95,6 @@ Apply the planned changes to create / update / delete resources.
 | Option | Description |
 |--------|-------------|
 | `-y, --yes` | Skip confirmation prompt. |
-| `--ci` | Run non-interactively, but block delete actions and remote/combined drift. Cannot be combined with `--yes` or `--refresh false`. |
 | `--provider <name>` | Target provider (`all` by default). |
 | `--refresh <bool>` | Refresh state from remote before planning (default `true`). |
 | `--refresh-only` | Refresh state without mutating remote resources. |

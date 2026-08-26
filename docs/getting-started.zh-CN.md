@@ -36,29 +36,9 @@ mkdir my-agents && cd my-agents
 agents init
 ```
 
-init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`，并把 `agents.state.json` 和 `.env` 加进 `.gitignore`，确保状态和密钥不会被提交。
+init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`，并把 `agents.state.json`、`.openagentpack/versions/` 和 `.env` 加进 `.gitignore`，确保远端状态、本地版本与密钥保持在本机。
 
-如果要生成一个由用户自行推送到内部 Codeup 的完整本地仓库，可以直接传目录：
-
-```bash
-agents init --git my-agents --provider bailian --agent-name assistant
-cd my-agents
-```
-
-显式指定 `--git` 后，仓库模式会初始化本地 `main` Git 仓库、跟踪 `agents.state.json`，并生成 `.aoneci/openagentpack-check.yml` 与 `.aoneci/openagentpack.yml`。需要在 Aone 中把检查流水线绑定到 Codeup 合并请求新建/更新事件；它只执行 validate 和基于真实远端状态的 Plan。代码 push 到 `main` 后，部署流水线会 plan、自动 apply 非破坏性的本地变更，并把更新后的 state commit 回 `main`。`agents apply --ci` 策略会阻断删除和远端漂移，这两类变更需要另一条显式审批流程。没有 `--git` 时保持原有当前目录行为，state 仍会被忽略。init 本身不会创建 Codeup 远端或推送 commit。
-
-启用流水线前，需要把 `agents.yaml` 引用的环境变量配置为 Aone 密钥，给 checkout 身份授予 `main` 写权限，把流水线并发度设为 `1`，并在 Aone 中配置合并请求检查或人工审批。Workbench 从本地 `.env` 取值；CI 可以使用相同变量名，但指向另一套 Base URL 和 API Key。
-
-Workbench 会发现包含 `agents.yaml` 的最近父级 Git 仓库；如果不存在，会在配置目录自动初始化 `main`、创建 `Initialize agents.yaml` 提交并启用共享版本开关。Versions 页面与 CLI 的 `agents version enable|disable` 读写同一个开关；关闭后两边的 Apply 都不会自动提交，Workbench 启动也不会擅自重新开启。开关启用时，只有成功的 Agent 或项目 Apply 才会提交有变化的 `agents.yaml`，已经与 HEAD 一致时不创建空提交。Git 身份、冲突、detached HEAD 或暂存状态等阻断会阻止自动版本提交。恢复不会 reset HEAD，而是把历史 YAML 写成当前工作区的新变更。`agents.state.json`、外部引用文件、remote、push 和 tag 都不在版本管理范围内。
-
-如果此前已经执行过 `agents init`，可以在原项目中补齐仓库能力：
-
-```bash
-cd my-agents
-agents init --git .
-```
-
-该命令会保留 `agents.yaml`、已有 README 和 Aone workflow，创建或保留 `agents.state.json`，从 `.gitignore` 移除 state，增量合并 package 与本地文件 ignore 配置，并且只在 `.git` 不存在时初始化 Git。
+Workbench 与 `agents version` 统一使用 `.openagentpack/versions/store.json`、不可变版本条目和内容寻址 YAML blob。运行 `agents version enable` 或在 Workbench 中显式启用 Versions 会从当前 YAML 创建基线；该能力不依赖 Git，也不会把 `agents.state.json` 或外部引用文件放入版本。
 
 为 `bailian` provider、agent 名为 `assistant` 生成的文件如下：
 

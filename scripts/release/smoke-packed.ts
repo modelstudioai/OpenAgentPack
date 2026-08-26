@@ -3,7 +3,7 @@
  * then exercise every public SDK entry point plus the CLI and Playground bins.
  *
  * `--sdk-only` restricts the run to the Node 18-compatible library packages:
- * SDK plus local-git. This is the mode CI uses below the CLI/Playground Node
+ * SDK plus project-versions. This is the mode CI uses below the CLI/Playground Node
  * floor to enforce both libraries' >=18.17.0 engines contract.
  */
 
@@ -27,7 +27,7 @@ export function isSdkOnly(argv: readonly string[]): boolean {
 }
 
 export function smokePackages(sdkOnly: boolean): readonly (typeof PACKAGES)[number][] {
-	return sdkOnly ? PACKAGES.filter((pkg) => pkg === "sdk" || pkg === "local-git") : PACKAGES;
+	return sdkOnly ? PACKAGES.filter((pkg) => pkg === "sdk" || pkg === "project-versions") : PACKAGES;
 }
 
 type PackedPackage = { filename: string };
@@ -152,7 +152,7 @@ async function main(): Promise<void> {
 				"node",
 				"--input-type=module",
 				"--eval",
-				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const git = await import("@openagentpack/local-git"); if (typeof git.createLocalGitVersionService !== "function") throw new Error("local-git export missing");',
+				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const versions = await import("@openagentpack/project-versions"); if (typeof versions.createProjectVersionService !== "function") throw new Error("project-versions export missing");',
 			],
 			consumer,
 		);

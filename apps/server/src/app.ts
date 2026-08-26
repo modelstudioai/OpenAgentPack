@@ -22,7 +22,7 @@ app.use(
 app.use("/api/*", async (context, next) => {
 	const expected = process.env.AGENTS_PLAYGROUND_TOKEN?.trim();
 	const protectsVersionRead =
-		context.req.path === "/api/project/git" || context.req.path.startsWith("/api/project/versions");
+		context.req.path === "/api/project/versioning" || context.req.path.startsWith("/api/project/versions");
 	const requiresToken = protectsVersionRead || !["GET", "HEAD", "OPTIONS"].includes(context.req.method);
 	if (expected && requiresToken && context.req.header("X-Agents-Playground-Token") !== expected) {
 		return context.json({ error: { message: "Invalid Playground access token." } }, 403);

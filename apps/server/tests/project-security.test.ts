@@ -63,12 +63,12 @@ describe("Playground local write protection", () => {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ plan_token: "token", confirm_destructive: false }),
 			}),
-			new Request("http://localhost/api/project/git/enable", {
+			new Request("http://localhost/api/project/versioning/enable", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ base_revision: "revision" }),
 			}),
-			new Request("http://localhost/api/project/git/disable", {
+			new Request("http://localhost/api/project/versioning/disable", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ base_revision: "revision" }),
@@ -92,12 +92,12 @@ describe("Playground local write protection", () => {
 		expect(response.status).toBe(404);
 	});
 
-	test("requires the launch token for Git and version reads as well as writes", async () => {
+	test("requires the launch token for versioning reads as well as writes", async () => {
 		process.env.AGENTS_PLAYGROUND_TOKEN = "test-local-token";
-		for (const path of ["/api/project/git", "/api/project/versions"]) {
+		for (const path of ["/api/project/versioning", "/api/project/versions"]) {
 			expect((await app.request(path)).status).toBe(403);
 		}
-		const authenticated = await app.request("/api/project/git", {
+		const authenticated = await app.request("/api/project/versioning", {
 			headers: { "X-Agents-Playground-Token": "test-local-token" },
 		});
 		expect(authenticated.status).not.toBe(403);

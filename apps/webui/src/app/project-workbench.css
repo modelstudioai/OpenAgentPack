@@ -1746,13 +1746,13 @@ body {
 	max-width: 760px;
 }
 
-.git-summary-grid {
+.version-summary-grid {
 	display: grid;
 	grid-template-columns: 2fr 1fr 1fr 1fr;
 	gap: 10px;
 }
 
-.git-summary-item {
+.version-summary-item {
 	display: flex;
 	min-width: 0;
 	flex-direction: column;
@@ -1763,7 +1763,7 @@ body {
 	background: #fff;
 }
 
-.git-summary-item span {
+.version-summary-item span {
 	color: var(--wb-muted);
 	font-size: 9px;
 	font-weight: 700;
@@ -1771,19 +1771,19 @@ body {
 	text-transform: uppercase;
 }
 
-.git-summary-item strong,
-.git-summary-item code {
+.version-summary-item strong,
+.version-summary-item code {
 	overflow: hidden;
 	font-size: 11px;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.git-summary-item.good strong {
+.version-summary-item.good strong {
 	color: var(--wb-good);
 }
 
-.git-summary-item.warn strong {
+.version-summary-item.warn strong {
 	color: var(--wb-warn);
 }
 
@@ -2017,7 +2017,7 @@ body {
 	.resource-groups {
 		grid-template-columns: 1fr;
 	}
-	.git-summary-grid {
+	.version-summary-grid {
 		grid-template-columns: 1fr 1fr;
 	}
 	.version-browser {
@@ -2103,7 +2103,7 @@ body {
 	.declaration-editor-footer > div button {
 		flex: 1;
 	}
-	.git-summary-grid,
+	.version-summary-grid,
 	.version-empty-card {
 		grid-template-columns: 1fr;
 	}

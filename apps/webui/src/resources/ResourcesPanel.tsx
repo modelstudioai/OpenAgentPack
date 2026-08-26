@@ -499,7 +499,7 @@ function DeclarationEditor({
 					<span>
 						{writeBlockedReason
 							? "Apply is running; this draft is preserved, but saving is temporarily disabled."
-							: "Saving updates agents.yaml only. The next Apply creates its local Git version automatically; push remains manual."}
+							: "Saving updates agents.yaml only. The next Apply creates its local snapshot automatically when versioning is enabled."}
 					</span>
 					<div>
 						<button type="button" className="secondary-button" onClick={onClose}>

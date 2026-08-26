@@ -42,7 +42,7 @@ describe("open-source repository invariants", () => {
 	test("public packages share one version for on-demand Playground resolution", () => {
 		const packagePaths = [
 			"packages/sdk/package.json",
-			"packages/local-git/package.json",
+			"packages/project-versions/package.json",
 			"packages/playground/package.json",
 			"packages/cli/package.json",
 		];

@@ -1,19 +1,19 @@
 {
-	"name": "@openagentpack/local-git",
+	"name": "@openagentpack/project-versions",
 	"version": "0.3.2",
-	"description": "Safe local Git versioning for OpenAgentPack projects",
+	"description": "Git-independent local YAML versioning for OpenAgentPack projects",
 	"license": "Apache-2.0",
 	"keywords": [
 		"openagentpack",
-		"git",
+		"snapshots",
 		"versioning",
 		"agents.yaml"
 	],
-	"homepage": "https://github.com/modelstudioai/OpenAgentPack/tree/main/packages/local-git#readme",
+	"homepage": "https://github.com/modelstudioai/OpenAgentPack/tree/main/packages/project-versions#readme",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/modelstudioai/OpenAgentPack.git",
-		"directory": "packages/local-git"
+		"directory": "packages/project-versions"
 	},
 	"bugs": {
 		"url": "https://github.com/modelstudioai/OpenAgentPack/issues"

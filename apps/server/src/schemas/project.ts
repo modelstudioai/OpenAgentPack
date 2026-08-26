@@ -11,7 +11,14 @@ import {
 export const ProjectStatusSchema = z.enum(["loading", "valid", "invalid", "missing"]);
 
 export const ProjectMutationSchema = z.object({
-	kind: z.enum(["agent_apply", "project_apply", "declaration_write", "git_init", "git_commit", "version_restore"]),
+	kind: z.enum([
+		"agent_apply",
+		"project_apply",
+		"declaration_write",
+		"version_enable",
+		"version_write",
+		"version_restore",
+	]),
 	started_at: z.string(),
 	operation_id: z.string().optional(),
 });
@@ -48,29 +55,29 @@ export const ProjectSummarySchema = z
 	})
 	.openapi("ProjectSummary");
 
-export const ProjectGitStatusSchema = z
+export const ProjectVersioningStatusSchema = z
 	.object({
-		git_available: z.boolean(),
+		initialized: z.boolean(),
 		enabled: z.boolean(),
-		repository_root: z.string().nullable(),
-		config_path: z.string().nullable(),
-		branch: z.string().nullable(),
-		head: z.string().nullable(),
-		config_status: z.enum(["clean", "modified", "untracked", "staged", "conflicted"]),
-		config_versioned: z.boolean(),
-		commit_blockers: z.array(z.string()),
+		store_root: z.string(),
+		config_path: z.string(),
+		head_version: z.string().nullable(),
+		source_status: z.enum(["clean", "modified", "unversioned"]),
+		source_versioned: z.boolean(),
+		write_blockers: z.array(z.string()),
 		restore_blockers: z.array(z.string()),
 	})
-	.openapi("ProjectGitStatus");
-export const ProjectGitInitBodySchema = z.object({ base_revision: z.string().min(1) });
-export const ProjectGitToggleBodySchema = ProjectGitInitBodySchema;
+	.openapi("ProjectVersioningStatus");
+export const ProjectVersioningToggleBodySchema = z.object({ base_revision: z.string().min(1) });
 export const ProjectVersionSchema = z
 	.object({
-		commit: z.string(),
-		short_commit: z.string(),
+		version_id: z.string(),
+		short_version: z.string(),
+		parent_version: z.string().nullable(),
+		source_hash: z.string(),
 		message: z.string(),
-		author_name: z.string(),
-		authored_at: z.string(),
+		created_by: z.string(),
+		created_at: z.string(),
 	})
 	.openapi("ProjectVersion");
 export const ProjectVersionsQuerySchema = z.object({
@@ -80,29 +87,16 @@ export const ProjectVersionsQuerySchema = z.object({
 export const ProjectVersionsResponseSchema = z
 	.object({ versions: z.array(ProjectVersionSchema), next_cursor: z.string().nullable() })
 	.openapi("ProjectVersionsResponse");
-export const CreateProjectVersionBodySchema = z.object({
-	base_revision: z.string().min(1),
-	base_head: z.string().nullable(),
-	message: z
-		.string()
-		.trim()
-		.min(1)
-		.max(120)
-		.refine((value) => !/[\r\n]/.test(value), "Message must be one line."),
-});
-export const CreateProjectVersionResponseSchema = z
-	.object({ version: ProjectVersionSchema, git: ProjectGitStatusSchema })
-	.openapi("CreateProjectVersionResponse");
-export const ProjectVersionParamsSchema = z.object({ commit: z.string().min(1) });
+export const ProjectVersionParamsSchema = z.object({ versionId: z.string().min(1) });
 export const ProjectVersionActionBodySchema = z.object({
 	base_revision: z.string().min(1),
-	base_head: z.string().min(1),
+	base_head_version: z.string().min(1),
 });
 export const ProjectVersionPreviewSchema = z
 	.object({
-		commit: z.string(),
+		version_id: z.string(),
 		base_revision: z.string(),
-		base_head: z.string(),
+		base_head_version: z.string(),
 		before_yaml: z.string(),
 		after_yaml: z.string(),
 		diagnostics: z.array(DiagnosticSchema),

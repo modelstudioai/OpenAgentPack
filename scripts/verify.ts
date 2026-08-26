@@ -69,7 +69,7 @@ export function resolveComparisonBase(
 const affectedTypechecks = [
 	{ prefix: "scripts/", script: "typecheck:scripts" },
 	{ prefix: "packages/sdk/", script: "typecheck:sdk" },
-	{ prefix: "packages/local-git/", script: "typecheck:local-git" },
+	{ prefix: "packages/project-versions/", script: "typecheck:project-versions" },
 	{ prefix: "packages/cli/", script: "typecheck:cli" },
 	{ prefix: "packages/playbooks/", script: "typecheck:playbooks" },
 	{ prefix: "packages/playground/", script: "typecheck:playground" },

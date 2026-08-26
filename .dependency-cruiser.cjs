@@ -23,10 +23,11 @@ module.exports = {
 			to: { path: "^(packages/cli|apps/server|apps/webui)/" },
 		},
 		{
-			name: "no-local-git-to-hosts-or-apps",
+			name: "no-project-versions-to-hosts-or-apps",
 			severity: "error",
-			comment: "@openagentpack/local-git is a shared Node engine and must not depend on host packages or applications.",
-			from: { path: "^packages/local-git/" },
+			comment:
+				"@openagentpack/project-versions is a shared Node engine and must not depend on host packages or applications.",
+			from: { path: "^packages/project-versions/" },
 			to: { path: "^(packages/cli|packages/playground|apps/server|apps/webui)/" },
 		},
 		{
@@ -50,11 +51,11 @@ module.exports = {
 			to: { path: "^packages/sdk/" },
 		},
 		{
-			name: "no-webui-local-git-runtime-import",
+			name: "no-webui-project-versions-runtime-import",
 			severity: "error",
-			comment: "Browser-facing code must use Workbench APIs instead of importing the Node-only local Git engine.",
+			comment: "Browser-facing code must use Workbench APIs instead of importing the Node-only version engine.",
 			from: { path: "^apps/webui/src/" },
-			to: { path: "^packages/local-git/" },
+			to: { path: "^packages/project-versions/" },
 		},
 	],
 	options: {

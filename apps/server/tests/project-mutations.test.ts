@@ -18,7 +18,7 @@ describe("ProjectMutationCoordinator", () => {
 
 	test("ignores duplicate lease release", () => {
 		const coordinator = new ProjectMutationCoordinator();
-		const lease = coordinator.acquire("git_commit");
+		const lease = coordinator.acquire("version_write");
 		lease.release();
 		lease.release();
 		expect(coordinator.getSnapshot()).toBeNull();

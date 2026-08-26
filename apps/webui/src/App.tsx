@@ -29,15 +29,14 @@ import {
 	deleteAttachment,
 	getOperation,
 	getProject,
-	getProjectGit,
-	initializeProjectGit,
+	getProjectVersioning,
 	listAttachments,
 	type OperationEvent,
 	operationEventSource,
 	type ProjectAgent,
-	type ProjectGitStatus,
 	type ProjectPlan,
 	type ProjectSummary,
+	type ProjectVersioningStatus,
 	planProject,
 	projectEventSource,
 	type SessionDetail,
@@ -78,9 +77,9 @@ export default function App() {
 	const [applyBusy, setApplyBusy] = useState(false);
 	const [operationEvents, setOperationEvents] = useState<OperationEvent[]>([]);
 	const [actionError, setActionError] = useState<string>();
-	const [gitStatus, setGitStatus] = useState<ProjectGitStatus>();
-	const [gitError, setGitError] = useState<string>();
-	const [gitLoading, setGitLoading] = useState(true);
+	const [versioningStatus, setVersioningStatus] = useState<ProjectVersioningStatus>();
+	const [versioningError, setVersioningError] = useState<string>();
+	const [versioningLoading, setVersioningLoading] = useState(true);
 	const [attachments, setAttachments] = useState<Attachment[]>([]);
 	const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
 	const [uploadBusy, setUploadBusy] = useState(false);
@@ -93,38 +92,20 @@ export default function App() {
 	const sessionSourceRef = useRef<EventSource | null>(null);
 	const projectRef = useRef<ProjectSummary | undefined>(undefined);
 	const projectRequestGenerationRef = useRef(0);
-	const gitInitializationRef = useRef(false);
 	const projectValid = project?.status === "valid";
 	const writeBlockedReason = project?.active_mutation
 		? `Project ${project.active_mutation.kind.replace(/_/g, " ")} is running. Drafts remain editable, but YAML and version writes are disabled until it finishes.`
 		: undefined;
 
-	const loadGitStatus = useCallback(async () => {
-		setGitLoading(true);
+	const loadVersioningStatus = useCallback(async () => {
+		setVersioningLoading(true);
 		try {
-			let next = await getProjectGit();
-			setGitStatus(next);
-			const currentProject = projectRef.current;
-			if (
-				next.git_available &&
-				!next.repository_root &&
-				currentProject?.revision &&
-				!currentProject.active_mutation &&
-				!gitInitializationRef.current
-			) {
-				gitInitializationRef.current = true;
-				try {
-					next = await initializeProjectGit(currentProject.revision);
-					setGitStatus(next);
-				} finally {
-					gitInitializationRef.current = false;
-				}
-			}
-			setGitError(undefined);
+			setVersioningStatus(await getProjectVersioning());
+			setVersioningError(undefined);
 		} catch (error) {
-			setGitError(errorMessage(error));
+			setVersioningError(errorMessage(error));
 		} finally {
-			setGitLoading(false);
+			setVersioningLoading(false);
 		}
 	}, []);
 
@@ -150,7 +131,7 @@ export default function App() {
 
 	useEffect(() => {
 		void loadProject();
-		void loadGitStatus();
+		void loadVersioningStatus();
 		const source = projectEventSource();
 		source.addEventListener("project.snapshot", (event) => {
 			let snapshot: { status?: unknown; revision?: unknown } | undefined;
@@ -203,18 +184,18 @@ export default function App() {
 				projectRef.current = next;
 				return next;
 			});
-			if (!change?.active_mutation) void loadGitStatus();
+			if (!change?.active_mutation) void loadVersioningStatus();
 		});
 		return () => source.close();
-	}, [loadGitStatus, loadProject]);
+	}, [loadVersioningStatus, loadProject]);
 
 	useEffect(() => {
-		if (project?.revision) void loadGitStatus();
-	}, [loadGitStatus, project?.revision]);
+		if (project?.revision) void loadVersioningStatus();
+	}, [loadVersioningStatus, project?.revision]);
 
 	useEffect(() => {
-		if (tab === "versions") void loadGitStatus();
-	}, [loadGitStatus, tab]);
+		if (tab === "versions") void loadVersioningStatus();
+	}, [loadVersioningStatus, tab]);
 
 	useEffect(() => {
 		setActionError(undefined);
@@ -385,7 +366,7 @@ export default function App() {
 		setTab("changes");
 		setActionError(undefined);
 		await loadProject(false, !selectedAgentId);
-		await loadGitStatus();
+		await loadVersioningStatus();
 		setPlanBusy(true);
 		setBaselinePlan(undefined);
 		setOperationEvents([]);
@@ -656,7 +637,7 @@ export default function App() {
 									planBusy={planBusy}
 									applyBusy={applyBusy}
 									projectValid={projectValid}
-									versioned={gitStatus?.config_versioned ?? false}
+									versioningEnabled={versioningStatus?.enabled ?? false}
 									mutationActive={Boolean(project.active_mutation)}
 									operationEvents={operationEvents}
 									onPlan={handlePlan}
@@ -666,11 +647,11 @@ export default function App() {
 							{tab === "versions" && (
 								<VersionsPanel
 									projectRevision={project.revision}
-									git={gitStatus}
-									gitLoading={gitLoading}
-									gitError={gitError}
+									versioning={versioningStatus}
+									versioningLoading={versioningLoading}
+									versioningError={versioningError}
 									writeBlockedReason={writeBlockedReason}
-									onGitChange={setGitStatus}
+									onVersioningChange={setVersioningStatus}
 									onRestored={handleVersionRestored}
 								/>
 							)}
@@ -777,7 +758,7 @@ function ChangesPanel({
 	planBusy,
 	applyBusy,
 	projectValid,
-	versioned,
+	versioningEnabled,
 	mutationActive,
 	operationEvents,
 	onPlan,
@@ -788,7 +769,7 @@ function ChangesPanel({
 	planBusy: boolean;
 	applyBusy: boolean;
 	projectValid: boolean;
-	versioned: boolean;
+	versioningEnabled: boolean;
 	mutationActive: boolean;
 	operationEvents: OperationEvent[];
 	onPlan(): void;
@@ -821,13 +802,10 @@ function ChangesPanel({
 					</button>
 				</div>
 			</div>
-			{!versioned && (
+			{!versioningEnabled && (
 				<div className="version-notice warning">
 					<AlertTriangle />
-					<span>
-						Automatic versioning: Apply will commit the current agents.yaml before changing remote resources. If it
-						already matches HEAD, the existing version is reused.
-					</span>
+					<span>Local versions are disabled. This Apply will not create a local agents.yaml version.</span>
 				</div>
 			)}
 			{plan ? (

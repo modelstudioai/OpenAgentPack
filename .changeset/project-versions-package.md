@@ -1,9 +1,9 @@
 ---
 "@openagentpack/sdk": minor
-"@openagentpack/local-git": minor
+"@openagentpack/project-versions": minor
 "@openagentpack/playground": minor
 "@openagentpack/cli": minor
 ---
 
-Publish the shared local Git project-versioning engine and use one versioning
+Publish the shared Git-independent local snapshot engine and use one versioning
 switch across the CLI and Workbench.

@@ -36,27 +36,9 @@ mkdir my-agents && cd my-agents
 agents init
 ```
 
-The init wizard asks two questions — which provider(s) to use and what to name your first agent — then writes a starter `agents.yaml`. It also appends `agents.state.json` and `.env` to `.gitignore` so state and secrets never get committed.
+The init wizard asks two questions — which provider(s) to use and what to name your first agent — then writes a starter `agents.yaml`. It also appends `agents.state.json`, `.openagentpack/versions/`, and `.env` to `.gitignore` so remote state, local snapshots, and secrets remain local.
 
-To create a complete local repository that you can push to internal Codeup yourself, pass a directory instead:
-
-```bash
-agents init --git my-agents --provider bailian --agent-name assistant
-cd my-agents
-```
-
-The explicit `--git` mode initializes a local `main` Git repository, tracks `agents.state.json`, and adds `.aoneci/openagentpack-check.yml` plus `.aoneci/openagentpack.yml`. Bind the check pipeline to Codeup merge-request new/update events; it validates and builds a remote-aware plan without applying. On a `main` push, the deploy pipeline plans, applies non-destructive local changes, and commits the resulting state back to `main`. Its `agents apply --ci` policy blocks deletes and remote drift, which require a separate explicitly approved workflow. Without `--git`, init retains its original current-directory behavior and keeps state ignored. Init does not create the Codeup remote or push any commits.
-
-Before enabling the pipeline, configure every environment placeholder from `agents.yaml` as an Aone secret, grant the checkout identity write access to `main`, set pipeline concurrency to `1`, and configure merge-request checks or an approval gate in Aone. Local Workbench values come from `.env`; CI can use the same variable names with a different Base URL and API key.
-
-If you already ran `agents init`, upgrade that project in place:
-
-```bash
-cd my-agents
-agents init --git .
-```
-
-This preserves `agents.yaml`, existing README and Aone workflow files, creates or preserves `agents.state.json`, removes that state file from `.gitignore`, merges the required package and local-only ignore entries, and initializes Git only when `.git` is absent.
+Workbench and `agents version` use `.openagentpack/versions/store.json`, immutable entries, and content-addressed YAML blobs. Run `agents version enable` or explicitly enable Versions in Workbench to create a baseline from the current YAML. Git is not required, and versions never include `agents.state.json` or referenced files.
 
 The generated file for the `bailian` provider and an agent named `assistant` looks like this:
 

@@ -19,22 +19,21 @@ test("project workbench is agents.yaml-driven with no Playbook or runtime model/
 	expect(appSource).not.toContain("ProviderSelect");
 });
 
-test("Versions is project-scoped, automatic on initialization and Apply, and supports redacted restore", () => {
+test("Versions is project-scoped, explicitly enabled, automatic after Apply, and supports redacted restore", () => {
 	expect(appSource).toContain('{tab === "versions" && (');
-	expect(appSource).toContain("Automatic versioning:");
-	expect(appSource).toContain("initializeProjectGit(currentProject.revision)");
+	expect(appSource).toContain("This Apply will not create a local agents.yaml version");
+	expect(appSource).not.toContain("initializeProjectVersioning");
 	expect(appSource).toContain('addEventListener("project.mutation"');
-	expect(versionsSource).toContain("Retry Initialization");
+	expect(versionsSource).toContain("Enable Local Versions");
 	expect(versionsSource).toContain("Workbench and CLI share one local versioning switch");
-	expect(versionsSource).toContain("Successful Apply creates a local version.");
-	expect(versionsSource).toContain("setProjectGitVersioning(projectRevision, !git.enabled)");
+	expect(versionsSource).toContain("Successful Apply creates a local snapshot.");
+	expect(versionsSource).toContain("setProjectVersioning(projectRevision, !versioning.enabled)");
 	expect(versionsSource).not.toContain("Create Version");
 	expect(versionsSource).toContain("Restore to working tree");
 	expect(versionsSource).toContain("buildYamlLineDiff(preview.before_yaml, preview.after_yaml)");
 	expect(versionsSource).toContain("previewRequestGenerationRef");
-	expect(versionsSource).toContain("preview.base_revision, preview.base_head");
-	expect(versionsSource).toContain("Workbench never");
-	expect(versionsSource).toContain("pushes or switches branches.");
+	expect(versionsSource).toContain("preview.base_revision, preview.base_head_version");
+	expect(versionsSource).toContain("Git is not required");
 	expect(versionsSource).not.toContain("git push");
 });
 

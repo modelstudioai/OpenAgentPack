@@ -78,7 +78,6 @@ The mechanics are a single `agents.yaml`, a `validate → plan → apply` workfl
 
 ```bash
 agents init            # interactive wizard writes a starter agents.yaml
-agents init --git my-agent # scaffold a local Aone-ready repository
 agents validate        # offline YAML check, no API calls
 agents plan            # preview create / update / delete
 agents apply -y        # apply changes
@@ -86,11 +85,9 @@ agents version enable  # optional: version YAML after successful Apply
 agents destroy         # tear down managed resources
 ```
 
-The explicit `--git` repository mode creates project files, a pinned CLI dependency, a tracked `agents.state.json`, Aone check/deploy pipelines under `.aoneci/`, and a local `main` Git repository. Bind the check pipeline to Codeup merge-request events; it validates and plans without applying. The deploy pipeline applies non-destructive local changes on `main` and commits updated state back to `main`; its `--ci` policy blocks deletes and remote drift for separate explicit approval. Run `agents init --git .` inside an existing project to add this scaffolding without replacing `agents.yaml`. Without `--git`, `agents init` retains its original current-directory behavior. Init itself never creates the Codeup remote, commits, pushes, or mutates cloud resources. Configure Aone secrets, checkout write permission, concurrency `1`, and any approval in the Aone UI before enabling deployment.
+Run `agents playground -f agents.yaml` to open an Agent directly in Preview; single-Agent projects are selected automatically, while multi-Agent projects accept `--agent <id>` or open the Workbench for selection. Use `agents workbench -f agents.yaml` to open the project console without creating a Session. Playground reads every Agent and Provider from YAML and watches local dependencies. In the Workbench, Resources can edit or remove existing Agent, Environment, Skill, Vault, Memory Store, and File declarations through a server-generated YAML Diff; saving updates `agents.yaml` and automatically refreshes the project Plan. Local versions remain absent until the user explicitly enables them in the project-level Versions tab or with `agents version enable`. When enabled, a successful Apply versions changed YAML; the Versions tab uses the same switch as `agents version enable|disable`, browses history, and restores historical YAML as a forward working-tree change.
 
-Run `agents playground -f agents.yaml` to open an Agent directly in Preview; single-Agent projects are selected automatically, while multi-Agent projects accept `--agent <id>` or open the Workbench for selection. Use `agents workbench -f agents.yaml` to open the project console without creating a Session. Playground reads every Agent and Provider from YAML and watches local dependencies. In the Workbench, Resources can edit or remove existing Agent, Environment, Skill, Vault, Memory Store, and File declarations through a server-generated YAML Diff; saving updates the working-tree `agents.yaml` and automatically refreshes the project Plan. Workbench automatically initializes a local `main` repository with an `Initialize agents.yaml` commit when no parent Git repository exists and enables the shared local-version switch. When enabled, a successful Apply commits changed `agents.yaml`; the project-level Versions tab can toggle the same switch used by `agents version enable|disable`, browse commits, and restore historical YAML as a forward working-tree change.
-
-The CLI exposes local history through `agents version status|enable|disable|list|preview|restore`. Workbench and CLI share one checkout-local switch per `agents.yaml`: `agents version enable` creates a baseline when needed and enables successful Apply commits in both hosts, while `version disable` disables them in both. Restore writes historical YAML into the working tree without moving HEAD; the next successful Apply records it when the switch is enabled. Neither Workbench nor CLI versioning commits `agents.state.json`, pushes, changes branches, or creates tags. Deployment and Channel declarations stay read-only and are excluded from Workbench project Apply. Missing or invalid projects open the diagnostic Workbench.
+The CLI exposes local history through `agents version status|enable|disable|list|preview|restore`. Workbench and CLI share one local switch per `agents.yaml`: `agents version enable` creates a baseline when needed and enables successful Apply versions in both hosts, while `version disable` disables them in both. `store.json` contains only the switch and head; immutable linked entries live under `entries/`, and complete YAML lives in content-addressed `blobs/`, so Git is not required. Restore writes historical YAML into the working tree without changing version history. Neither `agents.state.json` nor referenced files are included. Deployment and Channel declarations stay read-only and are excluded from Workbench project Apply. Missing or invalid projects open the diagnostic Workbench.
 
 ▶ [Watch the full Playground demo](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
@@ -178,11 +175,11 @@ The [`examples/`](./examples) directory has runnable configs for every provider,
 
 ## Using the SDK
 
-Cloud project runtime capabilities are available programmatically from `@openagentpack/sdk`; Node-only local Git versions are provided separately by `@openagentpack/local-git`:
+Cloud project runtime capabilities are available programmatically from `@openagentpack/sdk`; Node-only local project versions are provided separately by `@openagentpack/project-versions`:
 
 ```ts
 import { resolveProjectConfig, planProjectContext } from "@openagentpack/sdk";
-import { createLocalGitVersionService } from "@openagentpack/local-git";
+import { createProjectVersionService } from "@openagentpack/project-versions";
 
 const config = await resolveProjectConfig({ configPath: "agents.yaml" });
 const plan = await planProjectContext(config);

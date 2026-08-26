@@ -121,13 +121,10 @@ export const program = new Command()
 
 program
 	.command("init")
-	.description("Create an agents.yaml template or a local Aone-ready project repository")
+	.description("Create an agents.yaml template")
 	.option("--provider <provider>", "Provider to configure (bailian, claude, qoder, ark, or all)")
 	.option("--agent-name <name>", "Name of the first Agent")
-	.option("--git <directory>", "Create a local Aone-ready project repository in this directory")
-	.action((options: { provider?: string; agentName?: string; git?: string }) =>
-		initCommand(options, program.version() ?? "0.0.0-dev"),
-	);
+	.action((options: { provider?: string; agentName?: string }) => initCommand(options));
 
 program
 	.command("playground")
@@ -167,7 +164,6 @@ program
 	.description("Apply the planned changes to create/update/delete resources")
 	.addOption(configFileOption())
 	.option("-y, --yes", "Skip confirmation prompt")
-	.option("--ci", "Run non-interactively while blocking deletes and remote drift")
 	.option("--refresh <value>", "Refresh state from remote before planning (true/false)", parseBooleanOption, true)
 	.option("--refresh-only", "Refresh state without mutating remote resources")
 	.option(
@@ -234,32 +230,32 @@ stateCmd
 	)
 	.action(withResolvedConfigFile(stateImportCommand));
 
-const versionCmd = program.command("version").description("Manage local Git versions of agents.yaml");
+const versionCmd = program.command("version").description("Manage local snapshot versions of agents.yaml");
 
 versionCmd
 	.command("enable")
-	.description("Enable Apply-time Git versioning for this agents.yaml")
+	.description("Enable Apply-time local versioning for this agents.yaml")
 	.addOption(configFileOption({ short: false }))
 	.option("--json", "Output as JSON")
 	.action(withResolvedConfigFile(versionEnableCommand));
 
 versionCmd
 	.command("disable")
-	.description("Disable Apply-time Git versioning without removing history")
+	.description("Disable Apply-time local versioning without removing history")
 	.addOption(configFileOption({ short: false }))
 	.option("--json", "Output as JSON")
 	.action(withResolvedConfigFile(versionDisableCommand));
 
 versionCmd
 	.command("status")
-	.description("Show local Git versioning status for this agents.yaml")
+	.description("Show local versioning status for this agents.yaml")
 	.addOption(configFileOption({ short: false }))
 	.option("--json", "Output as JSON")
 	.action(withResolvedConfigFile(versionStatusCommand));
 
 versionCmd
 	.command("list")
-	.description("List current-branch commits that changed this agents.yaml")
+	.description("List local snapshots of this agents.yaml")
 	.addOption(configFileOption({ short: false }))
 	.option("--limit <n>", "Maximum versions to return (default 50, max 100)", parsePositiveInteger)
 	.option("--cursor <cursor>", "Pagination cursor returned by the previous page")
@@ -267,14 +263,14 @@ versionCmd
 	.action(withResolvedConfigFile(versionListCommand));
 
 versionCmd
-	.command("preview <commit>")
+	.command("preview <version>")
 	.description("Preview a historical agents.yaml version")
 	.addOption(configFileOption({ short: false }))
 	.option("--json", "Output as JSON")
 	.action(withResolvedConfigFile(versionPreviewCommand));
 
 versionCmd
-	.command("restore <commit>")
+	.command("restore <version>")
 	.description("Restore a historical agents.yaml version to the working tree")
 	.addOption(configFileOption({ short: false }))
 	.option("-y, --yes", "Skip confirmation prompt")

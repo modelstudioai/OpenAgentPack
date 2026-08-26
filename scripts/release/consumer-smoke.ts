@@ -10,7 +10,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-export const REGISTRY_PACKAGES = ["sdk", "local-git", "playground", "cli"] as const;
+export const REGISTRY_PACKAGES = ["sdk", "project-versions", "playground", "cli"] as const;
 const REGISTRY = "https://registry.npmjs.org";
 const root = resolve(import.meta.dirname, "../..");
 
@@ -159,13 +159,13 @@ function smokeSdk(directory: string): void {
 	);
 }
 
-function smokeLocalGit(directory: string): void {
+function smokeProjectVersions(directory: string): void {
 	run(
 		[
 			"node",
 			"--input-type=module",
 			"--eval",
-			'import { createLocalGitVersionService } from "@openagentpack/local-git"; if (typeof createLocalGitVersionService !== "function") throw new Error("local-git export missing");',
+			'import { createProjectVersionService } from "@openagentpack/project-versions"; if (typeof createProjectVersionService !== "function") throw new Error("project-versions export missing");',
 		],
 		directory,
 	);
@@ -255,11 +255,11 @@ export async function smokePublishedPackages(requested: string): Promise<void> {
 		assertInstalledPackage(sdkDirectory, "@openagentpack/sdk", version);
 		smokeSdk(sdkDirectory);
 
-		const localGitDirectory = join(temporaryRoot, "local-git-consumer");
-		writeConsumerManifest(localGitDirectory, "openagentpack-local-git-consumer");
-		installPackage(localGitDirectory, "@openagentpack/local-git", version);
-		assertInstalledPackage(localGitDirectory, "@openagentpack/local-git", version);
-		smokeLocalGit(localGitDirectory);
+		const projectVersionsDirectory = join(temporaryRoot, "project-versions-consumer");
+		writeConsumerManifest(projectVersionsDirectory, "openagentpack-project-versions-consumer");
+		installPackage(projectVersionsDirectory, "@openagentpack/project-versions", version);
+		assertInstalledPackage(projectVersionsDirectory, "@openagentpack/project-versions", version);
+		smokeProjectVersions(projectVersionsDirectory);
 
 		const cliDirectory = join(temporaryRoot, "cli-consumer");
 		writeConsumerManifest(cliDirectory, "openagentpack-cli-consumer");

@@ -9,7 +9,7 @@ export type ProjectDeclaration = ProjectDeclarations["resources"][number];
 export type DeclarationType = ProjectDeclaration["type"];
 export type DeclarationPreview = components["schemas"]["DeclarationPreviewResponse"];
 export type DeclarationCommit = components["schemas"]["DeclarationCommitResponse"];
-export type ProjectGitStatus = components["schemas"]["ProjectGitStatus"];
+export type ProjectVersioningStatus = components["schemas"]["ProjectVersioningStatus"];
 export type ProjectVersion = components["schemas"]["ProjectVersion"];
 export type ProjectVersions = components["schemas"]["ProjectVersionsResponse"];
 export type ProjectVersionPreview = components["schemas"]["ProjectVersionPreview"];
@@ -109,19 +109,12 @@ export async function applyProject(
 	});
 }
 
-export async function getProjectGit(): Promise<ProjectGitStatus> {
-	return requestJson("/api/project/git");
+export async function getProjectVersioning(): Promise<ProjectVersioningStatus> {
+	return requestJson("/api/project/versioning");
 }
 
-export async function initializeProjectGit(baseRevision: string): Promise<ProjectGitStatus> {
-	return requestJson("/api/project/git/init", {
-		method: "POST",
-		body: JSON.stringify({ base_revision: baseRevision }),
-	});
-}
-
-export async function setProjectGitVersioning(baseRevision: string, enabled: boolean): Promise<ProjectGitStatus> {
-	return requestJson(`/api/project/git/${enabled ? "enable" : "disable"}`, {
+export async function setProjectVersioning(baseRevision: string, enabled: boolean): Promise<ProjectVersioningStatus> {
+	return requestJson(`/api/project/versioning/${enabled ? "enable" : "disable"}`, {
 		method: "POST",
 		body: JSON.stringify({ base_revision: baseRevision }),
 	});
@@ -131,36 +124,25 @@ export async function listProjectVersions(cursor?: string): Promise<ProjectVersi
 	return requestJson(`/api/project/versions${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
 }
 
-export async function createProjectVersion(
-	baseRevision: string,
-	baseHead: string | null,
-	message: string,
-): Promise<{ version: ProjectVersion; git: ProjectGitStatus }> {
-	return requestJson("/api/project/versions", {
-		method: "POST",
-		body: JSON.stringify({ base_revision: baseRevision, base_head: baseHead, message }),
-	});
-}
-
 export async function previewProjectVersion(
-	commit: string,
+	versionId: string,
 	baseRevision: string,
-	baseHead: string,
+	baseHeadVersion: string,
 ): Promise<ProjectVersionPreview> {
-	return requestJson(`/api/project/versions/${encodeURIComponent(commit)}/preview`, {
+	return requestJson(`/api/project/versions/${encodeURIComponent(versionId)}/preview`, {
 		method: "POST",
-		body: JSON.stringify({ base_revision: baseRevision, base_head: baseHead }),
+		body: JSON.stringify({ base_revision: baseRevision, base_head_version: baseHeadVersion }),
 	});
 }
 
 export async function restoreProjectVersion(
-	commit: string,
+	versionId: string,
 	baseRevision: string,
-	baseHead: string,
+	baseHeadVersion: string,
 ): Promise<ProjectVersionRestore> {
-	return requestJson(`/api/project/versions/${encodeURIComponent(commit)}/restore`, {
+	return requestJson(`/api/project/versions/${encodeURIComponent(versionId)}/restore`, {
 		method: "POST",
-		body: JSON.stringify({ base_revision: baseRevision, base_head: baseHead }),
+		body: JSON.stringify({ base_revision: baseRevision, base_head_version: baseHeadVersion }),
 	});
 }
 

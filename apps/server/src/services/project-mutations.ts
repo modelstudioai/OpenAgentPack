@@ -2,8 +2,8 @@ export type ProjectMutationKind =
 	| "agent_apply"
 	| "project_apply"
 	| "declaration_write"
-	| "git_init"
-	| "git_commit"
+	| "version_enable"
+	| "version_write"
 	| "version_restore";
 
 export interface ProjectMutationSnapshot {

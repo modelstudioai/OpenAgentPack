@@ -1,43 +1,33 @@
-import {
-	AlertTriangle,
-	CheckCircle2,
-	GitBranch,
-	GitCommit,
-	History,
-	LoaderCircle,
-	Power,
-	RotateCcw,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, History, LoaderCircle, Power, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	initializeProjectGit,
 	listProjectVersions,
-	type ProjectGitStatus,
 	type ProjectVersion,
+	type ProjectVersioningStatus,
 	type ProjectVersionPreview,
 	previewProjectVersion,
 	restoreProjectVersion,
-	setProjectGitVersioning,
+	setProjectVersioning,
 } from "@/lib/project-api";
 import { buildYamlLineDiff } from "@/resources/yaml-diff";
 
 interface VersionsPanelProps {
 	projectRevision?: string;
-	git?: ProjectGitStatus;
-	gitLoading: boolean;
-	gitError?: string;
+	versioning?: ProjectVersioningStatus;
+	versioningLoading: boolean;
+	versioningError?: string;
 	writeBlockedReason?: string;
-	onGitChange(status: ProjectGitStatus): void;
+	onVersioningChange(status: ProjectVersioningStatus): void;
 	onRestored(): Promise<void>;
 }
 
 export function VersionsPanel({
 	projectRevision,
-	git,
-	gitLoading,
-	gitError,
+	versioning,
+	versioningLoading,
+	versioningError,
 	writeBlockedReason,
-	onGitChange,
+	onVersioningChange,
 	onRestored,
 }: VersionsPanelProps) {
 	const [versions, setVersions] = useState<ProjectVersion[]>([]);
@@ -50,16 +40,16 @@ export function VersionsPanel({
 	const [localError, setLocalError] = useState<string>();
 	const previewRequestGenerationRef = useRef(0);
 	const latestProjectRevisionRef = useRef(projectRevision);
-	const repositoryRoot = git?.repository_root;
-	const currentHead = git?.head;
+	const initialized = versioning?.initialized ?? false;
+	const currentVersion = versioning?.head_version;
 	const previewIsCurrent =
 		preview?.base_revision === projectRevision &&
-		preview?.base_head === currentHead &&
-		preview?.commit === selected?.commit;
+		preview?.base_head_version === currentVersion &&
+		preview?.version_id === selected?.version_id;
 
 	const loadVersions = useCallback(
 		async (cursor?: string) => {
-			if (!repositoryRoot) {
+			if (!initialized) {
 				setVersions([]);
 				setNextCursor(null);
 				return;
@@ -76,7 +66,7 @@ export function VersionsPanel({
 				setHistoryBusy(false);
 			}
 		},
-		[repositoryRoot],
+		[initialized],
 	);
 
 	useEffect(() => {
@@ -84,8 +74,8 @@ export function VersionsPanel({
 		setSelected(undefined);
 		setPreview(undefined);
 		setPreviewBusy(false);
-		if (currentHead !== undefined) void loadVersions();
-	}, [currentHead, loadVersions]);
+		if (currentVersion !== undefined) void loadVersions();
+	}, [currentVersion, loadVersions]);
 
 	useEffect(() => {
 		if (latestProjectRevisionRef.current === projectRevision) return;
@@ -96,28 +86,15 @@ export function VersionsPanel({
 		setPreviewBusy(false);
 	}, [projectRevision]);
 
-	const handleInitialize = async () => {
-		if (!projectRevision) return;
-		setWriteBusy(true);
-		setLocalError(undefined);
-		try {
-			onGitChange(await initializeProjectGit(projectRevision));
-		} catch (error) {
-			setLocalError(errorMessage(error));
-		} finally {
-			setWriteBusy(false);
-		}
-	};
-
 	const handleSelect = async (version: ProjectVersion) => {
 		const requestGeneration = ++previewRequestGenerationRef.current;
 		setSelected(version);
 		setPreview(undefined);
 		setLocalError(undefined);
-		if (!projectRevision || !git?.head) return;
+		if (!projectRevision || !versioning?.head_version) return;
 		setPreviewBusy(true);
 		try {
-			const nextPreview = await previewProjectVersion(version.commit, projectRevision, git.head);
+			const nextPreview = await previewProjectVersion(version.version_id, projectRevision, versioning.head_version);
 			if (requestGeneration !== previewRequestGenerationRef.current) return;
 			setPreview(nextPreview);
 		} catch (error) {
@@ -129,11 +106,11 @@ export function VersionsPanel({
 	};
 
 	const handleVersioningToggle = async () => {
-		if (!projectRevision || !git?.repository_root) return;
+		if (!projectRevision || !versioning) return;
 		setWriteBusy(true);
 		setLocalError(undefined);
 		try {
-			onGitChange(await setProjectGitVersioning(projectRevision, !git.enabled));
+			onVersioningChange(await setProjectVersioning(projectRevision, !versioning.enabled));
 		} catch (error) {
 			setLocalError(errorMessage(error));
 		} finally {
@@ -145,7 +122,7 @@ export function VersionsPanel({
 		if (!selected || !preview?.can_restore || !previewIsCurrent) return;
 		if (
 			!window.confirm(
-				`Restore agents.yaml from ${preview.commit.slice(0, 12)} to the working tree? HEAD will not move.`,
+				`Restore agents.yaml from ${preview.version_id.slice(0, 12)} to the working tree? Version history will not move.`,
 			)
 		) {
 			return;
@@ -153,7 +130,7 @@ export function VersionsPanel({
 		setWriteBusy(true);
 		setLocalError(undefined);
 		try {
-			await restoreProjectVersion(preview.commit, preview.base_revision, preview.base_head);
+			await restoreProjectVersion(preview.version_id, preview.base_revision, preview.base_head_version);
 			await onRestored();
 		} catch (error) {
 			setLocalError(errorMessage(error));
@@ -162,11 +139,11 @@ export function VersionsPanel({
 		}
 	};
 
-	if (gitLoading && !git) {
+	if (versioningLoading && !versioning) {
 		return (
 			<div className="empty-panel content-empty-panel">
 				<LoaderCircle className="spin" />
-				<p>Inspecting local Git history…</p>
+				<p>Inspecting local version history…</p>
 			</div>
 		);
 	}
@@ -177,48 +154,49 @@ export function VersionsPanel({
 				<div>
 					<h2>Local configuration versions</h2>
 					<p>
-						Workbench and CLI share one local versioning switch. When enabled, successful Apply commits agents.yaml;
-						Workbench never pushes or switches branches.
+						Workbench and CLI share one local versioning switch. When enabled, successful Apply snapshots agents.yaml.
+						Git is not required, and State or referenced files are never included.
 					</p>
 				</div>
 			</div>
 
-			{(gitError || localError) && <VersionNotice tone="error">{localError ?? gitError}</VersionNotice>}
+			{(versioningError || localError) && <VersionNotice tone="error">{localError ?? versioningError}</VersionNotice>}
 			{writeBlockedReason && <VersionNotice tone="warning">{writeBlockedReason}</VersionNotice>}
 
-			{!git?.git_available ? (
-				<VersionNotice tone="error">Git is not installed or is not available on PATH.</VersionNotice>
-			) : !git.repository_root ? (
+			{!initialized ? (
 				<div className="version-empty-card">
-					<GitBranch />
+					<History />
 					<div>
-						<h3>No local Git repository</h3>
-						<p>Automatic initialization did not complete. Retry to create main and commit agents.yaml.</p>
+						<h3>Local versions are not enabled</h3>
+						<p>Enable local versions explicitly to create the baseline agents.yaml snapshot.</p>
 					</div>
 					<button
 						type="button"
 						className="primary-button"
 						disabled={!projectRevision || Boolean(writeBlockedReason) || writeBusy}
-						onClick={() => void handleInitialize()}
+						onClick={() => void handleVersioningToggle()}
 					>
-						{writeBusy ? <LoaderCircle className="spin" /> : <GitBranch />} Retry Initialization
+						{writeBusy ? <LoaderCircle className="spin" /> : <Power />} Enable Local Versions
 					</button>
 				</div>
-			) : (
+			) : versioning ? (
 				<>
-					<div className="git-summary-grid">
-						<GitSummary label="Repository" value={git.repository_root} />
-						<GitSummary label="Branch" value={git.branch ?? "detached HEAD"} />
-						<GitSummary label="HEAD" value={git.head?.slice(0, 12) ?? "no commits"} mono />
-						<GitSummary
-							label="agents.yaml"
-							value={git.config_versioned ? "versioned" : git.config_status}
-							tone={git.config_versioned ? "good" : "warn"}
+					<div className="version-summary-grid">
+						<VersionSummary label="Store" value={versioning.store_root} />
+						<VersionSummary
+							label="Current version"
+							value={versioning.head_version?.slice(0, 12) ?? "no versions"}
+							mono
 						/>
-						<GitSummary
+						<VersionSummary
+							label="agents.yaml"
+							value={versioning.source_versioned ? "versioned" : versioning.source_status}
+							tone={versioning.source_versioned ? "good" : "warn"}
+						/>
+						<VersionSummary
 							label="Automatic versions"
-							value={git.enabled ? "enabled" : "disabled"}
-							tone={git.enabled ? "good" : "warn"}
+							value={versioning.enabled ? "enabled" : "disabled"}
+							tone={versioning.enabled ? "good" : "warn"}
 						/>
 					</div>
 
@@ -226,7 +204,9 @@ export function VersionsPanel({
 						<div>
 							<strong>Shared CLI and Workbench switch</strong>
 							<p>
-								{git.enabled ? "Successful Apply creates a local version." : "Apply will not create a local version."}
+								{versioning.enabled
+									? "Successful Apply creates a local snapshot."
+									: "Apply will not create a local snapshot."}
 							</p>
 						</div>
 						<button
@@ -235,11 +215,11 @@ export function VersionsPanel({
 							disabled={!projectRevision || Boolean(writeBlockedReason) || writeBusy}
 							onClick={() => void handleVersioningToggle()}
 						>
-							{writeBusy ? <LoaderCircle className="spin" /> : <Power />} {git.enabled ? "Disable" : "Enable"}
+							{writeBusy ? <LoaderCircle className="spin" /> : <Power />} {versioning.enabled ? "Disable" : "Enable"}
 						</button>
 					</div>
 
-					{[...new Set([...git.commit_blockers, ...git.restore_blockers])].map((blocker) => (
+					{[...new Set([...versioning.write_blockers, ...versioning.restore_blockers])].map((blocker) => (
 						<VersionNotice key={blocker} tone="warning">
 							{blocker}
 						</VersionNotice>
@@ -249,21 +229,21 @@ export function VersionsPanel({
 						<div className="version-list-card">
 							<header>
 								<History />
-								<strong>Current branch history</strong>
+								<strong>Local snapshot history</strong>
 							</header>
 							<div className="version-list">
 								{versions.map((version) => (
 									<button
 										type="button"
-										className={selected?.commit === version.commit ? "active" : ""}
-										key={version.commit}
+										className={selected?.version_id === version.version_id ? "active" : ""}
+										key={version.version_id}
 										onClick={() => void handleSelect(version)}
 									>
-										<code>{version.short_commit}</code>
+										<code>{version.short_version}</code>
 										<span>
 											<strong>{version.message}</strong>
 											<small>
-												{version.author_name} · {new Date(version.authored_at).toLocaleString()}
+												{version.created_by} · {new Date(version.created_at).toLocaleString()}
 											</small>
 										</span>
 									</button>
@@ -298,14 +278,14 @@ export function VersionsPanel({
 								/>
 							) : (
 								<div className="version-preview-empty">
-									<GitCommit />
+									<History />
 									<p>Select a version to preview its redacted working-tree restore.</p>
 								</div>
 							)}
 						</div>
 					</div>
 				</>
-			)}
+			) : null}
 		</section>
 	);
 }
@@ -329,7 +309,7 @@ function VersionPreview({
 			<header className="version-preview-heading">
 				<div>
 					<strong>{version.message}</strong>
-					<code>{version.commit}</code>
+					<code>{version.version_id}</code>
 				</div>
 				<button
 					type="button"
@@ -343,7 +323,7 @@ function VersionPreview({
 			<div className="yaml-unified-diff version-yaml-diff">
 				<div className="yaml-diff-file-header">
 					<span>--- working tree</span>
-					<span>+++ {version.short_commit}</span>
+					<span>+++ {version.short_version}</span>
 				</div>
 				<div className="yaml-diff-hunk">
 					@@ -1,{diff.beforeLineCount} +1,{diff.afterLineCount} @@
@@ -383,7 +363,7 @@ function VersionPreview({
 	);
 }
 
-function GitSummary({
+function VersionSummary({
 	label,
 	value,
 	mono,
@@ -395,7 +375,7 @@ function GitSummary({
 	tone?: "good" | "warn";
 }) {
 	return (
-		<div className={`git-summary-item ${tone ?? ""}`}>
+		<div className={`version-summary-item ${tone ?? ""}`}>
 			<span>{label}</span>
 			{mono ? <code>{value}</code> : <strong title={value}>{value}</strong>}
 		</div>

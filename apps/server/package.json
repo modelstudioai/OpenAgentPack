@@ -16,7 +16,7 @@
 	},
 	"dependencies": {
 		"@hono/zod-openapi": "^1.4.0",
-		"@openagentpack/local-git": "workspace:*",
+		"@openagentpack/project-versions": "workspace:*",
 		"@openagentpack/sdk": "workspace:*",
 		"chokidar": "^4.0.3",
 		"hono": "^4.12.28",

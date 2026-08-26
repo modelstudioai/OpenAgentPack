@@ -452,8 +452,8 @@
 									"agent_apply",
 									"project_apply",
 									"declaration_write",
-									"git_init",
-									"git_commit",
+									"version_enable",
+									"version_write",
 									"version_restore"
 								]
 							},
@@ -661,39 +661,33 @@
 					}
 				]
 			},
-			"ProjectGitStatus": {
+			"ProjectVersioningStatus": {
 				"type": "object",
 				"properties": {
-					"git_available": {
+					"initialized": {
 						"type": "boolean"
 					},
 					"enabled": {
 						"type": "boolean"
 					},
-					"repository_root": {
-						"type": "string",
-						"nullable": true
+					"store_root": {
+						"type": "string"
 					},
 					"config_path": {
+						"type": "string"
+					},
+					"head_version": {
 						"type": "string",
 						"nullable": true
 					},
-					"branch": {
+					"source_status": {
 						"type": "string",
-						"nullable": true
+						"enum": ["clean", "modified", "unversioned"]
 					},
-					"head": {
-						"type": "string",
-						"nullable": true
-					},
-					"config_status": {
-						"type": "string",
-						"enum": ["clean", "modified", "untracked", "staged", "conflicted"]
-					},
-					"config_versioned": {
+					"source_versioned": {
 						"type": "boolean"
 					},
-					"commit_blockers": {
+					"write_blockers": {
 						"type": "array",
 						"items": {
 							"type": "string"
@@ -707,15 +701,14 @@
 					}
 				},
 				"required": [
-					"git_available",
+					"initialized",
 					"enabled",
-					"repository_root",
+					"store_root",
 					"config_path",
-					"branch",
-					"head",
-					"config_status",
-					"config_versioned",
-					"commit_blockers",
+					"head_version",
+					"source_status",
+					"source_versioned",
+					"write_blockers",
 					"restore_blockers"
 				]
 			},
@@ -738,46 +731,49 @@
 			"ProjectVersion": {
 				"type": "object",
 				"properties": {
-					"commit": {
+					"version_id": {
 						"type": "string"
 					},
-					"short_commit": {
+					"short_version": {
+						"type": "string"
+					},
+					"parent_version": {
+						"type": "string",
+						"nullable": true
+					},
+					"source_hash": {
 						"type": "string"
 					},
 					"message": {
 						"type": "string"
 					},
-					"author_name": {
+					"created_by": {
 						"type": "string"
 					},
-					"authored_at": {
+					"created_at": {
 						"type": "string"
 					}
 				},
-				"required": ["commit", "short_commit", "message", "author_name", "authored_at"]
-			},
-			"CreateProjectVersionResponse": {
-				"type": "object",
-				"properties": {
-					"version": {
-						"$ref": "#/components/schemas/ProjectVersion"
-					},
-					"git": {
-						"$ref": "#/components/schemas/ProjectGitStatus"
-					}
-				},
-				"required": ["version", "git"]
+				"required": [
+					"version_id",
+					"short_version",
+					"parent_version",
+					"source_hash",
+					"message",
+					"created_by",
+					"created_at"
+				]
 			},
 			"ProjectVersionPreview": {
 				"type": "object",
 				"properties": {
-					"commit": {
+					"version_id": {
 						"type": "string"
 					},
 					"base_revision": {
 						"type": "string"
 					},
-					"base_head": {
+					"base_head_version": {
 						"type": "string"
 					},
 					"before_yaml": {
@@ -843,9 +839,9 @@
 					}
 				},
 				"required": [
-					"commit",
+					"version_id",
 					"base_revision",
-					"base_head",
+					"base_head_version",
 					"before_yaml",
 					"after_yaml",
 					"diagnostics",
@@ -2198,15 +2194,15 @@
 				}
 			}
 		},
-		"/api/project/git": {
+		"/api/project/versioning": {
 			"get": {
 				"responses": {
 					"200": {
-						"description": "Local Git repository and agents.yaml version status",
+						"description": "Local agents.yaml snapshot store and versioning status",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ProjectGitStatus"
+									"$ref": "#/components/schemas/ProjectVersioningStatus"
 								}
 							}
 						}
@@ -2274,99 +2270,7 @@
 				}
 			}
 		},
-		"/api/project/git/init": {
-			"post": {
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"base_revision": {
-										"type": "string",
-										"minLength": 1
-									}
-								},
-								"required": ["base_revision"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Initialize local Git and create the first agents.yaml version",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProjectGitStatus"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Unprocessable entity",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/project/git/enable": {
+		"/api/project/versioning/enable": {
 			"post": {
 				"requestBody": {
 					"content": {
@@ -2390,7 +2294,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ProjectGitStatus"
+									"$ref": "#/components/schemas/ProjectVersioningStatus"
 								}
 							}
 						}
@@ -2458,7 +2362,7 @@
 				}
 			}
 		},
-		"/api/project/git/disable": {
+		"/api/project/versioning/disable": {
 			"post": {
 				"requestBody": {
 					"content": {
@@ -2478,11 +2382,11 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Disable shared automatic agents.yaml versions without changing Git history",
+						"description": "Disable shared automatic agents.yaml versions without removing snapshots",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ProjectGitStatus"
+									"$ref": "#/components/schemas/ProjectVersioningStatus"
 								}
 							}
 						}
@@ -2574,7 +2478,7 @@
 				],
 				"responses": {
 					"200": {
-						"description": "Current-branch commits that modified agents.yaml",
+						"description": "Local snapshots of agents.yaml",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2644,108 +2548,9 @@
 						}
 					}
 				}
-			},
-			"post": {
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"base_revision": {
-										"type": "string",
-										"minLength": 1
-									},
-									"base_head": {
-										"type": "string",
-										"nullable": true
-									},
-									"message": {
-										"type": "string",
-										"minLength": 1,
-										"maxLength": 120
-									}
-								},
-								"required": ["base_revision", "base_head", "message"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"201": {
-						"description": "Commit only the current agents.yaml to the current branch",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/CreateProjectVersionResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Unprocessable entity",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
 			}
 		},
-		"/api/project/versions/{commit}/preview": {
+		"/api/project/versions/{versionId}/preview": {
 			"post": {
 				"parameters": [
 					{
@@ -2754,7 +2559,7 @@
 							"minLength": 1
 						},
 						"required": true,
-						"name": "commit",
+						"name": "versionId",
 						"in": "path"
 					}
 				],
@@ -2768,12 +2573,12 @@
 										"type": "string",
 										"minLength": 1
 									},
-									"base_head": {
+									"base_head_version": {
 										"type": "string",
 										"minLength": 1
 									}
 								},
-								"required": ["base_revision", "base_head"]
+								"required": ["base_revision", "base_head_version"]
 							}
 						}
 					}
@@ -2852,7 +2657,7 @@
 				}
 			}
 		},
-		"/api/project/versions/{commit}/restore": {
+		"/api/project/versions/{versionId}/restore": {
 			"post": {
 				"parameters": [
 					{
@@ -2861,7 +2666,7 @@
 							"minLength": 1
 						},
 						"required": true,
-						"name": "commit",
+						"name": "versionId",
 						"in": "path"
 					}
 				],
@@ -2875,19 +2680,19 @@
 										"type": "string",
 										"minLength": 1
 									},
-									"base_head": {
+									"base_head_version": {
 										"type": "string",
 										"minLength": 1
 									}
 								},
-								"required": ["base_revision", "base_head"]
+								"required": ["base_revision", "base_head_version"]
 							}
 						}
 					}
 				},
 				"responses": {
 					"200": {
-						"description": "Restore historical agents.yaml content to the working tree without moving HEAD",
+						"description": "Restore historical agents.yaml content without changing local version history",
 						"content": {
 							"application/json": {
 								"schema": {

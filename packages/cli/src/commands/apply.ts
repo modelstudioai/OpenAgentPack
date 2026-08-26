@@ -8,11 +8,12 @@ import { diagnosticsHaveErrors, renderDiagnostics } from "../render-diagnostics.
 import { renderRuntimeFeedback } from "../render-feedback.ts";
 import { formatResourceAddress, formatResourceLabel } from "../utils/address-utils.ts";
 import {
-	commitAutomaticVersion,
-	type PreparedAutomaticVersion,
-	prepareAutomaticVersion,
-	readVersionSource,
-} from "../versioning/local-git.ts";
+	commitPreparedProjectVersion,
+	type PreparedProjectVersion,
+	prepareProjectVersion,
+	readProjectVersionSource,
+	releasePreparedProjectVersion,
+} from "../versioning/project-versions.ts";
 
 type ApplyPromptKind = "combined_drift" | "remote_drift" | "local_change" | "planned_change";
 
@@ -21,22 +22,6 @@ function classifyApplyPrompt(actions: PlannedAction[]): ApplyPromptKind {
 	if (actions.some((a) => a.driftKind === "remote")) return "remote_drift";
 	if (actions.some((a) => a.driftKind === "local")) return "local_change";
 	return "planned_change";
-}
-
-export function assertCiApplyPolicy(actions: PlannedAction[]): void {
-	const deletes = actions.filter((action) => action.action === "delete");
-	if (deletes.length > 0) {
-		throw new UserError(
-			`CI policy blocked ${deletes.length} delete action(s). Review the plan and apply this destructive change through an explicitly approved workflow.`,
-		);
-	}
-
-	const drifted = actions.filter((action) => action.driftKind === "remote" || action.driftKind === "both");
-	if (drifted.length > 0) {
-		throw new UserError(
-			`CI policy blocked ${drifted.length} action(s) with remote drift. Review the remote changes before deciding whether YAML should overwrite them.`,
-		);
-	}
 }
 
 // Confirm callback for the SDK destructive policy (policy="prompt").
@@ -108,19 +93,12 @@ async function confirmDrift(actions: PlannedAction[], file: string): Promise<boo
 export async function applyCommand(options: {
 	file: string;
 	yes?: boolean;
-	ci?: boolean;
 	provider?: string;
 	refresh?: boolean;
 	refreshOnly?: boolean;
 	concurrency?: number;
 }) {
-	if (options.ci && options.yes) {
-		throw new UserError("--ci cannot be combined with --yes.");
-	}
-	if (options.ci && options.refresh === false) {
-		throw new UserError("--ci requires remote state refresh and cannot be combined with --refresh false.");
-	}
-	const versionSource = await readVersionSource(options.file);
+	const versionSource = await readProjectVersionSource(options.file);
 	const ctx = await buildCliRuntime(options.file);
 	assertProviderConfigured(ctx, options.provider);
 
@@ -138,7 +116,7 @@ export async function applyCommand(options: {
 	const actionable = plan.actions.filter((a) => a.action !== "no-op");
 	if (actionable.length === 0) {
 		if (!options.refreshOnly) {
-			const preparedVersion = await prepareAutomaticVersion(ctx.configPath, versionSource.source);
+			const preparedVersion = await prepareProjectVersion(ctx.configPath, versionSource.source);
 			await commitSuccessfulApplyVersion(preparedVersion);
 		}
 		log.success("No changes. Infrastructure is up-to-date.");
@@ -148,8 +126,6 @@ export async function applyCommand(options: {
 	const creates = actionable.filter((a) => a.action === "create");
 	const updates = actionable.filter((a) => a.action === "update");
 	const deletes = planned.destructiveActions;
-	if (options.ci) assertCiApplyPolicy(actionable);
-
 	console.log(
 		`\n${chalk.green(`${creates.length} to create`)}, ${chalk.yellow(`${updates.length} to update`)}, ${chalk.red(`${deletes.length} to destroy`)}\n`,
 	);
@@ -177,7 +153,7 @@ export async function applyCommand(options: {
 	}
 
 	const destructiveDecision = await decideDestructive(deletes, {
-		policy: options.yes || options.ci ? "force" : "prompt",
+		policy: options.yes ? "force" : "prompt",
 		confirm: confirmDestroy,
 	});
 	if (destructiveDecision !== "proceed") {
@@ -187,7 +163,7 @@ export async function applyCommand(options: {
 		return;
 	}
 
-	if (!options.yes && !options.ci && deletes.length === 0) {
+	if (!options.yes && deletes.length === 0) {
 		const shouldApply = await confirmDrift(actionable, options.file);
 		if (!shouldApply) {
 			p.cancel("Apply cancelled. No remote resources were changed.", {
@@ -197,34 +173,41 @@ export async function applyCommand(options: {
 		}
 	}
 
-	const preparedVersion = await prepareAutomaticVersion(ctx.configPath, versionSource.source);
+	const preparedVersion = await prepareProjectVersion(ctx.configPath, versionSource.source);
 
 	const s = p.spinner({ output: process.stderr });
 	s.start("Applying changes...");
 
-	const result = await executePlannedProject(planned, {
-		onFeedback: renderRuntimeFeedback,
-		policy: "force",
-		concurrency: options.concurrency,
-	});
+	let versionCommitted = false;
+	try {
+		const result = await executePlannedProject(planned, {
+			onFeedback: renderRuntimeFeedback,
+			policy: "force",
+			concurrency: options.concurrency,
+		});
 
-	const succeeded = result.results.filter((r) => r.status === "success").length;
-	const failed = result.results.filter((r) => r.status === "failed").length;
-	const skipped = result.results.filter((r) => r.status === "skipped").length;
+		const succeeded = result.results.filter((r) => r.status === "success").length;
+		const failed = result.results.filter((r) => r.status === "failed").length;
+		const skipped = result.results.filter((r) => r.status === "skipped").length;
 
-	s.stop("Apply finished.");
+		s.stop("Apply finished.");
 
-	if (failed > 0 || skipped > 0) {
-		p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, { output: process.stderr });
-		throw new UserError(failed > 0 ? "Apply failed." : "Apply incomplete: one or more actions were skipped.");
-	} else {
+		if (failed > 0 || skipped > 0) {
+			p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, {
+				output: process.stderr,
+			});
+			throw new UserError(failed > 0 ? "Apply failed." : "Apply incomplete: one or more actions were skipped.");
+		}
 		await commitSuccessfulApplyVersion(preparedVersion);
+		versionCommitted = true;
 		p.log.success(`Apply complete! ${succeeded} actions executed successfully.`, { output: process.stderr });
+	} finally {
+		if (!versionCommitted) await releasePreparedProjectVersion(preparedVersion);
 	}
 }
 
-async function commitSuccessfulApplyVersion(prepared: PreparedAutomaticVersion | null): Promise<void> {
+async function commitSuccessfulApplyVersion(prepared: PreparedProjectVersion | null): Promise<void> {
 	if (!prepared) return;
-	const version = await commitAutomaticVersion(prepared);
-	if (version) log.success(`Created local version ${version.short_commit} (${version.message}).`);
+	const version = await commitPreparedProjectVersion(prepared);
+	if (version) log.success(`Created local version ${version.short_version} (${version.message}).`);
 }
