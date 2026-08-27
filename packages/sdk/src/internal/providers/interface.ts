@@ -1,6 +1,7 @@
 import type {
 	AgentDecl,
 	ChannelDecl,
+	CredentialDecl,
 	DefaultMemoryStoreDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
@@ -31,6 +32,7 @@ import type {
 	SkillVersionInfo,
 	SkillVersionListOptions,
 	SkillVersionPage,
+	VaultCredentialInfo,
 	VaultListOptions,
 	VaultPage,
 } from "../types/managed-api.ts";
@@ -244,6 +246,8 @@ export interface ProviderAdapter {
 
 	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
 	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
+	createCredential?(vaultId: string, credential: CredentialDecl): Promise<RemoteResource>;
+	listCredentials?(vaultId: string): Promise<VaultCredentialInfo[]>;
 
 	createSkill(name: string, decl: SkillDecl, files: SkillFile[], mode?: ProviderResourceMode): Promise<RemoteResource>;
 	updateSkill(

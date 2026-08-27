@@ -55,7 +55,7 @@ export function mapCredential(cred: CredentialDecl): unknown {
 	// Bailian's credentials API currently only accepts `environment_variable`
 	// authType; `static_bearer` is rejected with CREDENTIAL_AUTH_TYPE_ERROR.
 	if (cred.type === "environment_variable") {
-		return {
+		const body: Record<string, unknown> = {
 			auth: {
 				type: "environment_variable",
 				secret_name: cred.secret_name,
@@ -64,8 +64,10 @@ export function mapCredential(cred: CredentialDecl): unknown {
 			},
 			display_name: cred.name,
 		};
+		if (cred.metadata) body.metadata = cred.metadata;
+		return body;
 	}
-	return {
+	const body: Record<string, unknown> = {
 		auth: {
 			type: cred.type,
 			token: cred.access_token,
@@ -73,6 +75,8 @@ export function mapCredential(cred: CredentialDecl): unknown {
 		},
 		display_name: cred.name,
 	};
+	if (cred.metadata) body.metadata = cred.metadata;
+	return body;
 }
 
 // --- Reverse mapping (remote -> agents.yaml decl), used by `agents sync` ---
@@ -91,6 +95,7 @@ export function credToDecl(raw: Record<string, unknown>, vaultName: string): Cre
 		return {
 			name,
 			type: "static_bearer",
+			metadata: stripAgentsMetadata(raw.metadata),
 			mcp_server_url: (auth.mcp_server_url as string) ?? "",
 			access_token: placeholder,
 		};
@@ -101,6 +106,7 @@ export function credToDecl(raw: Record<string, unknown>, vaultName: string): Cre
 	return {
 		name,
 		type: "environment_variable",
+		metadata: stripAgentsMetadata(raw.metadata),
 		secret_name: (auth.secret_name as string) ?? name,
 		secret_value: placeholder,
 		networking: networking ?? { type: "unrestricted" },
@@ -342,7 +348,7 @@ export function mapDeployment(
 	if (refs.agent_version !== undefined) agent.version = refs.agent_version;
 
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		agent,
 		environment_id: refs.environment_id,
 		initial_events: mapMessageEvents(decl.initial_events),

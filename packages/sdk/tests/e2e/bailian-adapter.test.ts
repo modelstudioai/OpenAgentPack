@@ -1226,6 +1226,7 @@ describe("BailianAdapter e2e", () => {
 		const staticCred = {
 			name: "token",
 			type: "static_bearer" as const,
+			metadata: { owner: "cli" },
 			mcp_server_url: "https://example.com/mcp",
 			access_token: "tok-123",
 		};
@@ -1245,6 +1246,7 @@ describe("BailianAdapter e2e", () => {
 					mcp_server_url: "https://example.com/mcp",
 				},
 				display_name: "token",
+				metadata: { owner: "cli" },
 			});
 			expect(result.id).toBe("vcrd_1");
 		});

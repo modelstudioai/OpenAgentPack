@@ -42,6 +42,7 @@ import type {
 	SkillVersionInfo,
 	SkillVersionListOptions,
 	SkillVersionPage,
+	VaultCredentialInfo,
 	VaultListOptions,
 	VaultPage,
 } from "../../types/managed-api.ts";
@@ -622,9 +623,25 @@ export class BailianAdapter implements ProviderAdapter {
 		return toRemoteResource(res);
 	}
 
-	async listCredentials(vaultId: string): Promise<RemoteResource[]> {
+	async listCredentials(vaultId: string): Promise<VaultCredentialInfo[]> {
 		const all = await this.client.getAllPaged(`/vaults/${vaultId}/credentials`);
-		return all.map(toRemoteResource);
+		return all.map((raw) => {
+			const auth = (raw.auth ?? {}) as Record<string, unknown>;
+			const networking = auth.networking as Record<string, unknown> | undefined;
+			const metadata = raw.metadata as Record<string, unknown> | undefined;
+			return {
+				id: raw.id as string,
+				display_name: (raw.display_name as string) ?? (raw.id as string),
+				auth_type: (auth.type as string) ?? "",
+				secret_name: auth.secret_name as string | undefined,
+				networking_type: networking?.type as string | undefined,
+				metadata: metadata
+					? Object.fromEntries(
+							Object.entries(metadata).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+						)
+					: undefined,
+			};
+		});
 	}
 
 	async getCredential(vaultId: string, credentialId: string): Promise<Record<string, unknown>> {

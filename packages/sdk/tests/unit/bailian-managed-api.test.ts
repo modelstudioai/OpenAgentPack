@@ -232,6 +232,12 @@ describe("Bailian session API additions", () => {
 
 test("operation capabilities distinguish Managed Agents Thread from deprecated Assistant Thread", () => {
 	const capabilities = getManagedAgentProviderCapabilities("bailian");
+	expect(capabilities.operations["agent.create"]?.supported).toBe(true);
+	expect(capabilities.operations["environment.create"]?.supported).toBe(true);
+	expect(capabilities.operations["skill.create"]?.supported).toBe(true);
+	expect(capabilities.operations["vault.create"]?.supported).toBe(true);
+	expect(capabilities.operations["vault.credential.create"]?.supported).toBe(true);
+	expect(capabilities.operations["deployment.create"]?.supported).toBe(true);
 	expect(capabilities.operations["session.event.list"]?.supported).toBe(true);
 	expect(capabilities.operations["session_thread.list"]?.supported).toBe(false);
 	expect(capabilities.operations["model.list"]?.supported).toBe(false);

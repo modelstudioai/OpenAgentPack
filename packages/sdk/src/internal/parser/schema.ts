@@ -49,6 +49,7 @@ const coerceString = z.union([z.string(), z.number()]).transform(String);
 const staticBearerCredentialSchema = z.object({
 	name: z.string(),
 	type: z.literal("static_bearer"),
+	metadata: z.record(z.string(), z.string()).optional(),
 	mcp_server_url: z.string(),
 	access_token: coerceString,
 	protocol: z.enum(["sse", "streamable_http"]).optional(),
@@ -57,6 +58,7 @@ const staticBearerCredentialSchema = z.object({
 const environmentVariableCredentialSchema = z.object({
 	name: z.string(),
 	type: z.literal("environment_variable"),
+	metadata: z.record(z.string(), z.string()).optional(),
 	secret_name: z.string(),
 	secret_value: coerceString,
 	networking: z.object({ type: z.enum(["unrestricted", "limited"]) }).optional(),
@@ -337,6 +339,7 @@ const scheduleSchema = z.object({
 });
 
 const deploymentSchema = z.object({
+	name: z.string().optional(),
 	agent: z.string(),
 	agent_version: z.number().int().optional(),
 	environment: z.string().optional(),

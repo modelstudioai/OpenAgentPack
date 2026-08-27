@@ -33,6 +33,15 @@ export interface VaultListOptions extends CursorListOptions {
 
 export type VaultPage = CursorPage<CloudVault>;
 
+export interface VaultCredentialInfo {
+	id: string;
+	display_name: string;
+	auth_type: string;
+	secret_name?: string;
+	networking_type?: string;
+	metadata?: Record<string, string>;
+}
+
 export interface SkillListOptions extends CursorListOptions {
 	source?: "custom" | "official";
 }

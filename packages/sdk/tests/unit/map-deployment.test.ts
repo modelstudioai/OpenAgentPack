@@ -408,6 +408,7 @@ describe("Bailian mapDeployment", () => {
 
 	test("full decl produces a native deployment body with object agent", () => {
 		const decl: DeploymentDecl = {
+			name: "Daily Report",
 			agent: "researcher",
 			agent_version: 3,
 			description: "Daily",
@@ -435,7 +436,7 @@ describe("Bailian mapDeployment", () => {
 		const uploaded = new Map([["./report-template.md", "file_uploaded"]]);
 		const body = mapBailianDeployment("daily-report", decl, fullRefs(), "myproj", uploaded) as Record<string, unknown>;
 
-		expect(body.name).toBe("daily-report");
+		expect(body.name).toBe("Daily Report");
 		expect(body.agent).toEqual({ id: "agent_123", version: 3 });
 		expect(body.environment_id).toBe("env_456");
 		expect(body.vault_ids).toEqual(["vault_a"]);

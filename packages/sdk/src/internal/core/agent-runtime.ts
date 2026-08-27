@@ -30,7 +30,7 @@ import {
 	planProjectContext,
 	type ResourceExecutionResult,
 	type ResourcePlanResult,
-	replaceResourcePlan,
+	type ResourceSyncMode,
 	selectDestructive,
 } from "./resource-runtime.ts";
 
@@ -61,7 +61,7 @@ export interface AgentResourcePlanOptions {
 	mode?: AgentResourceSyncMode;
 }
 
-export type AgentResourceSyncMode = "reconcile" | "create-only";
+export type AgentResourceSyncMode = ResourceSyncMode;
 
 export interface AgentResourceSyncOptions extends AgentResourcePlanOptions {
 	policy?: DestructivePolicy;
@@ -251,29 +251,15 @@ export async function planAgentResources(
 ): Promise<AgentResourcePlan> {
 	const agent = getAgent(ctx, agentId);
 	const rootAddress = collectAgentAddresses(ctx.config, agent.agentName, agent.provider)[0]!;
-	let planned = await planProjectContext(ctx, {
+	const planned = await planProjectContext(ctx, {
 		provider: agent.provider,
 		scope: { roots: [rootAddress] },
+		mode: options.mode,
 		refresh: options.refresh,
 		quiet: options.quiet ?? true,
 	});
 	const actions = planned.plan.actions;
-	let diagnostics = planned.plan.diagnostics;
-	if (options.mode === "create-only") {
-		const blockedReason = getCreateOnlyBlockedReason(planned, rootAddress);
-		if (blockedReason) {
-			diagnostics = [
-				...diagnostics,
-				{
-					severity: "error",
-					code: "agent.create_only.blocked",
-					message: blockedReason,
-					resource: rootAddress,
-				},
-			];
-			planned = replaceResourcePlan(planned, { ...planned.plan, diagnostics });
-		}
-	}
+	const diagnostics = planned.plan.diagnostics;
 	return {
 		agentId,
 		provider: agent.provider,
@@ -384,29 +370,6 @@ export async function syncAgentResourcesWithStateBackend(
 	options: AgentResourceSyncOptions = {},
 ): Promise<AgentSyncRun> {
 	return writeProjectRuntime(input, (ctx) => syncAgentResources(ctx, agentId, options));
-}
-
-function getCreateOnlyBlockedReason(planned: ResourcePlanResult, rootAddress: ResourceAddress): string | undefined {
-	const refreshError = planned.refreshResult?.errors[0];
-	if (refreshError) {
-		return `Cannot verify Agent dependencies because refresh failed for ${addressKey(refreshError.resource.address)}: ${refreshError.error}`;
-	}
-
-	const rootKey = addressKey(rootAddress);
-	const rootAction = planned.plan.actions.find((action) => addressKey(action.address) === rootKey);
-	if (!rootAction) return `Scoped plan did not contain the target Agent ${rootKey}.`;
-	if (rootAction.action !== "create") {
-		return `Target Agent ${rootKey} must be a new resource, but the scoped plan requires '${rootAction.action}'.`;
-	}
-
-	const dependencyChanges = planned.plan.actions.filter(
-		(action) => addressKey(action.address) !== rootKey && action.action !== "no-op",
-	);
-	if (dependencyChanges.length > 0) {
-		const labels = dependencyChanges.map((action) => `${addressKey(action.address)} (${action.action})`).join(", ");
-		return `Agent create requires every declared dependency to be up-to-date. Reconcile these resources first: ${labels}.`;
-	}
-	return undefined;
 }
 
 export function toAgentSyncResults(execution: ResourceExecutionResult): AgentSyncResult[] {

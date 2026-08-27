@@ -293,7 +293,7 @@ describe("agent runtime", () => {
 		});
 
 		expect(run.status).toBe("blocked");
-		expect(run.error).toMatch(/Reconcile these resources first.*environment\.bailian-cli/);
+		expect(run.error).toMatch(/Reconcile first.*environment\.bailian-cli/);
 		expect(run.results).toEqual([]);
 	});
 

@@ -103,6 +103,7 @@ export type CredentialType = "static_bearer" | "environment_variable";
 export interface CredentialDecl {
 	name: string;
 	type: CredentialType;
+	metadata?: Record<string, string>;
 	// static_bearer
 	mcp_server_url?: string;
 	access_token?: string;
@@ -257,6 +258,7 @@ export interface MultiagentDecl {
 // --- Deployment ---
 
 export interface DeploymentDecl {
+	name?: string;
 	agent: string;
 	agent_version?: number;
 	environment?: string;

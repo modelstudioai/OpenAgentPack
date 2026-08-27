@@ -23,7 +23,15 @@ export {
 	writeProjectRuntime,
 } from "./internal/core/project-runtime.ts";
 
-export type { ResolvedProjectConfig } from "./internal/types/config.ts";
+export type {
+	CredentialDecl,
+	DeploymentDecl,
+	EnvironmentDecl,
+	ProjectConfig,
+	ResolvedProjectConfig,
+	SkillDecl,
+	VaultDecl,
+} from "./internal/types/config.ts";
 export type { LoadedProjectConfig } from "./internal/parser/index.ts";
 export {
 	resolveProjectConfig,
@@ -46,6 +54,7 @@ export type {
 	ResourcePlanScope,
 	ResourceRefreshResult,
 	ResourceRuntimeOptions,
+	ResourceSyncMode,
 	ResourceSyncRun,
 } from "./internal/core/resource-runtime.ts";
 
@@ -142,7 +151,20 @@ export type {
 	SkillVersionPage,
 	VaultListOptions,
 	VaultPage,
+	VaultCredentialInfo,
 } from "./internal/types/managed-api.ts";
+
+export {
+	createVaultCredential,
+	createVaultCredentialWithStateBackend,
+	planVaultCredentialCreate,
+	planVaultCredentialCreateWithStateBackend,
+} from "./internal/core/vault-credential-runtime.ts";
+export type {
+	VaultCredentialCreateOptions,
+	VaultCredentialCreatePlan,
+	VaultCredentialCreateResult,
+} from "./internal/core/vault-credential-runtime.ts";
 
 export type {
 	DestroyDefaultMemoryStoreResult,
@@ -288,6 +310,8 @@ export { LocalFileStateBackend } from "./internal/state/local-file-state-backend
 export type { StateScope } from "./internal/state/backend.ts";
 
 export { extractSkillZipFiles } from "./internal/utils/normalize-skill-zip.ts";
+export { inspectSkillSource } from "./internal/core/skill-source.ts";
+export type { SkillSourceInspection } from "./internal/core/skill-source.ts";
 
 export type {
 	RuntimeFeedbackEvent,
