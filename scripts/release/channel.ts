@@ -6,7 +6,7 @@ export type ReleaseChannel = "beta" | "stable";
 export interface ReleaseIdentity {
 	channel: ReleaseChannel;
 	version: string;
-	distTag: "beta" | "latest";
+	distTag: "beta" | `beta-${string}` | "latest";
 }
 
 const root = resolve(import.meta.dirname, "../..");
@@ -31,6 +31,19 @@ export function commonReleaseVersion(versions: readonly string[]): string {
 	return unique[0];
 }
 
+/** Keep main's shared beta channel stable while isolating feature-branch snapshots. */
+export function betaDistTag(ref: string): "beta" | `beta-${string}` {
+	if (ref === "main") return "beta";
+	const slug = ref
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 64)
+		.replace(/-+$/g, "");
+	if (!slug) throw new Error(`beta release ref must contain at least one letter or number; found ${ref}`);
+	return `beta-${slug}`;
+}
+
 export function validateReleaseIdentity(channel: ReleaseChannel, ref: string, version: string): ReleaseIdentity {
 	if (channel === "stable") {
 		if (ref !== "main") throw new Error(`stable releases must run from main, not ${ref}`);
@@ -38,11 +51,10 @@ export function validateReleaseIdentity(channel: ReleaseChannel, ref: string, ve
 		return { channel, version, distTag: "latest" };
 	}
 
-	if (ref !== "main") throw new Error(`beta snapshots must run from main, not ${ref}`);
 	if (!betaSnapshotVersion.test(version)) {
 		throw new Error(`beta snapshot version has an unexpected format: ${version}`);
 	}
-	return { channel, version, distTag: "beta" };
+	return { channel, version, distTag: betaDistTag(ref) };
 }
 
 function option(name: string): string | undefined {

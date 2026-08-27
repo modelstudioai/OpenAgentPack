@@ -35,12 +35,14 @@ Choose the SemVer impact and describe the change for the generated changelog. On
 ## Publish a beta
 
 1. In GitHub, open **Actions → Publish npm → Run workflow**.
-2. Keep the workflow branch set to `main`, choose `beta`, type `PUBLISH`, and run it.
+2. Select the exact branch to publish, choose `beta`, type `PUBLISH`, and run it.
 3. Approve the `npm-release` Environment deployment after reviewing the commit, generated version, and job summary.
 
-The workflow derives an immutable version from the GitHub Actions run ID and current `main` commit without changing Git history, for example `0.0.0-beta.run-123456789.sha-a1b2c3d`. It publishes with the npm `beta` dist-tag and creates the matching immutable Git tag. It then installs that exact version from the public npm registry on Linux, Windows, and macOS under Node.js 22 and 24. The GitHub prerelease is created only after all six consumer jobs pass.
+The workflow derives an immutable version from the selected commit without changing Git history, for example `0.4.0-beta-a1b2c3d-20260827`, and creates the matching immutable Git tag. A beta from `main` publishes to npm's shared `beta` dist-tag. A beta from another branch publishes to a branch-scoped tag such as `beta-feat-managed-agent-api-commands`, so it cannot replace the shared `beta` channel. The job summary prints the exact tag. It then installs that exact version from the public npm registry on Linux, Windows, and macOS under Node.js 22 and 24. The GitHub prerelease is created only after all six consumer jobs pass.
 
-For another beta, merge fixes into `main` and run **Publish npm** again. Every run gets a new Actions-run-and-commit-derived version; no beta branch is created and changesets are not consumed.
+For another beta, run **Publish npm** from the updated branch. Every new commit gets a new immutable snapshot version; changesets are not consumed. If the `npm-release` Environment has deployment-branch restrictions, its allowed branch patterns must include the selected beta branch while required reviewers remain enabled.
+
+Install a branch beta with its printed dist-tag, for example `npm install @openagentpack/sdk@beta-feat-managed-agent-api-commands`. Pinning the exact generated version is the most reproducible option.
 
 ## Publish a stable release
 
@@ -91,7 +93,7 @@ npm install --global @openagentpack/cli
 npm install --global @openagentpack/cli@beta
 
 # Pin or test an exact version without a global install
-npx @openagentpack/cli@0.0.0-beta.run-123456789.sha-a1b2c3d --version
+npx @openagentpack/cli@0.4.0-beta-a1b2c3d-20260827 --version
 
 # SDK
 npm install @openagentpack/sdk
@@ -106,4 +108,4 @@ After installing the CLI, run `agents --help`. A beta user returns to stable wit
 - If all packages published but a post-release consumer job fails, keep the immutable tag, do not unpublish or move the tag, and do not create the GitHub Release. Fix the compatibility issue and publish a new patch version; npm package versions cannot be overwritten.
 - Registry visibility is retried for five minutes before it is classified as a release failure. Retry the same workflow only when npm propagation, rather than package compatibility, was the cause.
 - If a version tag already points at another commit, stop. Tags are immutable; investigate the repository history instead of moving or deleting the tag.
-- Beta publishing must be manually dispatched from `main`; the release identity check rejects other branches.
+- Beta publishing may be manually dispatched from any branch; non-`main` branches receive an isolated npm dist-tag. Stable publishing and npm's `latest` tag remain restricted to `main`.

@@ -12,13 +12,18 @@ describe("release channel guard", () => {
 		expect(() => validateReleaseIdentity("stable", "main", "1.2.3-beta.0")).toThrow("X.Y.Z");
 	});
 
-	test("accepts deterministic beta snapshots only on main", () => {
+	test("accepts deterministic beta snapshots from main and feature branches", () => {
 		expect(validateReleaseIdentity("beta", "main", "1.2.3-beta-a1b2c3d-20260720")).toEqual({
 			channel: "beta",
 			version: "1.2.3-beta-a1b2c3d-20260720",
 			distTag: "beta",
 		});
-		expect(() => validateReleaseIdentity("beta", "feature/test", "1.2.3-beta-a1b2c3d-20260720")).toThrow("main");
+		expect(validateReleaseIdentity("beta", "feat/Managed_Agent.API", "1.2.3-beta-a1b2c3d-20260720")).toEqual({
+			channel: "beta",
+			version: "1.2.3-beta-a1b2c3d-20260720",
+			distTag: "beta-feat-managed-agent-api",
+		});
+		expect(() => validateReleaseIdentity("beta", "///", "1.2.3-beta-a1b2c3d-20260720")).toThrow("letter or number");
 		expect(() => validateReleaseIdentity("beta", "main", "1.2.3-beta.0")).toThrow("unexpected format");
 	});
 
