@@ -231,7 +231,103 @@ describe("agent runtime", () => {
 		expect(plan.provider).toBe("bailian");
 	});
 
-	test("agent sync blocks destructive actions by default", async () => {
+	test("scoped Agent planning excludes unrelated validation errors", async () => {
+		const runtime = ctx(
+			baseConfig({
+				agents: {
+					"bailian-cli": baseConfig().agents!["bailian-cli"]!,
+					unrelated: {
+						model: "qwen3",
+						instructions: "ignore",
+						environment: "missing-unrelated-environment",
+					},
+				},
+			}),
+			state([]),
+		);
+
+		const plan = await planAgentResources(runtime, "bailian-cli", { refresh: false });
+
+		expect(plan.diagnostics.some((diagnostic) => diagnostic.message.includes("missing-unrelated"))).toBe(false);
+	});
+
+	test("scoped Agent refresh never reads unrelated state resources", async () => {
+		const config = baseConfig({
+			environments: {
+				"bailian-cli": { config: { type: "cloud" } },
+				unrelated: { config: { type: "cloud" } },
+			},
+			agents: {
+				"bailian-cli": baseConfig().agents!["bailian-cli"]!,
+				unrelated: { model: "qwen3", instructions: "ignore", environment: "unrelated" },
+			},
+		});
+		const runtime = ctx(
+			config,
+			await matchingState(config, [
+				{ type: "agent", name: "bailian-cli", provider: "bailian" },
+				{ type: "environment", name: "bailian-cli", provider: "bailian" },
+				{ type: "agent", name: "unrelated", provider: "bailian" },
+				{ type: "environment", name: "unrelated", provider: "bailian" },
+			]),
+		);
+		const reads: string[] = [];
+		runtime.providers.set("bailian", {
+			name: "bailian",
+			getDriftSupport: () => "existence",
+			findResource: async (type: string, name: string, remoteId: string) => {
+				reads.push(`${type}.${name}`);
+				return { id: remoteId, type };
+			},
+		} as never);
+
+		await planAgentResources(runtime, "bailian-cli", { refresh: true });
+
+		expect(reads.sort()).toEqual(["agent.bailian-cli", "environment.bailian-cli"]);
+	});
+
+	test("create-only blocks when a dependency is not already reconciled", async () => {
+		const run = await syncAgentResources(ctx(baseConfig(), state([])), "bailian-cli", {
+			refresh: false,
+			mode: "create-only",
+		});
+
+		expect(run.status).toBe("blocked");
+		expect(run.error).toMatch(/Reconcile these resources first.*environment\.bailian-cli/);
+		expect(run.results).toEqual([]);
+	});
+
+	test("create-only creates only the target Agent when dependencies are no-op", async () => {
+		const config = baseConfig();
+		const runtime = ctx(
+			config,
+			await matchingState(config, [{ type: "environment", name: "bailian-cli", provider: "bailian" }]),
+		);
+		const created: string[] = [];
+		runtime.providers.set("bailian", {
+			name: "bailian",
+			createAgent: async (name: string) => {
+				created.push(name);
+				return { id: "agent_created", type: "agent" };
+			},
+		} as never);
+
+		const run = await syncAgentResources(runtime, "bailian-cli", {
+			refresh: false,
+			mode: "create-only",
+		});
+
+		expect(run.status).toBe("completed");
+		expect(created).toEqual(["bailian-cli"]);
+		expect(run.results).toHaveLength(1);
+		expect(run.results[0]?.action.address).toEqual({
+			type: "agent",
+			name: "bailian-cli",
+			provider: "bailian",
+		});
+	});
+
+	test("agent sync never deletes stale state outside the dependency closure", async () => {
 		const c = baseConfig({
 			environments: {},
 			agents: {
@@ -250,11 +346,11 @@ describe("agent runtime", () => {
 
 		expect(planned.plan.actions.some((action) => action.action === "delete")).toBe(true);
 		expect(run.status).toBe("blocked");
-		expect(run.destructiveActions).toHaveLength(1);
+		expect(run.destructiveActions).toHaveLength(0);
 		expect(run.results).toEqual([]);
 	});
 
-	test("agent sync with policy=prompt defers to the callback and makes no execution when declined", async () => {
+	test("agent sync does not prompt for stale state outside the dependency closure", async () => {
 		const c = baseConfig({
 			environments: {},
 			agents: {
@@ -276,7 +372,7 @@ describe("agent runtime", () => {
 			},
 		});
 
-		expect(confirmed).toBe(true);
+		expect(confirmed).toBe(false);
 		expect(run.status).toBe("blocked");
 		expect(run.results).toEqual([]);
 	});

@@ -34,6 +34,7 @@ export {
 	decideDestructive,
 	executePlannedProject,
 	importResource,
+	planProjectWithStateBackend,
 	planProjectContext,
 	syncProjectResourcesWithStateBackend,
 } from "./internal/core/resource-runtime.ts";
@@ -42,6 +43,7 @@ export type {
 	ResourceActionResult,
 	ResourceExecutionResult,
 	ResourcePlanResult,
+	ResourcePlanScope,
 	ResourceRefreshResult,
 	ResourceRuntimeOptions,
 	ResourceSyncRun,
@@ -209,7 +211,15 @@ export {
 	listCloudAgents,
 	listCloudEnvironments,
 	listCloudVaults,
+	planAgentResources,
+	planAgentResourcesWithStateBackend,
 	syncAgentResourcesWithStateBackend,
+} from "./internal/core/agent-runtime.ts";
+export type {
+	AgentResourcePlan,
+	AgentResourcePlanOptions,
+	AgentResourceSyncMode,
+	AgentResourceSyncOptions,
 } from "./internal/core/agent-runtime.ts";
 
 export type { CollectedSessionEvents } from "./internal/core/session-runtime.ts";

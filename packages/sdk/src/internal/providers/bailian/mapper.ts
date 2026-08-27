@@ -194,6 +194,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	const modelValue = typeof model === "object" && model ? model.id : model;
 
 	return compactDeep({
+		name: raw.name as string | undefined,
 		description: raw.description as string | undefined,
 		model: modelValue,
 		instructions: raw.system as string | undefined,
@@ -222,7 +223,7 @@ export function mapAgent(
 	}
 
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		model: { id: modelId },
 		system: decl.instructions,
 	};

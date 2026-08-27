@@ -1,4 +1,5 @@
 import { UserError } from "../errors.ts";
+import { buildDependencyGraph, collectDependencyClosure } from "../graph/dependency.ts";
 import type { RemoteResource } from "../providers/interface.ts";
 import type { ResourceCrudAdapter } from "../providers/resource-workflow.ts";
 import { buildSessionBindings, resolveSessionProvider } from "../session/session-manager.ts";
@@ -21,7 +22,7 @@ import type { ResourceAddress } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
-import { getRuntimeProvider, writeProjectRuntime } from "./project-runtime.ts";
+import { getRuntimeProvider, readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 import {
 	type DestructivePolicy,
 	decideDestructive,
@@ -57,7 +58,10 @@ export interface AgentResourcePlan {
 export interface AgentResourcePlanOptions {
 	refresh?: boolean;
 	quiet?: boolean;
+	mode?: AgentResourceSyncMode;
 }
+
+export type AgentResourceSyncMode = "reconcile" | "create-only";
 
 export interface AgentResourceSyncOptions extends AgentResourcePlanOptions {
 	policy?: DestructivePolicy;
@@ -246,20 +250,46 @@ export async function planAgentResources(
 	options: AgentResourcePlanOptions = {},
 ): Promise<AgentResourcePlan> {
 	const agent = getAgent(ctx, agentId);
-	const planned = await planProjectContext(ctx, {
+	const rootAddress = collectAgentAddresses(ctx.config, agent.agentName, agent.provider)[0]!;
+	let planned = await planProjectContext(ctx, {
 		provider: agent.provider,
+		scope: { roots: [rootAddress] },
 		refresh: options.refresh,
 		quiet: options.quiet ?? true,
 	});
-	const actions = filterAgentActions(ctx, agent, planned.plan);
+	const actions = planned.plan.actions;
+	let diagnostics = planned.plan.diagnostics;
+	if (options.mode === "create-only") {
+		const blockedReason = getCreateOnlyBlockedReason(planned, rootAddress);
+		if (blockedReason) {
+			diagnostics = [
+				...diagnostics,
+				{
+					severity: "error",
+					code: "agent.create_only.blocked",
+					message: blockedReason,
+					resource: rootAddress,
+				},
+			];
+			planned = replaceResourcePlan(planned, { ...planned.plan, diagnostics });
+		}
+	}
 	return {
 		agentId,
 		provider: agent.provider,
 		actions,
-		diagnostics: filterAgentDiagnostics(ctx, agent, planned.plan),
+		diagnostics,
 		destructiveActions: selectDestructive(actions),
 		planned,
 	};
+}
+
+export async function planAgentResourcesWithStateBackend(
+	input: BackendRuntimeInput,
+	agentId: string,
+	options: AgentResourcePlanOptions = {},
+): Promise<AgentResourcePlan> {
+	return readProjectRuntime(input, (ctx) => planAgentResources(ctx, agentId, options));
 }
 
 export async function syncAgentResources(
@@ -278,6 +308,7 @@ async function runAgentSync(
 	const fullPlan = await planAgentResources(ctx, agentId, {
 		refresh: options.refresh,
 		quiet: options.quiet,
+		mode: options.mode,
 	});
 	const actions = fullPlan.actions;
 	const destructiveActions = fullPlan.destructiveActions;
@@ -317,11 +348,7 @@ async function runAgentSync(
 	}
 
 	try {
-		const scopedPlan = {
-			diagnostics: fullPlan.diagnostics,
-			actions: scopePlanActions(fullPlan.planned.plan, actions),
-		};
-		const execution = await executePlannedProject(replaceResourcePlan(fullPlan.planned, scopedPlan), {
+		const execution = await executePlannedProject(fullPlan.planned, {
 			policy: "force",
 		});
 		const results = toAgentSyncResults(execution);
@@ -357,6 +384,29 @@ export async function syncAgentResourcesWithStateBackend(
 	options: AgentResourceSyncOptions = {},
 ): Promise<AgentSyncRun> {
 	return writeProjectRuntime(input, (ctx) => syncAgentResources(ctx, agentId, options));
+}
+
+function getCreateOnlyBlockedReason(planned: ResourcePlanResult, rootAddress: ResourceAddress): string | undefined {
+	const refreshError = planned.refreshResult?.errors[0];
+	if (refreshError) {
+		return `Cannot verify Agent dependencies because refresh failed for ${addressKey(refreshError.resource.address)}: ${refreshError.error}`;
+	}
+
+	const rootKey = addressKey(rootAddress);
+	const rootAction = planned.plan.actions.find((action) => addressKey(action.address) === rootKey);
+	if (!rootAction) return `Scoped plan did not contain the target Agent ${rootKey}.`;
+	if (rootAction.action !== "create") {
+		return `Target Agent ${rootKey} must be a new resource, but the scoped plan requires '${rootAction.action}'.`;
+	}
+
+	const dependencyChanges = planned.plan.actions.filter(
+		(action) => addressKey(action.address) !== rootKey && action.action !== "no-op",
+	);
+	if (dependencyChanges.length > 0) {
+		const labels = dependencyChanges.map((action) => `${addressKey(action.address)} (${action.action})`).join(", ");
+		return `Agent create requires every declared dependency to be up-to-date. Reconcile these resources first: ${labels}.`;
+	}
+	return undefined;
 }
 
 export function toAgentSyncResults(execution: ResourceExecutionResult): AgentSyncResult[] {
@@ -443,36 +493,6 @@ export function getAgentReadinessFromPlan(
 	};
 }
 
-function filterAgentActions(ctx: ProjectRuntimeContext, agent: AgentDefinition, plan: ExecutionPlan): PlannedAction[] {
-	const relevantKeys = agentAddressKeys(ctx, agent);
-	return plan.actions.filter(
-		(action) =>
-			relevantKeys.has(addressKey(action.address)) ||
-			action.dependencies.some((dependency) => relevantKeys.has(addressKey(dependency))),
-	);
-}
-
-function filterAgentDiagnostics(ctx: ProjectRuntimeContext, agent: AgentDefinition, plan: ExecutionPlan): Diagnostic[] {
-	const relevantKeys = agentAddressKeys(ctx, agent);
-	return plan.diagnostics.filter(
-		(diagnostic) => !diagnostic.resource || relevantKeys.has(addressKey(diagnostic.resource)),
-	);
-}
-
-function agentAddressKeys(ctx: ProjectRuntimeContext, agent: AgentDefinition): Set<string> {
-	return new Set(collectAgentAddresses(ctx.config, agent.agentName, agent.provider).map(addressKey));
-}
-
-function scopePlanActions(fullPlan: ExecutionPlan, agentActions: PlannedAction[]): PlannedAction[] {
-	const allowedKeys = new Set(agentActions.filter((action) => action.action !== "no-op").map(actionKey));
-	return fullPlan.actions.filter((action) => action.action === "no-op" || allowedKeys.has(actionKey(action)));
-}
-
-function actionKey(action: PlannedAction): string {
-	const address = action.address;
-	return `${action.action}:${address.provider}:${address.type}:${address.name}`;
-}
-
 function isNonBlockingAgentDrift(action: PlannedAction): boolean {
 	if (action.action === "no-op") return true;
 	return action.readinessImpact === "non_blocking";
@@ -485,35 +505,13 @@ export function collectAgentAddresses(config: ProjectConfig, agentName: string, 
 	}
 	const resolvedProvider = provider ?? resolveSessionProvider(agentName, config, undefined);
 	const materialization = resolveAgentMaterialization(resolvedProvider, agent);
-	const addresses: ResourceAddress[] = [
-		{ type: materialization.resourceType, name: agentName, provider: resolvedProvider },
-	];
-
-	if (agent.environment) {
-		addresses.push({
-			type: "environment",
-			name: agent.environment,
-			provider: resolvedProvider,
-		});
-	}
-	if (agent.vault) {
-		addresses.push({ type: "vault", name: agent.vault, provider: resolvedProvider });
-	}
-	for (const name of agent.memory_stores ?? []) {
-		addresses.push({ type: "memory_store", name, provider: resolvedProvider });
-	}
-	for (const skill of agent.skills ?? []) {
-		if (typeof skill === "string") {
-			addresses.push({ type: "skill", name: skill, provider: resolvedProvider });
-		}
-	}
-	for (const subAgent of agent.multiagent?.agents ?? []) {
-		const subDecl = config.agents?.[subAgent];
-		const subType = subDecl ? resolveAgentMaterialization(resolvedProvider, subDecl).resourceType : "agent";
-		addresses.push({ type: subType, name: subAgent, provider: resolvedProvider });
-	}
-
-	return addresses;
+	const rootAddress: ResourceAddress = {
+		type: materialization.resourceType,
+		name: agentName,
+		provider: resolvedProvider,
+	};
+	const graph = buildDependencyGraph(config, [resolvedProvider]);
+	return collectDependencyClosure(graph, [rootAddress]);
 }
 
 function toAgentDefinition(config: ProjectConfig, agentName: string, agent: AgentDecl): AgentDefinition {

@@ -188,6 +188,7 @@ export class BailianAdapter implements ProviderAdapter {
 		}
 
 		return compactDeep({
+			name: raw.name,
 			description: raw.description,
 			model: normalizeBailianModel(raw.model),
 			instructions: raw.system,

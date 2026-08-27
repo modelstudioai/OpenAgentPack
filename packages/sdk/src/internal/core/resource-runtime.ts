@@ -1,5 +1,6 @@
 import { UserError } from "../errors.ts";
 import { type ExecutionResult, executePlan } from "../executor/executor.ts";
+import { buildDependencyGraph, collectDependencyClosure } from "../graph/dependency.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
 import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { buildPlan } from "../planner/planner.ts";
@@ -8,16 +9,23 @@ import { readComparableIfSupported } from "../providers/drift-support.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceAddress, ResourceState, ResourceType } from "../types/state.ts";
+import { addressKey } from "../types/state.ts";
 import { contentHash as stableContentHash } from "../utils/hash.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
 import { readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 
 export interface ResourceRuntimeOptions extends DestructiveDecisionOptions {
 	provider?: string;
+	scope?: ResourcePlanScope;
 	refresh?: boolean;
 	refreshOnly?: boolean;
 	quiet?: boolean;
 	onFeedback?: RuntimeFeedbackSink;
+}
+
+export interface ResourcePlanScope {
+	roots: ResourceAddress[];
+	includeDependencies?: boolean;
 }
 
 export interface ResourceRefreshResult {
@@ -42,6 +50,7 @@ export interface ResourcePlanResult {
 	refreshResult?: ResourceRefreshResult;
 	targetProviders?: string[];
 	destructiveActions: PlannedAction[];
+	selectedAddresses?: ResourceAddress[];
 }
 
 export type DestructivePolicy = "block" | "prompt" | "force";
@@ -164,11 +173,17 @@ export async function planProjectContext(
 	ctx: ProjectRuntimeContext,
 	options: ResourceRuntimeOptions = {},
 ): Promise<ResourcePlanResult> {
-	const targetProviders = resolveTargetProviders(options.provider);
+	let targetProviders = resolveTargetProviders(options.provider);
+	if (!targetProviders && options.scope) {
+		targetProviders = [...new Set(options.scope.roots.map((root) => root.provider))];
+	}
+	const selectedAddresses = options.scope ? resolvePlanScope(ctx, targetProviders ?? [], options.scope) : undefined;
+	const resourceKeys = selectedAddresses ? new Set(selectedAddresses.map(addressKey)) : undefined;
 	const refreshResult =
 		options.refresh !== false && ctx.state.listResources().length > 0
 			? await refreshState(ctx.state, ctx.providers, {
 					targetProviders,
+					resourceKeys,
 					config: ctx.config,
 					quiet: options.quiet ?? true,
 					onFeedback: options.onFeedback,
@@ -178,6 +193,7 @@ export async function planProjectContext(
 	const plan = await buildPlan(ctx.config, ctx.state.getStateFile(), {
 		providers: targetProviders,
 		configPath: ctx.configPath,
+		resourceAddresses: selectedAddresses,
 	});
 
 	return {
@@ -186,7 +202,32 @@ export async function planProjectContext(
 		refreshResult: toResourceRefreshResult(refreshResult),
 		targetProviders,
 		destructiveActions: selectDestructive(plan.actions),
+		selectedAddresses,
 	};
+}
+
+function resolvePlanScope(
+	ctx: ProjectRuntimeContext,
+	targetProviders: string[],
+	scope: ResourcePlanScope,
+): ResourceAddress[] {
+	if (scope.roots.length === 0) {
+		throw new UserError("Resource plan scope requires at least one root address.");
+	}
+	for (const root of scope.roots) {
+		if (!targetProviders.includes(root.provider)) {
+			throw new UserError(
+				`Scoped resource ${addressKey(root)} is outside the selected provider set: ${targetProviders.join(", ")}.`,
+			);
+		}
+	}
+	const graph = buildDependencyGraph(ctx.config, targetProviders);
+	for (const root of scope.roots) {
+		if (!graph.nodes.has(addressKey(root))) {
+			throw new UserError(`Scoped resource ${addressKey(root)} is not declared in the project config.`);
+		}
+	}
+	return scope.includeDependencies === false ? [...scope.roots] : collectDependencyClosure(graph, scope.roots);
 }
 
 export async function executePlannedProject(

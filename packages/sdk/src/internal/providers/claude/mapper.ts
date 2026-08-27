@@ -234,7 +234,7 @@ export function mapAgent(
 	}
 
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		model: modelValue,
 		system: decl.instructions,
 	};
