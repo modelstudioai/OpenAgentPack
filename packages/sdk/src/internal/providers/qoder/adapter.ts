@@ -450,7 +450,9 @@ export class QoderAdapter implements ProviderAdapter {
 		const currentMetadata = (current.metadata ?? {}) as Record<string, unknown>;
 		const metadata = { ...((body.metadata ?? {}) as Record<string, string | null>) };
 		for (const key of Object.keys(currentMetadata)) {
-			if (!key.startsWith("agents.") && !(key in metadata)) metadata[key] = null;
+			// Qoder injects created_by into environment responses but rejects it on writes,
+			// including deletion tombstones such as { created_by: null }.
+			if (key !== "created_by" && !key.startsWith("agents.") && !(key in metadata)) metadata[key] = null;
 		}
 		body.metadata = metadata;
 		const res = (await client.post(`/environments/${id}`, body)) as Record<string, unknown>;
