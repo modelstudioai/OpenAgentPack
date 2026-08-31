@@ -3,11 +3,10 @@ import { expect, test } from "bun:test";
 const appSource = await Bun.file(new URL("../src/App.tsx", import.meta.url)).text();
 const resourcesSource = await Bun.file(new URL("../src/resources/ResourcesPanel.tsx", import.meta.url)).text();
 const versionsSource = await Bun.file(new URL("../src/versions/VersionsPanel.tsx", import.meta.url)).text();
+const sourceFileDiffSource = await Bun.file(new URL("../src/versions/SourceFileDiff.tsx", import.meta.url)).text();
 
-test("project workbench is agents.yaml-driven with no Playbook or runtime model/provider override", () => {
-	expect(appSource).toContain(
-		'type WorkbenchTab = "overview" | "resources" | "changes" | "versions" | "debug" | "artifacts" | "deployments"',
-	);
+test("project workbench is directory-driven with no Playbook or runtime model/provider override", () => {
+	expect(appSource).toContain('type WorkbenchTab = "overview" | "changes" | "versions" | "debug" | "artifacts"');
 	expect(appSource).toContain("planProject(");
 	expect(appSource).toContain("applyProject(");
 	expect(appSource).toContain("projectEventSource(");
@@ -19,25 +18,29 @@ test("project workbench is agents.yaml-driven with no Playbook or runtime model/
 	expect(appSource).not.toContain("ProviderSelect");
 });
 
-test("Versions is project-scoped, explicitly enabled, automatic after Apply, and supports redacted restore", () => {
+test("Versions is project-scoped, explicitly enabled, automatic after Publish, and supports redacted restore", () => {
 	expect(appSource).toContain('{tab === "versions" && (');
-	expect(appSource).toContain("This Apply will not create a local agents.yaml version");
+	expect(appSource).toContain("This Publish will not record a directory snapshot");
 	expect(appSource).not.toContain("initializeProjectVersioning");
 	expect(appSource).toContain('addEventListener("project.mutation"');
 	expect(versionsSource).toContain("Enable Local Versions");
-	expect(versionsSource).toContain("Workbench and CLI share one local versioning switch");
-	expect(versionsSource).toContain("Successful Apply creates a local snapshot.");
+	expect(versionsSource).toContain("Workbench and CLI share one project versioning switch");
+	expect(versionsSource).toContain("Successful Publish creates a directory snapshot.");
 	expect(versionsSource).toContain("setProjectVersioning(projectRevision, !versioning.enabled)");
 	expect(versionsSource).not.toContain("Create Version");
 	expect(versionsSource).toContain("Restore to working tree");
-	expect(versionsSource).toContain("buildYamlLineDiff(preview.before_yaml, preview.after_yaml)");
+	expect(versionsSource).toContain("selected.version_id === currentVersion");
+	expect(versionsSource).toContain("Latest version baseline");
+	expect(versionsSource).toContain("selected.version_id === versioning?.head_version");
+	expect(versionsSource).toContain('direction="restore"');
+	expect(sourceFileDiffSource).toContain('type VersionFileChange = ProjectVersionPreview["changes"][number]');
 	expect(versionsSource).toContain("previewRequestGenerationRef");
 	expect(versionsSource).toContain("preview.base_revision, preview.base_head_version");
 	expect(versionsSource).toContain("Git is not required");
 	expect(versionsSource).not.toContain("git push");
 });
 
-test("Apply mutation state blocks YAML/version writes while preserving resource drafts", () => {
+test("Publish mutation state blocks source/version writes while preserving resource drafts", () => {
 	expect(appSource).toContain("writeBlockedReason={writeBlockedReason}");
 	expect(resourcesSource).toContain("this draft is preserved, but saving is temporarily disabled");
 	expect(resourcesSource).toContain("Boolean(writeBlockedReason)");
@@ -48,7 +51,7 @@ test("resource declarations require Preview before save and expose no create act
 	expect(resourcesSource).toContain("previewDeclaration(");
 	expect(resourcesSource).toContain("updateDeclaration(");
 	expect(resourcesSource).toContain("deleteDeclaration(");
-	expect(resourcesSource).toContain("Remove from agents.yaml");
+	expect(resourcesSource).toContain("Remove from project");
 	expect(resourcesSource).toContain("!preview?.can_commit || !previewIsCurrent");
 	expect(resourcesSource).not.toContain("Add Agent");
 	expect(resourcesSource).not.toContain("Add Resource");
@@ -63,13 +66,56 @@ test("resource preview renders a Git-style red and green unified diff", () => {
 	expect(resourcesSource).not.toContain('className="yaml-diff-grid"');
 });
 
+test("resource preview runs automatically with debounce and stale-response protection", () => {
+	expect(resourcesSource).toContain("AUTO_PREVIEW_DELAY_MS");
+	expect(resourcesSource).toContain("previewRequestGenerationRef");
+	expect(resourcesSource).toContain("void runPreview(currentSignature, requestGeneration)");
+	expect(resourcesSource).toContain("Preview updates automatically after you pause editing");
+	expect(resourcesSource).not.toContain("Preview YAML Diff");
+});
+
+test("Changes automatically previews Build without a manual preview button", () => {
+	expect(appSource).toContain("buildPreviewRequestGenerationRef");
+	expect(appSource).toContain('tab !== "changes"');
+	expect(appSource).toContain("void loadBuildPreview(project.revision)");
+	expect(appSource).toContain("Ready to publish");
+	expect(appSource).not.toContain("onBuildPreview");
+	expect(appSource).not.toContain("Preview Build</button>");
+});
+
+test("Changes exposes one Publish action that builds, plans, and applies", () => {
+	expect(appSource).toContain("await buildProject(project.revision)");
+	expect(appSource).toContain("const nextPlan = await planProject()");
+	expect(appSource).toContain("applyProject(nextPlan.plan_token, nextPlan.destructive)");
+	expect(appSource).toContain("onPublish={handlePublish}");
+	expect(appSource).not.toContain("Plan Publish");
+	expect(appSource).not.toContain("Publish reviewed Build");
+	expect(appSource).not.toContain("onBuild(): void");
+	expect(appSource).not.toContain(
+		"Publish will build the working directory, generate a fresh plan, and update remote resources.",
+	);
+});
+
+test("Changes compares the latest project version with the working directory", () => {
+	expect(appSource).toContain("previewProjectVersion(headVersion, revision, headVersion)");
+	expect(appSource).toContain("Comparing the working directory with the latest published version");
+	expect(appSource).toContain('direction="working-tree"');
+	expect(appSource).toContain("Source changes");
+	expect(appSource).not.toContain("Generated YAML");
+	expect(appSource).not.toContain("--- current Build");
+	expect(appSource).not.toContain("+++ generated Build");
+	expect(appSource).toContain("Publish checks");
+	expect(sourceFileDiffSource).toContain("showingWorkingChanges ? change.after : change.before");
+	expect(sourceFileDiffSource).toContain("showingWorkingChanges ? change.before : change.after");
+});
+
 test("Changes separates the last declaration edit from pre-existing project actions", () => {
 	expect(resourcesSource).toContain("const baselinePlan = await planProject().catch(() => undefined)");
 	expect(appSource).toContain("comparePlanActions(baselinePlan.actions, plan.actions)");
 	expect(appSource).toContain('title="This edit"');
 	expect(appSource).toContain('title="Already pending"');
 	expect(appSource).toContain("Resolved by this edit");
-	expect(appSource).toContain("Apply reviewed plan executes both groups above");
+	expect(appSource).toContain("Publish executes both groups above");
 });
 
 test("resource declarations are always scoped to the selected Agent", () => {
@@ -79,15 +125,27 @@ test("resource declarations are always scoped to the selected Agent", () => {
 	);
 	expect(resourcesSource).not.toContain("dependencyOnly");
 	expect(resourcesSource).not.toContain("Current Agent dependencies");
-	expect(appSource).toContain('{tab === "resources" && selectedAgent && (');
-	expect(appSource).toContain(
-		'{tab === "resources" && !selectedAgent && <AgentRequiredPanel action="edit its resources" />}',
-	);
+	expect(appSource).toContain('{tab === "overview" &&');
+	expect(appSource).toContain("<ResourcesPanel");
+	expect(appSource).toContain('action="edit its resources"');
+	expect(appSource).not.toContain("function Overview(");
+	expect(appSource).not.toContain("function InfoCard(");
+	expect(appSource).not.toContain('{ id: "resources", label: "Resources" }');
+	expect(appSource).not.toContain('tab === "resources"');
 });
 
-test("deployment surface is explicitly read-only", () => {
-	expect(appSource).toContain("Deployment declarations are read-only");
-	expect(appSource).toContain("excluded from Workbench project Plan/Apply");
+test("deployment surface is not exposed in Workbench", () => {
+	expect(appSource).not.toContain('{ id: "deployments", label: "Deployments" }');
+	expect(appSource).not.toContain('tab === "deployments"');
+	expect(appSource).not.toContain("function DeploymentsPanel(");
 	expect(appSource).not.toContain("createApiDeployment");
 	expect(appSource).not.toContain("runApiDeployment");
+});
+
+test("Agent readiness diagnostics explain invalid state in the main workspace", () => {
+	expect(appSource).toContain("<ReadinessDiagnostics agent={selectedAgent} />");
+	expect(appSource).toContain("agent.readiness.diagnostics");
+	expect(appSource).toContain("Why this Agent is {agent.readiness.status}");
+	expect(appSource).toContain("diagnostic.code");
+	expect(appSource).toContain("diagnostic.message");
 });

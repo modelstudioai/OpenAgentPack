@@ -18,6 +18,7 @@ export interface ResourceRuntimeOptions extends DestructiveDecisionOptions {
 	refreshOnly?: boolean;
 	quiet?: boolean;
 	onFeedback?: RuntimeFeedbackSink;
+	concurrency?: number;
 }
 
 export interface ResourceRefreshResult {
@@ -78,6 +79,7 @@ export async function syncProjectResourcesWithStateBackend(
 				onFeedback: options.onFeedback,
 				policy: options.policy,
 				confirm: options.confirm,
+				concurrency: options.concurrency,
 			}),
 		};
 	});

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { initializeDirectoryProject } from "@openagentpack/project-workspace";
 import { ProjectRuntimeManager } from "../src/services/project-manager";
 import {
 	commitProjectVersionAfterApply,
@@ -16,179 +17,132 @@ import {
 
 const directories: string[] = [];
 const managers: ProjectRuntimeManager[] = [];
+process.env.QODER_PAT ??= "test-qoder-pat";
 
 afterEach(async () => {
 	for (const manager of managers.splice(0)) manager.close();
 	for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
-describe("Workbench project versions", () => {
-	test("stays uninitialized until the shared switch is explicitly enabled", async () => {
+describe("Workbench directory project versions", () => {
+	test("project init enables one shared snapshot store with a baseline", async () => {
 		const fixture = await projectFixture();
+		const status = await getProjectVersioningStatus(fixture.manager);
 
-		const initial = await getProjectVersioningStatus(fixture.manager);
-		expect(initial.initialized).toBe(false);
-		expect(initial.enabled).toBe(false);
-		expect(await prepareProjectVersionForApply({ baseRevision: fixture.revision() }, fixture.manager)).toBeNull();
-
-		const enabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager);
-		expect(enabled.store_root).toBe(join(await realpath(fixture.root), ".openagentpack", "versions"));
-		expect(enabled.head_version).not.toBeNull();
-		expect(enabled.source_versioned).toBe(true);
-		expect((await listProjectVersions({}, fixture.manager)).versions[0]?.message).toBe("Enable local versions");
+		expect(status.initialized).toBe(true);
+		expect(status.enabled).toBe(true);
+		expect(status.store_root).toBe(join(fixture.root, ".openagentpack/versions/project"));
+		expect(status.head_version).toMatch(/^[a-f0-9]{64}$/);
+		expect(status.source_versioned).toBe(true);
+		expect((await listProjectVersions({}, fixture.manager)).versions[0]?.message).toBe("Initialize project");
 	});
 
-	test("versions successful Apply content and restores YAML without changing State or head", async () => {
+	test("records complete directory source and restores it without moving head or State", async () => {
 		const fixture = await projectFixture();
-		await chmod(fixture.configPath, 0o640);
-		const statePath = join(fixture.root, "agents.state.json");
+		const instructionsPath = join(fixture.root, "agents/assistant/instructions.md");
+		const binaryPath = join(fixture.root, "assets/icon.bin");
+		const statePath = join(fixture.root, ".openagentpack/state.json");
 		await writeFile(statePath, '{"remote":"latest"}\n');
-		const enabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager);
-		const firstVersion = enabled.head_version!;
+		await chmod(instructionsPath, 0o640);
+		const baseline = (await getProjectVersioningStatus(fixture.manager)).head_version!;
 
-		await writeFile(fixture.configPath, projectYaml("Second instructions"));
+		await writeFile(instructionsPath, "Second instructions\n");
+		await mkdir(join(fixture.root, "assets"));
+		await writeFile(binaryPath, new Uint8Array([0, 1, 2, 3]));
 		await fixture.manager.refreshAfterSourceMutation();
 		const prepared = await prepareProjectVersionForApply({ baseRevision: fixture.revision() }, fixture.manager);
-		const second = await commitProjectVersionAfterApply(prepared, "Apply second", fixture.manager);
-		const secondVersion = second.version!.version_id;
-		const revision = fixture.revision();
+		const committed = await commitProjectVersionAfterApply(prepared, "Publish second", fixture.manager);
+		const second = committed.version!.version_id;
+
 		const preview = await previewProjectVersion(
-			{ versionId: firstVersion, baseRevision: revision, baseHeadVersion: secondVersion },
+			{ versionId: baseline, baseRevision: fixture.revision(), baseHeadVersion: second },
 			fixture.manager,
 		);
-		expect(preview.before_yaml).toContain("Second instructions");
-		expect(preview.after_yaml).toContain("First instructions");
+		expect(preview.changes).toContainEqual(
+			expect.objectContaining({
+				path: "agents/assistant/instructions.md",
+				change: "update",
+				before: "Second instructions\n",
+				after: "You are a helpful assistant.\n",
+			}),
+		);
+		expect(preview.changes).toContainEqual(
+			expect.objectContaining({ path: "assets/icon.bin", change: "delete", binary: true }),
+		);
 
+		const revision = fixture.revision();
 		const restored = await restoreProjectVersion(
-			{ versionId: firstVersion, baseRevision: revision, baseHeadVersion: secondVersion },
+			{ versionId: baseline, baseRevision: revision, baseHeadVersion: second },
 			fixture.manager,
 		);
 		expect(restored.new_revision).not.toBe(revision);
-		expect(await readFile(fixture.configPath, "utf8")).toContain("First instructions");
-		expect((await getProjectVersioningStatus(fixture.manager)).head_version).toBe(secondVersion);
+		expect(await readFile(instructionsPath, "utf8")).toBe("You are a helpful assistant.\n");
+		expect(await stat(binaryPath).catch(() => null)).toBeNull();
+		expect((await getProjectVersioningStatus(fixture.manager)).head_version).toBe(second);
 		expect(await readFile(statePath, "utf8")).toBe('{"remote":"latest"}\n');
-		expect((await stat(fixture.configPath)).mode & 0o777).toBe(0o640);
+		expect((await stat(instructionsPath)).mode & 0o777).toBe(0o644);
 	});
 
-	test("restores a valid version when current YAML is invalid and redacts current literals", async () => {
+	test("disabled versioning still leases the directory during Publish without creating versions", async () => {
 		const fixture = await projectFixture();
-		const enabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager);
-		await writeFile(fixture.configPath, "version: [\napi_key: literal-do-not-leak\n");
+		const baseline = (await getProjectVersioningStatus(fixture.manager)).head_version!;
+		await setProjectVersioning({ baseRevision: fixture.revision(), enabled: false }, fixture.manager);
+		await writeFile(join(fixture.root, "agents/assistant/instructions.md"), "Changed while disabled\n");
 		await fixture.manager.refreshAfterSourceMutation();
-		const invalidRevision = fixture.revision();
 
-		const restored = await restoreProjectVersion(
-			{
-				versionId: enabled.head_version!,
-				baseRevision: invalidRevision,
-				baseHeadVersion: enabled.head_version!,
-			},
-			fixture.manager,
-		);
-		expect(restored.new_revision).not.toBe(invalidRevision);
-		expect(fixture.manager.getSnapshot().status).toBe("valid");
-		expect(JSON.stringify(restored)).not.toContain("literal-do-not-leak");
-	});
-
-	test("shares one switch and never re-enables it during Apply", async () => {
-		const fixture = await projectFixture();
-		await setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager);
-		const disabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: false }, fixture.manager);
-		expect(disabled.enabled).toBe(false);
-		await writeFile(fixture.configPath, projectYaml("Changed while disabled"));
-		await fixture.manager.refreshAfterSourceMutation();
-		expect(await prepareProjectVersionForApply({ baseRevision: fixture.revision() }, fixture.manager)).toBeNull();
-		expect((await getProjectVersioningStatus(fixture.manager)).enabled).toBe(false);
-	});
-
-	test("does not create empty Apply versions and releases the mutation lease", async () => {
-		const fixture = await projectFixture();
-		const enabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager);
-		const unchangedPrepared = await prepareProjectVersionForApply(
-			{ baseRevision: fixture.revision() },
-			fixture.manager,
-		);
-		const reused = await commitProjectVersionAfterApply(unchangedPrepared, "No-op Apply", fixture.manager);
-		expect(reused.version).toBeNull();
-		expect(reused.versioning.head_version).toBe(enabled.head_version);
-
-		await writeFile(fixture.configPath, projectYaml("Changed instructions"));
-		await fixture.manager.refreshAfterSourceMutation();
 		const prepared = await prepareProjectVersionForApply({ baseRevision: fixture.revision() }, fixture.manager);
 		await expect(
-			setProjectVersioning({ baseRevision: fixture.revision(), enabled: false }, fixture.manager),
-		).rejects.toMatchObject({ status: 409 });
-		await releaseProjectVersionAfterApply(prepared, fixture.manager);
-		const disabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: false }, fixture.manager);
-		expect(disabled.enabled).toBe(false);
+			setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager),
+		).rejects.toThrow(/busy/i);
+		const committed = await commitProjectVersionAfterApply(prepared, "Disabled Publish", fixture.manager);
+		expect(committed.version).toBeNull();
+		expect(committed.versioning.head_version).toBe(baseline);
+		expect(committed.versioning.enabled).toBe(false);
 	});
 
-	test("rejects sensitive literals, stale identities, live locks, and abbreviated IDs", async () => {
+	test("reuses the current head for a no-op Publish and rejects stale or abbreviated identities", async () => {
 		const fixture = await projectFixture();
-		await writeFile(
-			fixture.configPath,
-			projectYaml("Instructions").replace("qoder: {}", "qoder:\n    api_key: literal-secret"),
-		);
-		await fixture.manager.refreshAfterSourceMutation();
-		await expect(
-			setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager),
-		).rejects.toMatchObject({ status: 422 });
+		const status = await getProjectVersioningStatus(fixture.manager);
+		const prepared = await prepareProjectVersionForApply({ baseRevision: fixture.revision() }, fixture.manager);
+		const committed = await commitProjectVersionAfterApply(prepared, "No-op Publish", fixture.manager);
+		expect(committed.version).toBeNull();
+		expect(committed.versioning.head_version).toBe(status.head_version);
 
-		await writeFile(fixture.configPath, projectYaml("Safe"));
-		await fixture.manager.refreshAfterSourceMutation();
-		await expect(setProjectVersioning({ baseRevision: "stale", enabled: true }, fixture.manager)).rejects.toMatchObject(
-			{ status: 409 },
-		);
-		const enabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: true }, fixture.manager);
 		await expect(
 			previewProjectVersion(
 				{
-					versionId: enabled.head_version!.slice(0, 12),
+					versionId: status.head_version!.slice(0, 12),
 					baseRevision: fixture.revision(),
-					baseHeadVersion: enabled.head_version!,
+					baseHeadVersion: status.head_version!,
 				},
 				fixture.manager,
 			),
-		).rejects.toMatchObject({ status: 400 });
-
-		const lockPath = join(enabled.store_root, "mutation.lock");
-		await mkdir(lockPath);
-		await writeFile(
-			join(lockPath, "lease.json"),
-			JSON.stringify({ pid: process.pid, token: "live", kind: "apply", created_at: new Date().toISOString() }),
-		);
+		).rejects.toThrow(/full 64-character/i);
 		await expect(
-			setProjectVersioning({ baseRevision: fixture.revision(), enabled: false }, fixture.manager),
+			setProjectVersioning({ baseRevision: "stale", enabled: false }, fixture.manager),
 		).rejects.toMatchObject({ status: 409 });
+	});
+
+	test("releases the cross-process mutation lease when Publish preparation is abandoned", async () => {
+		const fixture = await projectFixture();
+		const prepared = await prepareProjectVersionForApply({ baseRevision: fixture.revision() }, fixture.manager);
+		await releaseProjectVersionAfterApply(prepared, fixture.manager);
+		const disabled = await setProjectVersioning({ baseRevision: fixture.revision(), enabled: false }, fixture.manager);
+		expect(disabled.enabled).toBe(false);
 	});
 });
 
 async function projectFixture(): Promise<{
 	root: string;
-	configPath: string;
 	manager: ProjectRuntimeManager;
 	revision(): string;
 }> {
 	const root = await mkdtemp(join(tmpdir(), "openagentpack-versions-"));
 	directories.push(root);
-	const configPath = join(root, "agents.yaml");
-	await writeFile(configPath, projectYaml("First instructions"));
-	const manager = new ProjectRuntimeManager(configPath);
+	await initializeDirectoryProject({ projectRoot: root, provider: "qoder" });
+	const manager = new ProjectRuntimeManager(root);
 	managers.push(manager);
 	await manager.ensureStarted();
 	if (manager.getSnapshot().status !== "valid") throw new Error(JSON.stringify(manager.getSnapshot().diagnostics));
-	return { root, configPath, manager, revision: () => manager.getSnapshot().revision! };
-}
-
-function projectYaml(instructions: string): string {
-	return `version: "1"
-providers:
-  qoder: {}
-defaults:
-  provider: qoder
-agents:
-  assistant:
-    model: ultimate
-    instructions: ${instructions}
-`;
+	return { root, manager, revision: () => manager.getSnapshot().revision! };
 }

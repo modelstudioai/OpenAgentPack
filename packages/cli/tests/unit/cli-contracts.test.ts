@@ -390,13 +390,14 @@ test("playground opens a single Agent directly and routes multi-Agent projects t
 	});
 });
 
-test("workbench exposes the shared project and launch options without an Agent selector", async () => {
-	const help = await runAgents(["workbench", "--help"]);
+test("project workbench exposes directory launch options without an Agent selector", async () => {
+	const help = await runAgents(["project", "workbench", "--help"]);
 	expect(help.exitCode).toBe(0);
-	expect(help.stdout).toContain("--file <path>");
+	expect(help.stdout).toContain("--project <directory>");
 	expect(help.stdout).toContain("--port");
 	expect(help.stdout).toContain("--no-open");
 	expect(help.stdout).not.toContain("--agent");
+	expect(help.stdout).not.toContain("--file");
 });
 
 test("state import resource version does not invoke root version output", async () => {

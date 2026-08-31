@@ -15,6 +15,7 @@ interface PlaygroundOptions {
 	port?: string;
 	open?: boolean;
 	file?: string;
+	project?: string;
 	agent?: string;
 }
 
@@ -267,8 +268,8 @@ async function launchPlayground(options: PlaygroundOptions, surface: PlaygroundS
 	if (!Number.isInteger(port) || port <= 0) {
 		throw new Error(`Invalid --port '${options.port}'`);
 	}
-	const configPath = resolve(options.file ?? "agents.yaml");
-	const projectId = createHash("sha256").update(configPath).digest("hex").slice(0, 16);
+	const sourcePath = surface === "workbench" ? resolve(options.project ?? ".") : resolve(options.file ?? "agents.yaml");
+	const projectId = createHash("sha256").update(sourcePath).digest("hex").slice(0, 16);
 
 	// --- Detect and replace stale playground on the target port ----
 	const version = cliVersion();
@@ -295,9 +296,15 @@ async function launchPlayground(options: PlaygroundOptions, surface: PlaygroundS
 	const env: NodeJS.ProcessEnv = {
 		...process.env,
 		PORT: String(port),
-		AGENTS_CONFIG_PATH: configPath,
 		AGENTS_PLAYGROUND_TOKEN: randomBytes(32).toString("hex"),
 	};
+	if (surface === "workbench") {
+		delete env.AGENTS_CONFIG_PATH;
+		env.AGENTS_PROJECT_ROOT = sourcePath;
+	} else {
+		delete env.AGENTS_PROJECT_ROOT;
+		env.AGENTS_CONFIG_PATH = sourcePath;
+	}
 
 	const { cmd, args } = resolveLauncher(version);
 	if (cmd === "npx") log.info(`Fetching ${PLAYGROUND_PKG} (first run may take a moment)...`);

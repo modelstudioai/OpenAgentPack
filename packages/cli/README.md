@@ -13,15 +13,16 @@ The package installs the `agents` command.
 ## Quick start
 
 ```sh
-agents init
-agents validate
-agents plan
-agents apply
-# Optional local agents.yaml history:
-agents version enable --file agents.yaml
+agents project init
+agents project validate
+agents project build --dry-run
+agents project build --yes
+agents project publish --yes
 ```
 
-`agents version enable --file agents.yaml` initializes `.openagentpack/versions`, records the shared local switch for the selected `agents.yaml`, and creates a baseline snapshot when needed. Workbench reads the same switch, so enable/disable affects automatic versions in both hosts. Version commands use the explicit `--file <path>` option rather than a short `-f` alias. Subsequent successful Apply operations snapshot dirty YAML automatically. Use `agents version list`, `preview`, and `restore` to inspect or restore that history; versioning never includes `agents.state.json` or referenced files.
+Directory projects store Agents and Skills as JSON, Markdown, and local files. `project build` previews full directory changes against the current version HEAD, organizes shared Skills, and writes `.openagentpack/build/agents.yaml`; `project publish` consumes only a current Build and records a full source-tree snapshot after complete remote success. Workbench and CLI use the same Git-independent switch under `agents project version ...`; snapshots include local Skill and binary content but exclude `.openagentpack/state.json`.
+
+The legacy `agents init|validate|plan|apply` YAML workflow and `agents playground -f agents.yaml` Session Preview remain available. YAML Apply is independent from directory versions.
 
 Use `agents <command> --help` for command-specific options.
 

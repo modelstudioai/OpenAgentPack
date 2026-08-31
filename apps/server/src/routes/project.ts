@@ -1,4 +1,10 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+	acquireDirectoryProjectMutation,
+	commitProjectBuild,
+	previewProjectBuild,
+	readValidProjectBuild,
+} from "@openagentpack/project-workspace";
 import { planAgentResourcesWithStateBackend, syncAgentResourcesWithStateBackend } from "@openagentpack/sdk";
 import { errorResponses } from "@/schemas/common";
 import {
@@ -15,6 +21,8 @@ import {
 	ProjectAgentParamsSchema,
 	ProjectApplyBodySchema,
 	ProjectApplyResponseSchema,
+	ProjectBuildBodySchema,
+	ProjectBuildResponseSchema,
 	ProjectDeclarationsResponseSchema,
 	ProjectPlanBodySchema,
 	ProjectPlanResponseSchema,
@@ -62,7 +70,7 @@ const getProjectRoute = createRoute({
 	},
 	responses: {
 		200: {
-			description: "Current agents.yaml project, validation, readiness, and deployment declarations",
+			description: "Current directory project, validation, readiness, Build, and deployment declarations",
 			content: { "application/json": { schema: ProjectSummarySchema } },
 		},
 		...errorResponses,
@@ -208,7 +216,7 @@ const getProjectVersioningRoute = createRoute({
 	path: "/project/versioning",
 	responses: {
 		200: {
-			description: "Local agents.yaml snapshot store and versioning status",
+			description: "Local directory source snapshot store and versioning status",
 			content: { "application/json": { schema: ProjectVersioningStatusSchema } },
 		},
 		...errorResponses,
@@ -261,7 +269,7 @@ const listProjectVersionsRoute = createRoute({
 	request: { query: ProjectVersionsQuerySchema },
 	responses: {
 		200: {
-			description: "Local snapshots of agents.yaml",
+			description: "Local directory source snapshots",
 			content: { "application/json": { schema: ProjectVersionsResponseSchema } },
 		},
 		...errorResponses,
@@ -282,7 +290,7 @@ const previewProjectVersionRoute = createRoute({
 	},
 	responses: {
 		200: {
-			description: "Validate and preview restoring a historical agents.yaml",
+			description: "Validate and preview restoring a historical directory source tree",
 			content: { "application/json": { schema: ProjectVersionPreviewSchema } },
 		},
 		...errorResponses,
@@ -304,7 +312,7 @@ const restoreProjectVersionRoute = createRoute({
 	},
 	responses: {
 		200: {
-			description: "Restore historical agents.yaml content without changing local version history",
+			description: "Restore historical directory source without changing version history or remote State",
 			content: { "application/json": { schema: ProjectVersionRestoreResponseSchema } },
 		},
 		...errorResponses,
@@ -317,13 +325,59 @@ projectRoute.openapi(restoreProjectVersionRoute, async (context) => {
 	return context.json(await restoreProjectVersion({ versionId, baseRevision, baseHeadVersion }), 200);
 });
 
+const previewProjectBuildRoute = createRoute({
+	method: "post",
+	path: "/project/build/preview",
+	request: { body: { content: { "application/json": { schema: ProjectBuildBodySchema } } } },
+	responses: {
+		200: {
+			description: "Preview deterministic directory-project Build output and organization moves",
+			content: { "application/json": { schema: ProjectBuildResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(previewProjectBuildRoute, async (context) => {
+	const { base_revision: baseRevision } = context.req.valid("json");
+	const preview = await previewProjectBuild(projectRuntimeManager.projectRoot);
+	if (preview.project_revision !== baseRevision) throw statusError("Project files changed. Preview Build again.", 409);
+	return context.json(buildForWire(preview), 200);
+});
+
+const commitProjectBuildRoute = createRoute({
+	method: "post",
+	path: "/project/build",
+	request: { body: { content: { "application/json": { schema: ProjectBuildBodySchema } } } },
+	responses: {
+		200: {
+			description: "Organize directory source and atomically write the generated Build",
+			content: { "application/json": { schema: ProjectBuildResponseSchema } },
+		},
+		...errorResponses,
+	},
+});
+
+projectRoute.openapi(commitProjectBuildRoute, async (context) => {
+	const { base_revision: baseRevision } = context.req.valid("json");
+	const lease = projectMutationCoordinator.acquire("project_build");
+	try {
+		const result = await commitProjectBuild({ projectRoot: projectRuntimeManager.projectRoot, baseRevision });
+		await projectRuntimeManager.refreshAfterSourceMutation();
+		planTokenStore.invalidateAll();
+		return context.json(buildForWire(result, result.manifest), 200);
+	} finally {
+		lease.release();
+	}
+});
+
 const planProjectRoute = createRoute({
 	method: "post",
 	path: "/project/plan",
 	request: { body: { content: { "application/json": { schema: ProjectPlanBodySchema } } } },
 	responses: {
 		200: {
-			description: "Plan all non-Deployment, non-Channel project runtime resources",
+			description: "Plan every resource in the current project Build",
 			content: { "application/json": { schema: ProjectPlanResponseSchema } },
 		},
 		...errorResponses,
@@ -332,6 +386,7 @@ const planProjectRoute = createRoute({
 
 projectRoute.openapi(planProjectRoute, async (context) => {
 	await projectRuntimeManager.ensureStarted();
+	await readValidProjectBuild(projectRuntimeManager.projectRoot);
 	const { refresh } = context.req.valid("json");
 	const snapshot = projectRuntimeManager.getSnapshot();
 	const plan = await planProjectRuntimeResources(projectRuntimeManager.requireRuntimeInput(), {
@@ -367,7 +422,7 @@ const applyProjectRoute = createRoute({
 	request: { body: { content: { "application/json": { schema: ProjectApplyBodySchema } } } },
 	responses: {
 		202: {
-			description: "Automatically version agents.yaml and accept a project runtime apply",
+			description: "Accept a full project Publish and version its frozen directory source after success",
 			content: { "application/json": { schema: ProjectApplyResponseSchema } },
 		},
 		...errorResponses,
@@ -376,6 +431,7 @@ const applyProjectRoute = createRoute({
 
 projectRoute.openapi(applyProjectRoute, async (context) => {
 	await projectRuntimeManager.ensureStarted();
+	await readValidProjectBuild(projectRuntimeManager.projectRoot);
 	const { plan_token: planToken, confirm_destructive: confirmDestructive } = context.req.valid("json");
 	const snapshot = projectRuntimeManager.getSnapshot();
 	const scope = { kind: "project" as const };
@@ -386,10 +442,10 @@ projectRoute.openapi(applyProjectRoute, async (context) => {
 			422,
 		);
 	}
-	const versionMessage = `Apply project revision ${token.projectRevision.slice(0, 12)}`;
+	const versionMessage = `Publish project revision ${token.projectRevision.slice(0, 12)}`;
 	const input = projectRuntimeManager.requireRuntimeInput();
 	const lease = projectMutationCoordinator.acquire("project_apply");
-	let preparedVersion: Awaited<ReturnType<typeof prepareProjectVersionForApply>> = null;
+	let preparedVersion: Awaited<ReturnType<typeof prepareProjectVersionForApply>> | null = null;
 	let operation: ReturnType<typeof projectOperationStore.create>;
 	try {
 		preparedVersion = await prepareProjectVersionForApply({ baseRevision: token.projectRevision });
@@ -484,7 +540,7 @@ const applyAgentRoute = createRoute({
 	},
 	responses: {
 		202: {
-			description: "Automatically version agents.yaml and accept an Agent apply",
+			description: "Accept a compatibility-scoped Agent apply without creating a project version",
 			content: { "application/json": { schema: AgentApplyResponseSchema } },
 		},
 		...errorResponses,
@@ -505,12 +561,11 @@ projectRoute.openapi(applyAgentRoute, async (context) => {
 			422,
 		);
 	}
-	const versionMessage = `Apply agent ${agentId.slice(0, 60)} revision ${token.projectRevision.slice(0, 12)}`;
 	const lease = projectMutationCoordinator.acquire("agent_apply");
-	let preparedVersion: Awaited<ReturnType<typeof prepareProjectVersionForApply>> = null;
+	let filesystemLease: Awaited<ReturnType<typeof acquireDirectoryProjectMutation>> | undefined;
 	let operation: ReturnType<typeof projectOperationStore.create>;
 	try {
-		preparedVersion = await prepareProjectVersionForApply({ baseRevision: token.projectRevision });
+		filesystemLease = await acquireDirectoryProjectMutation(projectRuntimeManager.projectRoot, "agent_apply");
 		if ((await projectRuntimeManager.computeCurrentSourceRevision()) !== token.projectRevision) {
 			throw statusError("Plan is stale because project configuration changed. Create a new plan.", 409);
 		}
@@ -543,18 +598,17 @@ projectRoute.openapi(applyAgentRoute, async (context) => {
 						run.reason === "plan_stale" ? 409 : 422,
 					);
 				}
-				await commitProjectVersionAfterApply(preparedVersion, versionMessage);
 				planTokenStore.invalidateAll();
 				await projectRuntimeManager.refreshAfterMutation();
 				return redactForWire(run);
 			} finally {
-				await releaseProjectVersionAfterApply(preparedVersion);
+				await filesystemLease?.release();
 				lease.release();
 			}
 		});
 		lease.setOperationId(operation.id);
 	} catch (error) {
-		await releaseProjectVersionAfterApply(preparedVersion);
+		await filesystemLease?.release();
 		lease.release();
 		throw error;
 	}
@@ -585,4 +639,20 @@ function redactForWire<T>(value: T): T {
 		output[key] = SENSITIVE_KEY.test(key) ? "[redacted]" : redactForWire(entry);
 	}
 	return output as T;
+}
+
+function buildForWire(
+	preview: Awaited<ReturnType<typeof previewProjectBuild>>,
+	manifest?: Awaited<ReturnType<typeof commitProjectBuild>>["manifest"],
+) {
+	return {
+		project_revision: preview.project_revision,
+		before_yaml: preview.before_yaml,
+		after_yaml: preview.after_yaml,
+		diagnostics: redactForWire(preview.diagnostics),
+		warnings: redactForWire(preview.warnings),
+		organization_moves: preview.organization_moves,
+		can_build: preview.can_build,
+		...(manifest ? { manifest } : {}),
+	};
 }

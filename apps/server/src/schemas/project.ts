@@ -14,6 +14,7 @@ export const ProjectMutationSchema = z.object({
 	kind: z.enum([
 		"agent_apply",
 		"project_apply",
+		"project_build",
 		"declaration_write",
 		"version_enable",
 		"version_write",
@@ -52,8 +53,38 @@ export const ProjectSummarySchema = z
 		agents: z.array(ProjectAgentSummarySchema),
 		deployments: z.array(ProjectDeploymentSummarySchema),
 		active_mutation: ProjectMutationSchema.nullable(),
+		build: z.object({
+			exists: z.boolean(),
+			stale: z.boolean(),
+			reasons: z.array(z.string()),
+			yaml_hash: z.string().optional(),
+		}),
 	})
 	.openapi("ProjectSummary");
+
+export const ProjectBuildBodySchema = z.object({ base_revision: z.string().min(1) });
+export const ProjectBuildResponseSchema = z
+	.object({
+		project_revision: z.string(),
+		before_yaml: z.string(),
+		after_yaml: z.string(),
+		diagnostics: z.array(DiagnosticSchema),
+		warnings: z.array(DiagnosticSchema),
+		organization_moves: z.array(
+			z.object({ skill_id: z.string(), from: z.string(), to: z.string(), reason: z.literal("shared") }),
+		),
+		can_build: z.boolean(),
+		manifest: z
+			.object({
+				schema_version: z.literal(1),
+				project_revision: z.string(),
+				source_manifest_hash: z.string(),
+				yaml_hash: z.string(),
+				built_at: z.string(),
+			})
+			.optional(),
+	})
+	.openapi("ProjectBuildResponse");
 
 export const ProjectVersioningStatusSchema = z
 	.object({
@@ -99,6 +130,15 @@ export const ProjectVersionPreviewSchema = z
 		base_head_version: z.string(),
 		before_yaml: z.string(),
 		after_yaml: z.string(),
+		changes: z.array(
+			z.object({
+				path: z.string(),
+				change: z.enum(["create", "update", "delete"]),
+				binary: z.boolean(),
+				before: z.string().optional(),
+				after: z.string().optional(),
+			}),
+		),
 		diagnostics: z.array(DiagnosticSchema),
 		can_restore: z.boolean(),
 		blockers: z.array(z.string()),

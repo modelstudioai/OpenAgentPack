@@ -34,6 +34,7 @@ export {
 	decideDestructive,
 	executePlannedProject,
 	importResource,
+	planProjectWithStateBackend,
 	planProjectContext,
 	syncProjectResourcesWithStateBackend,
 } from "./internal/core/resource-runtime.ts";

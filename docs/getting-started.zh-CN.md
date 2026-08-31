@@ -36,9 +36,9 @@ mkdir my-agents && cd my-agents
 agents init
 ```
 
-init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`，并把 `agents.state.json`、`.openagentpack/versions/` 和 `.env` 加进 `.gitignore`，确保远端状态、本地版本与密钥保持在本机。
+init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`。这是供 `validate → plan → apply` 与 `agents playground` 使用的紧凑 YAML 流程。
 
-Workbench 与 `agents version` 统一使用 `.openagentpack/versions/store.json`、不可变版本条目和内容寻址 YAML blob。运行 `agents version enable` 或在 Workbench 中显式启用 Versions 会从当前 YAML 创建基线；该能力不依赖 Git，也不会把 `agents.state.json` 或外部引用文件放入版本。
+如需本地多文件项目和 Workbench，请改用 `agents project init`。它会创建 `project.json`、`agents/assistant/agent.json`、`instructions.md`，并建立不依赖 Git 的全目录基线版本。后续使用 `agents project validate`、`project build`、`project publish`、`project workbench` 与 `project version ...`。两套流程明确隔离：传统 YAML Apply 不产生目录版本；project Publish 只使用 `.openagentpack/build/agents.yaml`，且不会隐式执行 Build。
 
 为 `bailian` provider、agent 名为 `assistant` 生成的文件如下：
 

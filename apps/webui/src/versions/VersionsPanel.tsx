@@ -9,7 +9,7 @@ import {
 	restoreProjectVersion,
 	setProjectVersioning,
 } from "@/lib/project-api";
-import { buildYamlLineDiff } from "@/resources/yaml-diff";
+import { SourceFileDiff } from "@/versions/SourceFileDiff";
 
 interface VersionsPanelProps {
 	projectRevision?: string;
@@ -120,9 +120,10 @@ export function VersionsPanel({
 
 	const handleRestore = async () => {
 		if (!selected || !preview?.can_restore || !previewIsCurrent) return;
+		if (selected.version_id === versioning?.head_version) return;
 		if (
 			!window.confirm(
-				`Restore agents.yaml from ${preview.version_id.slice(0, 12)} to the working tree? Version history will not move.`,
+				`Restore the full project source from ${preview.version_id.slice(0, 12)} to the working directory? Version history will not move.`,
 			)
 		) {
 			return;
@@ -154,8 +155,9 @@ export function VersionsPanel({
 				<div>
 					<h2>Local configuration versions</h2>
 					<p>
-						Workbench and CLI share one local versioning switch. When enabled, successful Apply snapshots agents.yaml.
-						Git is not required, and State or referenced files are never included.
+						Workbench and CLI share one project versioning switch. When enabled, successful Publish snapshots the full
+						source tree. Git is not required. Project files, including local Skill content, are included; remote State
+						is never included.
 					</p>
 				</div>
 			</div>
@@ -168,7 +170,7 @@ export function VersionsPanel({
 					<History />
 					<div>
 						<h3>Local versions are not enabled</h3>
-						<p>Enable local versions explicitly to create the baseline agents.yaml snapshot.</p>
+						<p>Enable project versions to create a baseline directory snapshot.</p>
 					</div>
 					<button
 						type="button"
@@ -189,7 +191,7 @@ export function VersionsPanel({
 							mono
 						/>
 						<VersionSummary
-							label="agents.yaml"
+							label="Project source"
 							value={versioning.source_versioned ? "versioned" : versioning.source_status}
 							tone={versioning.source_versioned ? "good" : "warn"}
 						/>
@@ -205,8 +207,8 @@ export function VersionsPanel({
 							<strong>Shared CLI and Workbench switch</strong>
 							<p>
 								{versioning.enabled
-									? "Successful Apply creates a local snapshot."
-									: "Apply will not create a local snapshot."}
+									? "Successful Publish creates a directory snapshot."
+									: "Publish will not create a directory snapshot."}
 							</p>
 						</div>
 						<button
@@ -248,7 +250,7 @@ export function VersionsPanel({
 										</span>
 									</button>
 								))}
-								{versions.length === 0 && !historyBusy && <p>No versions have been created for agents.yaml.</p>}
+								{versions.length === 0 && !historyBusy && <p>No directory project versions have been created.</p>}
 							</div>
 							{nextCursor && (
 								<button
@@ -266,12 +268,13 @@ export function VersionsPanel({
 							{previewBusy ? (
 								<div className="version-preview-empty">
 									<LoaderCircle className="spin" />
-									<p>Validating historical agents.yaml…</p>
+									<p>Validating historical project source…</p>
 								</div>
 							) : preview && selected && previewIsCurrent ? (
 								<VersionPreview
 									version={selected}
 									preview={preview}
+									isCurrentVersion={selected.version_id === currentVersion}
 									writeBlockedReason={writeBlockedReason}
 									busy={writeBusy}
 									onRestore={handleRestore}
@@ -293,17 +296,18 @@ export function VersionsPanel({
 function VersionPreview({
 	version,
 	preview,
+	isCurrentVersion,
 	writeBlockedReason,
 	busy,
 	onRestore,
 }: {
 	version: ProjectVersion;
 	preview: ProjectVersionPreview;
+	isCurrentVersion: boolean;
 	writeBlockedReason?: string;
 	busy: boolean;
 	onRestore(): Promise<void>;
 }) {
-	const diff = buildYamlLineDiff(preview.before_yaml, preview.after_yaml);
 	return (
 		<>
 			<header className="version-preview-heading">
@@ -311,42 +315,37 @@ function VersionPreview({
 					<strong>{version.message}</strong>
 					<code>{version.version_id}</code>
 				</div>
-				<button
-					type="button"
-					className="danger-button"
-					disabled={!preview.can_restore || busy || Boolean(writeBlockedReason)}
-					onClick={() => void onRestore()}
-				>
-					{busy ? <LoaderCircle className="spin" /> : <RotateCcw />} Restore to working tree
-				</button>
+				{isCurrentVersion ? (
+					<span className="auto-preview-status ready">
+						<CheckCircle2 /> Latest version
+					</span>
+				) : (
+					<button
+						type="button"
+						className="danger-button"
+						disabled={!preview.can_restore || busy || Boolean(writeBlockedReason)}
+						onClick={() => void onRestore()}
+					>
+						{busy ? <LoaderCircle className="spin" /> : <RotateCcw />} Restore to working tree
+					</button>
+				)}
 			</header>
-			<div className="yaml-unified-diff version-yaml-diff">
-				<div className="yaml-diff-file-header">
-					<span>--- working tree</span>
-					<span>+++ {version.short_version}</span>
-				</div>
-				<div className="yaml-diff-hunk">
-					@@ -1,{diff.beforeLineCount} +1,{diff.afterLineCount} @@
-				</div>
-				<div className="yaml-diff-lines">
-					{diff.lines.map((line) => (
-						<div
-							className={`yaml-diff-line ${line.kind}`}
-							key={`${line.kind}:${line.beforeLine ?? "new"}:${line.afterLine ?? "old"}:${line.text}`}
-						>
-							<span className="yaml-diff-line-number">{line.beforeLine ?? ""}</span>
-							<span className="yaml-diff-line-number">{line.afterLine ?? ""}</span>
-							<span className="yaml-diff-marker">
-								{line.kind === "addition" ? "+" : line.kind === "deletion" ? "-" : " "}
-							</span>
-							<code>{line.text || " "}</code>
-						</div>
-					))}
-				</div>
-			</div>
-			<div className={`commit-readiness ${preview.can_restore ? "ready" : "blocked"}`}>
-				{preview.can_restore ? <CheckCircle2 /> : <AlertTriangle />}
-				<span>{preview.can_restore ? "Ready to restore to the working tree" : "Restore blocked"}</span>
+			{preview.changes.length > 0 ? (
+				preview.changes.map((change) => (
+					<SourceFileDiff key={change.path} change={change} version={version.short_version} direction="restore" />
+				))
+			) : (
+				<p className="version-preview-empty">The working directory already matches this version.</p>
+			)}
+			<div className={`commit-readiness ${isCurrentVersion || preview.can_restore ? "ready" : "blocked"}`}>
+				{isCurrentVersion || preview.can_restore ? <CheckCircle2 /> : <AlertTriangle />}
+				<span>
+					{isCurrentVersion
+						? "Latest version baseline"
+						: preview.can_restore
+							? "Ready to restore to the working tree"
+							: "Restore blocked"}
+				</span>
 			</div>
 			{preview.blockers.map((blocker) => (
 				<VersionNotice key={blocker} tone="warning">

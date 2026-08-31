@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import { assertLegacyYamlNotShadowed } from "@openagentpack/project-workspace";
 import { decideDestructive, executePlannedProject, type PlannedAction, UserError } from "@openagentpack/sdk";
 import chalk from "chalk";
 import { assertProviderConfigured, buildCliRuntime } from "../config-loader.ts";
@@ -7,13 +8,6 @@ import { planProjectWithRefresh } from "../plan-workflow.ts";
 import { diagnosticsHaveErrors, renderDiagnostics } from "../render-diagnostics.ts";
 import { renderRuntimeFeedback } from "../render-feedback.ts";
 import { formatResourceAddress, formatResourceLabel } from "../utils/address-utils.ts";
-import {
-	commitPreparedProjectVersion,
-	type PreparedProjectVersion,
-	prepareProjectVersion,
-	readProjectVersionSource,
-	releasePreparedProjectVersion,
-} from "../versioning/project-versions.ts";
 
 type ApplyPromptKind = "combined_drift" | "remote_drift" | "local_change" | "planned_change";
 
@@ -98,7 +92,7 @@ export async function applyCommand(options: {
 	refreshOnly?: boolean;
 	concurrency?: number;
 }) {
-	const versionSource = await readProjectVersionSource(options.file);
+	await assertLegacyYamlNotShadowed(options.file);
 	const ctx = await buildCliRuntime(options.file);
 	assertProviderConfigured(ctx, options.provider);
 
@@ -115,10 +109,6 @@ export async function applyCommand(options: {
 
 	const actionable = plan.actions.filter((a) => a.action !== "no-op");
 	if (actionable.length === 0) {
-		if (!options.refreshOnly) {
-			const preparedVersion = await prepareProjectVersion(ctx.configPath, versionSource.source);
-			await commitSuccessfulApplyVersion(preparedVersion);
-		}
 		log.success("No changes. Infrastructure is up-to-date.");
 		return;
 	}
@@ -173,41 +163,26 @@ export async function applyCommand(options: {
 		}
 	}
 
-	const preparedVersion = await prepareProjectVersion(ctx.configPath, versionSource.source);
-
 	const s = p.spinner({ output: process.stderr });
 	s.start("Applying changes...");
 
-	let versionCommitted = false;
-	try {
-		const result = await executePlannedProject(planned, {
-			onFeedback: renderRuntimeFeedback,
-			policy: "force",
-			concurrency: options.concurrency,
+	const result = await executePlannedProject(planned, {
+		onFeedback: renderRuntimeFeedback,
+		policy: "force",
+		concurrency: options.concurrency,
+	});
+
+	const succeeded = result.results.filter((r) => r.status === "success").length;
+	const failed = result.results.filter((r) => r.status === "failed").length;
+	const skipped = result.results.filter((r) => r.status === "skipped").length;
+
+	s.stop("Apply finished.");
+
+	if (failed > 0 || skipped > 0) {
+		p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, {
+			output: process.stderr,
 		});
-
-		const succeeded = result.results.filter((r) => r.status === "success").length;
-		const failed = result.results.filter((r) => r.status === "failed").length;
-		const skipped = result.results.filter((r) => r.status === "skipped").length;
-
-		s.stop("Apply finished.");
-
-		if (failed > 0 || skipped > 0) {
-			p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, {
-				output: process.stderr,
-			});
-			throw new UserError(failed > 0 ? "Apply failed." : "Apply incomplete: one or more actions were skipped.");
-		}
-		await commitSuccessfulApplyVersion(preparedVersion);
-		versionCommitted = true;
-		p.log.success(`Apply complete! ${succeeded} actions executed successfully.`, { output: process.stderr });
-	} finally {
-		if (!versionCommitted) await releasePreparedProjectVersion(preparedVersion);
+		throw new UserError(failed > 0 ? "Apply failed." : "Apply incomplete: one or more actions were skipped.");
 	}
-}
-
-async function commitSuccessfulApplyVersion(prepared: PreparedProjectVersion | null): Promise<void> {
-	if (!prepared) return;
-	const version = await commitPreparedProjectVersion(prepared);
-	if (version) log.success(`Created local version ${version.short_version} (${version.message}).`);
+	p.log.success(`Apply complete! ${succeeded} actions executed successfully.`, { output: process.stderr });
 }

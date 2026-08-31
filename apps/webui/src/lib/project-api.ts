@@ -4,6 +4,7 @@ export type ProjectSummary = components["schemas"]["ProjectSummary"];
 export type ProjectAgent = ProjectSummary["agents"][number];
 export type AgentPlan = components["schemas"]["AgentPlanResponse"];
 export type ProjectPlan = components["schemas"]["ProjectPlanResponse"];
+export type ProjectBuild = components["schemas"]["ProjectBuildResponse"];
 export type ProjectDeclarations = components["schemas"]["ProjectDeclarationsResponse"];
 export type ProjectDeclaration = ProjectDeclarations["resources"][number];
 export type DeclarationType = ProjectDeclaration["type"];
@@ -96,6 +97,20 @@ export async function planProject(): Promise<ProjectPlan> {
 	return requestJson("/api/project/plan", {
 		method: "POST",
 		body: JSON.stringify({ refresh: true }),
+	});
+}
+
+export async function previewProjectBuild(baseRevision: string): Promise<ProjectBuild> {
+	return requestJson("/api/project/build/preview", {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision }),
+	});
+}
+
+export async function buildProject(baseRevision: string): Promise<ProjectBuild> {
+	return requestJson("/api/project/build", {
+		method: "POST",
+		body: JSON.stringify({ base_revision: baseRevision }),
 	});
 }
 

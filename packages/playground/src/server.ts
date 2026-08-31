@@ -19,8 +19,13 @@ export const DEFAULT_PLAYGROUND_PORT = 4848;
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const webRoot = join(pkgRoot, "web");
 const accessToken = process.env.AGENTS_PLAYGROUND_TOKEN?.trim() ?? "";
-const configPath = resolve(process.env.AGENTS_CONFIG_PATH?.trim() || join(process.cwd(), "agents.yaml"));
-const projectId = createHash("sha256").update(configPath).digest("hex").slice(0, 16);
+const configuredYaml = process.env.AGENTS_CONFIG_PATH?.trim();
+const configuredProject = process.env.AGENTS_PROJECT_ROOT?.trim();
+if (configuredYaml && configuredProject) {
+	throw new Error("AGENTS_CONFIG_PATH and AGENTS_PROJECT_ROOT cannot be used by the same process.");
+}
+const sourcePath = resolve(configuredProject || configuredYaml || join(process.cwd(), "agents.yaml"));
+const projectId = createHash("sha256").update(sourcePath).digest("hex").slice(0, 16);
 const indexHtml = injectPlaygroundRuntimeMarker(readFileSync(join(webRoot, "index.html"), "utf8"), accessToken);
 
 /** Read the playground package version once at startup (works for both source and published dist). */

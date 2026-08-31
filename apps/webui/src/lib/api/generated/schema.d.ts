@@ -22,7 +22,7 @@ export interface paths {
 			};
 			requestBody?: never;
 			responses: {
-				/** @description Current agents.yaml project, validation, readiness, and deployment declarations */
+				/** @description Current directory project, validation, readiness, Build, and deployment declarations */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -581,7 +581,7 @@ export interface paths {
 			};
 			requestBody?: never;
 			responses: {
-				/** @description Local agents.yaml snapshot store and versioning status */
+				/** @description Local directory source snapshot store and versioning status */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -863,7 +863,7 @@ export interface paths {
 			};
 			requestBody?: never;
 			responses: {
-				/** @description Local snapshots of agents.yaml */
+				/** @description Local directory source snapshots */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -963,7 +963,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Validate and preview restoring a historical agents.yaml */
+				/** @description Validate and preview restoring a historical directory source tree */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -1061,13 +1061,203 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Restore historical agents.yaml content without changing local version history */
+				/** @description Restore historical directory source without changing version history or remote State */
 				200: {
 					headers: {
 						[name: string]: unknown;
 					};
 					content: {
 						"application/json": components["schemas"]["ProjectVersionRestoreResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/build/preview": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Preview deterministic directory-project Build output and organization moves */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectBuildResponse"];
+					};
+				};
+				/** @description Bad request */
+				400: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Forbidden */
+				403: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Not found */
+				404: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Conflict */
+				409: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Unprocessable entity */
+				422: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+				/** @description Server error */
+				500: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ErrorResponse"];
+					};
+				};
+			};
+		};
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/project/build": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: {
+			parameters: {
+				query?: never;
+				header?: never;
+				path?: never;
+				cookie?: never;
+			};
+			requestBody?: {
+				content: {
+					"application/json": {
+						base_revision: string;
+					};
+				};
+			};
+			responses: {
+				/** @description Organize directory source and atomically write the generated Build */
+				200: {
+					headers: {
+						[name: string]: unknown;
+					};
+					content: {
+						"application/json": components["schemas"]["ProjectBuildResponse"];
 					};
 				};
 				/** @description Bad request */
@@ -1156,7 +1346,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Plan all non-Deployment, non-Channel project runtime resources */
+				/** @description Plan every resource in the current project Build */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -1252,7 +1442,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Automatically version agents.yaml and accept a project runtime apply */
+				/** @description Accept a full project Publish and version its frozen directory source after success */
 				202: {
 					headers: {
 						[name: string]: unknown;
@@ -1447,7 +1637,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Automatically version agents.yaml and accept an Agent apply */
+				/** @description Accept a compatibility-scoped Agent apply without creating a project version */
 				202: {
 					headers: {
 						[name: string]: unknown;
@@ -2767,6 +2957,7 @@ export interface components {
 				kind:
 					| "agent_apply"
 					| "project_apply"
+					| "project_build"
 					| "declaration_write"
 					| "version_enable"
 					| "version_write"
@@ -2774,6 +2965,12 @@ export interface components {
 				started_at: string;
 				operation_id?: string;
 			} | null;
+			build: {
+				exists: boolean;
+				stale: boolean;
+				reasons: string[];
+				yaml_hash?: string;
+			};
 		};
 		ErrorResponse: {
 			error: {
@@ -2869,6 +3066,14 @@ export interface components {
 			base_head_version: string;
 			before_yaml: string;
 			after_yaml: string;
+			changes: {
+				path: string;
+				/** @enum {string} */
+				change: "create" | "update" | "delete";
+				binary: boolean;
+				before?: string;
+				after?: string;
+			}[];
 			diagnostics: {
 				/** @enum {string} */
 				severity: "error" | "warning" | "info";
@@ -2896,6 +3101,71 @@ export interface components {
 		};
 		ProjectVersionRestoreResponse: components["schemas"]["ProjectVersionPreview"] & {
 			new_revision: string;
+		};
+		ProjectBuildResponse: {
+			project_revision: string;
+			before_yaml: string;
+			after_yaml: string;
+			diagnostics: {
+				/** @enum {string} */
+				severity: "error" | "warning" | "info";
+				code: string;
+				message: string;
+				resource?: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+			}[];
+			warnings: {
+				/** @enum {string} */
+				severity: "error" | "warning" | "info";
+				code: string;
+				message: string;
+				resource?: {
+					/** @enum {string} */
+					type:
+						| "environment"
+						| "vault"
+						| "memory_store"
+						| "skill"
+						| "agent"
+						| "template"
+						| "deployment"
+						| "file"
+						| "identity"
+						| "channel";
+					name: string;
+					provider: string;
+				};
+			}[];
+			organization_moves: {
+				skill_id: string;
+				from: string;
+				to: string;
+				/** @enum {string} */
+				reason: "shared";
+			}[];
+			can_build: boolean;
+			manifest?: {
+				/** @enum {number} */
+				schema_version: 1;
+				project_revision: string;
+				source_manifest_hash: string;
+				yaml_hash: string;
+				built_at: string;
+			};
 		};
 		ProjectPlanResponse: {
 			/** @enum {string} */

@@ -4,6 +4,8 @@ import { access, chmod, mkdir, open, readFile, realpath, rename, rmdir, stat, un
 import { basename, dirname, relative, resolve } from "node:path";
 import { type Diagnostic, inspectProjectSource, UserError as SdkUserError } from "@openagentpack/sdk";
 
+export * from "./directory.ts";
+
 const STORE_SCHEMA_VERSION = 1;
 const SELF_IGNORE_SOURCE = "*\n";
 

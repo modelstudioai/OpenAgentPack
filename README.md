@@ -77,17 +77,19 @@ The mechanics are a single `agents.yaml`, a `validate → plan → apply` workfl
 ## Quick start
 
 ```bash
-agents init            # interactive wizard writes a starter agents.yaml
-agents validate        # offline YAML check, no API calls
-agents plan            # preview create / update / delete
-agents apply -y        # apply changes
-agents version enable  # optional: version YAML after successful Apply
-agents destroy         # tear down managed resources
+agents project init             # create a directory project (or convert agents.yaml)
+agents project validate         # validate JSON, Markdown, skills, and local files
+agents project build --dry-run  # preview organization and generated YAML
+agents project build -y         # freeze the current source into a Build
+agents project publish -y       # publish exactly that Build and record a version
+agents project workbench        # edit and debug the same directory project
 ```
 
-Run `agents playground -f agents.yaml` to open an Agent directly in Preview; single-Agent projects are selected automatically, while multi-Agent projects accept `--agent <id>` or open the Workbench for selection. Use `agents workbench -f agents.yaml` to open the project console without creating a Session. Playground reads every Agent and Provider from YAML and watches local dependencies. In the Workbench, Resources can edit or remove existing Agent, Environment, Skill, Vault, Memory Store, and File declarations through a server-generated YAML Diff; saving updates `agents.yaml` and automatically refreshes the project Plan. Local versions remain absent until the user explicitly enables them in the project-level Versions tab or with `agents version enable`. When enabled, a successful Apply versions changed YAML; the Versions tab uses the same switch as `agents version enable|disable`, browses history, and restores historical YAML as a forward working-tree change.
+Directory projects keep global settings in `project.json`, each Agent under `agents/<id>/`, Agent instructions in `instructions.md`, and local Skill source either beside its Agent or under the shared `skills/` directory. Build promotes a Skill to the shared directory when multiple Agents reference it and deterministically writes `.openagentpack/build/agents.yaml`. Publish never runs Build implicitly.
 
-The CLI exposes local history through `agents version status|enable|disable|list|preview|restore`. Workbench and CLI share one local switch per `agents.yaml`: `agents version enable` creates a baseline when needed and enables successful Apply versions in both hosts, while `version disable` disables them in both. `store.json` contains only the switch and head; immutable linked entries live under `entries/`, and complete YAML lives in content-addressed `blobs/`, so Git is not required. Restore writes historical YAML into the working tree without changing version history. Neither `agents.state.json` nor referenced files are included. Deployment and Channel declarations stay read-only and are excluded from Workbench project Apply. Missing or invalid projects open the diagnostic Workbench.
+Workbench and CLI share `agents project version status|enable|disable|list|preview|restore`. Versions are Git-independent full source-tree snapshots: immutable manifests point to content-addressed text and binary blobs, while `.openagentpack/state.json` is always excluded. Restore writes a historical tree forward into the working directory without moving version history or remote State. Deployment and Channel declarations remain read-only in Workbench but participate in full project Publish.
+
+The original YAML workflow remains available through `agents init`, `validate`, `plan`, `apply`, and `destroy`. `agents playground -f agents.yaml` continues to open a YAML Agent Session Preview, but YAML Apply no longer creates project versions and cannot be used inside a directory-project root.
 
 ▶ [Watch the full Playground demo](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
@@ -175,29 +177,31 @@ The [`examples/`](./examples) directory has runnable configs for every provider,
 
 ## Using the SDK
 
-Cloud project runtime capabilities are available programmatically from `@openagentpack/sdk`; Node-only local project versions are provided separately by `@openagentpack/project-versions`:
+Cloud runtime capabilities are available from `@openagentpack/sdk`. Directory compilation, Build/Publish, and full-tree versions are exposed by `@openagentpack/project-workspace`, backed by the storage primitives in `@openagentpack/project-versions`:
 
 ```ts
-import { resolveProjectConfig, planProjectContext } from "@openagentpack/sdk";
-import { createProjectVersionService } from "@openagentpack/project-versions";
+import { previewProjectBuild, commitProjectBuild } from "@openagentpack/project-workspace";
 
-const config = await resolveProjectConfig({ configPath: "agents.yaml" });
-const plan = await planProjectContext(config);
-console.log(plan);
+const preview = await previewProjectBuild("./my-agent");
+const build = await commitProjectBuild({
+  projectRoot: preview.project_root,
+  baseRevision: preview.project_revision,
+});
+console.log(build.manifest);
 ```
 
 See the [SDK reference](./docs/reference/sdk.md) for the public API surface.
 
 ## WebUI
 
-`apps/webui` is a Vite single-page project workbench for inspecting and debugging the Agents declared in `agents.yaml`; `apps/server` exposes the SDK over an OpenAPI surface. Run both from the repo root:
+`apps/webui` is a Vite directory-project Workbench; `apps/server` exposes directory editing, Build/Publish, versions, and Session debugging over an OpenAPI surface. Run both from the repo root with `AGENTS_PROJECT_ROOT` pointing at a project:
 
 ```bash
 bun install
 bun run dev        # server + webui together
 ```
 
-Or launch the packaged local UI with `agents playground -f <path/to/agents.yaml>` for Preview or `agents workbench -f <path/to/agents.yaml>` for the project console. Provider, model, tools, memory, skills, and resources come from YAML; the UI does not override them. Deployment declarations are displayed read-only.
+Launch the packaged project console with `agents project workbench --project <directory>`. Use `agents playground -f <path/to/agents.yaml>` only for the legacy YAML Session Preview. Workbench edits directory source, requires an explicit Build, and publishes the reviewed Build; it never edits Provider ownership or pushes Git state.
 
 ## Contributing
 

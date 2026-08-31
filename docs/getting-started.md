@@ -36,9 +36,9 @@ mkdir my-agents && cd my-agents
 agents init
 ```
 
-The init wizard asks two questions — which provider(s) to use and what to name your first agent — then writes a starter `agents.yaml`. It also appends `agents.state.json`, `.openagentpack/versions/`, and `.env` to `.gitignore` so remote state, local snapshots, and secrets remain local.
+The init wizard asks two questions — which provider(s) to use and what to name your first agent — then writes a starter `agents.yaml`. This is the compact YAML workflow used by `validate → plan → apply` and `agents playground`.
 
-Workbench and `agents version` use `.openagentpack/versions/store.json`, immutable entries, and content-addressed YAML blobs. Run `agents version enable` or explicitly enable Versions in Workbench to create a baseline from the current YAML. Git is not required, and versions never include `agents.state.json` or referenced files.
+For a locally managed multi-file project and Workbench, start with `agents project init` instead. It creates `project.json`, `agents/assistant/agent.json`, and `instructions.md`, plus a Git-independent full-tree baseline. Use `agents project validate`, `project build`, `project publish`, `project workbench`, and `project version ...`. The two workflows are intentionally separate: YAML Apply does not create directory versions, while project Publish consumes only `.openagentpack/build/agents.yaml` and never builds implicitly.
 
 The generated file for the `bailian` provider and an agent named `assistant` looks like this:
 

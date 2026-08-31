@@ -1,3 +1,4 @@
+import { assertLegacyYamlNotShadowed } from "@openagentpack/project-workspace";
 import { UserError } from "@openagentpack/sdk";
 import chalk from "chalk";
 import { assertProviderConfigured, buildCliRuntime } from "../config-loader.ts";
@@ -14,6 +15,7 @@ export async function planCommand(options: {
 	refresh?: boolean;
 	refreshOnly?: boolean;
 }) {
+	await assertLegacyYamlNotShadowed(options.file);
 	const ctx = await buildCliRuntime(options.file);
 	assertProviderConfigured(ctx, options.provider);
 

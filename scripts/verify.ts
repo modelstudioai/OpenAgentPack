@@ -70,6 +70,7 @@ const affectedTypechecks = [
 	{ prefix: "scripts/", script: "typecheck:scripts" },
 	{ prefix: "packages/sdk/", script: "typecheck:sdk" },
 	{ prefix: "packages/project-versions/", script: "typecheck:project-versions" },
+	{ prefix: "packages/project-workspace/", script: "typecheck:project-workspace" },
 	{ prefix: "packages/cli/", script: "typecheck:cli" },
 	{ prefix: "packages/playbooks/", script: "typecheck:playbooks" },
 	{ prefix: "packages/playground/", script: "typecheck:playground" },

@@ -3,7 +3,7 @@ import type { Diagnostic, PlannedAction } from "@openagentpack/sdk";
 import { scopeProjectRuntimePlan } from "@/services/project-runtime-plan";
 
 describe("project runtime plan scope", () => {
-	test("keeps create, update, and delete runtime actions while excluding Deployment and Channel", () => {
+	test("keeps the complete Publish action set including Deployment and Channel", () => {
 		const actions = [
 			action("template", "create", "assistant"),
 			action("vault", "update", "secrets"),
@@ -35,22 +35,28 @@ describe("project runtime plan scope", () => {
 			["vault", "update"],
 			["agent", "delete"],
 			["identity", "no-op"],
+			["deployment", "delete"],
+			["channel", "create"],
 		]);
-		expect(plan.destructiveActions.map((entry) => entry.address.name)).toEqual(["retired"]);
-		expect(plan.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["global", "agent.warning"]);
+		expect(plan.destructiveActions.map((entry) => entry.address.name)).toEqual(["retired", "daily"]);
+		expect(plan.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+			"global",
+			"deployment.error",
+			"agent.warning",
+		]);
 		expect(plan.fingerprint).toMatch(/^[a-f0-9]{64}$/);
 	});
 
 	test("fingerprints the exact scoped action set used by Apply", () => {
 		const original = scopeProjectRuntimePlan([action("agent", "update", "assistant")], []);
 		const changed = scopeProjectRuntimePlan([action("agent", "delete", "assistant")], []);
-		const deploymentOnlyChange = scopeProjectRuntimePlan(
+		const deploymentChange = scopeProjectRuntimePlan(
 			[action("agent", "update", "assistant"), action("deployment", "delete", "daily")],
 			[],
 		);
 
 		expect(changed.fingerprint).not.toBe(original.fingerprint);
-		expect(deploymentOnlyChange.fingerprint).toBe(original.fingerprint);
+		expect(deploymentChange.fingerprint).not.toBe(original.fingerprint);
 	});
 });
 

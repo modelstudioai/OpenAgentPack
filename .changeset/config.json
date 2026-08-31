@@ -3,7 +3,13 @@
 	"changelog": "@changesets/cli/changelog",
 	"commit": false,
 	"fixed": [
-		["@openagentpack/sdk", "@openagentpack/project-versions", "@openagentpack/playground", "@openagentpack/cli"]
+		[
+			"@openagentpack/sdk",
+			"@openagentpack/project-versions",
+			"@openagentpack/project-workspace",
+			"@openagentpack/playground",
+			"@openagentpack/cli"
+		]
 	],
 	"linked": [],
 	"access": "public",

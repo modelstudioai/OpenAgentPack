@@ -9,7 +9,7 @@ import { join, relative, resolve } from "node:path";
 import { assertPublishManifest, rewriteExportTargets, rewriteWorkspaceDependencies } from "./package-manifest.ts";
 
 const root = resolve(import.meta.dirname, "../..");
-export const PACKAGES = ["sdk", "project-versions", "playground", "cli"] as const;
+export const PACKAGES = ["sdk", "project-versions", "project-workspace", "playground", "cli"] as const;
 
 export function publishedPackageSpec(name: string, version: string): string {
 	return `${name}@${version}`;

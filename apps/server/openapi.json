@@ -451,6 +451,7 @@
 								"enum": [
 									"agent_apply",
 									"project_apply",
+									"project_build",
 									"declaration_write",
 									"version_enable",
 									"version_write",
@@ -465,9 +466,39 @@
 							}
 						},
 						"required": ["kind", "started_at"]
+					},
+					"build": {
+						"type": "object",
+						"properties": {
+							"exists": {
+								"type": "boolean"
+							},
+							"stale": {
+								"type": "boolean"
+							},
+							"reasons": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"yaml_hash": {
+								"type": "string"
+							}
+						},
+						"required": ["exists", "stale", "reasons"]
 					}
 				},
-				"required": ["status", "config_file", "project_name", "diagnostics", "agents", "deployments", "active_mutation"]
+				"required": [
+					"status",
+					"config_file",
+					"project_name",
+					"diagnostics",
+					"agents",
+					"deployments",
+					"active_mutation",
+					"build"
+				]
 			},
 			"ErrorResponse": {
 				"type": "object",
@@ -782,6 +813,31 @@
 					"after_yaml": {
 						"type": "string"
 					},
+					"changes": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"path": {
+									"type": "string"
+								},
+								"change": {
+									"type": "string",
+									"enum": ["create", "update", "delete"]
+								},
+								"binary": {
+									"type": "boolean"
+								},
+								"before": {
+									"type": "string"
+								},
+								"after": {
+									"type": "string"
+								}
+							},
+							"required": ["path", "change", "binary"]
+						}
+					},
 					"diagnostics": {
 						"type": "array",
 						"items": {
@@ -844,6 +900,7 @@
 					"base_head_version",
 					"before_yaml",
 					"after_yaml",
+					"changes",
 					"diagnostics",
 					"can_restore",
 					"blockers"
@@ -863,6 +920,168 @@
 						},
 						"required": ["new_revision"]
 					}
+				]
+			},
+			"ProjectBuildResponse": {
+				"type": "object",
+				"properties": {
+					"project_revision": {
+						"type": "string"
+					},
+					"before_yaml": {
+						"type": "string"
+					},
+					"after_yaml": {
+						"type": "string"
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"warnings": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"organization_moves": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"skill_id": {
+									"type": "string"
+								},
+								"from": {
+									"type": "string"
+								},
+								"to": {
+									"type": "string"
+								},
+								"reason": {
+									"type": "string",
+									"enum": ["shared"]
+								}
+							},
+							"required": ["skill_id", "from", "to", "reason"]
+						}
+					},
+					"can_build": {
+						"type": "boolean"
+					},
+					"manifest": {
+						"type": "object",
+						"properties": {
+							"schema_version": {
+								"type": "number",
+								"enum": [1]
+							},
+							"project_revision": {
+								"type": "string"
+							},
+							"source_manifest_hash": {
+								"type": "string"
+							},
+							"yaml_hash": {
+								"type": "string"
+							},
+							"built_at": {
+								"type": "string"
+							}
+						},
+						"required": ["schema_version", "project_revision", "source_manifest_hash", "yaml_hash", "built_at"]
+					}
+				},
+				"required": [
+					"project_revision",
+					"before_yaml",
+					"after_yaml",
+					"diagnostics",
+					"warnings",
+					"organization_moves",
+					"can_build"
 				]
 			},
 			"ProjectPlanResponse": {
@@ -1583,7 +1802,7 @@
 				],
 				"responses": {
 					"200": {
-						"description": "Current agents.yaml project, validation, readiness, and deployment declarations",
+						"description": "Current directory project, validation, readiness, Build, and deployment declarations",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2198,7 +2417,7 @@
 			"get": {
 				"responses": {
 					"200": {
-						"description": "Local agents.yaml snapshot store and versioning status",
+						"description": "Local directory source snapshot store and versioning status",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2478,7 +2697,7 @@
 				],
 				"responses": {
 					"200": {
-						"description": "Local snapshots of agents.yaml",
+						"description": "Local directory source snapshots",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2585,7 +2804,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Validate and preview restoring a historical agents.yaml",
+						"description": "Validate and preview restoring a historical directory source tree",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2692,11 +2911,195 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Restore historical agents.yaml content without changing local version history",
+						"description": "Restore historical directory source without changing version history or remote State",
 						"content": {
 							"application/json": {
 								"schema": {
 									"$ref": "#/components/schemas/ProjectVersionRestoreResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/build/preview": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Preview deterministic directory-project Build output and organization moves",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectBuildResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/build": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Organize directory source and atomically write the generated Build",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectBuildResponse"
 								}
 							}
 						}
@@ -2782,7 +3185,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Plan all non-Deployment, non-Channel project runtime resources",
+						"description": "Plan every resource in the current project Build",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2877,7 +3280,7 @@
 				},
 				"responses": {
 					"202": {
-						"description": "Automatically version agents.yaml and accept a project runtime apply",
+						"description": "Accept a full project Publish and version its frozen directory source after success",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3084,7 +3487,7 @@
 				},
 				"responses": {
 					"202": {
-						"description": "Automatically version agents.yaml and accept an Agent apply",
+						"description": "Accept a compatibility-scoped Agent apply without creating a project version",
 						"content": {
 							"application/json": {
 								"schema": {

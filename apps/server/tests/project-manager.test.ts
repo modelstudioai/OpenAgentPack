@@ -1,117 +1,117 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+	commitProjectBuild,
+	getProjectBuildStatus,
+	initializeDirectoryProject,
+} from "@openagentpack/project-workspace";
 import { ProjectRuntimeManager } from "../src/services/project-manager";
 
+const directories: string[] = [];
 const managers: ProjectRuntimeManager[] = [];
+process.env.QODER_PAT ??= "test-qoder-pat";
 
-afterEach(() => {
+afterEach(async () => {
 	for (const manager of managers.splice(0)) manager.close();
+	for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
 describe("ProjectRuntimeManager", () => {
-	test("surfaces a missing agents.yaml and watches its parent directory", async () => {
-		const directory = await mkdtemp(join(tmpdir(), "openagentpack-project-missing-"));
-		const manager = new ProjectRuntimeManager(join(directory, "agents.yaml"));
-		managers.push(manager);
+	test("surfaces a missing directory project and watches its root", async () => {
+		const directory = await temporaryDirectory("missing");
+		const manager = trackManager(new ProjectRuntimeManager(directory));
 
 		await manager.ensureStarted();
 		const summary = await manager.getSummary();
 		expect(summary.status).toBe("missing");
 		expect(summary.diagnostics[0]?.code).toBe("project.config.missing");
+		expect(summary.config_file).toBe(join(directory, ".openagentpack/build/agents.yaml"));
 	});
 
-	test("loads an agents.yaml and changes revision when a referenced instruction changes", async () => {
-		const directory = await mkdtemp(join(tmpdir(), "openagentpack-project-watch-"));
-		const instructionPath = join(directory, "instructions.md");
-		const configPath = join(directory, "agents.yaml");
-		await writeFile(instructionPath, "first instruction\n");
-		await writeFile(configPath, validProjectYaml());
-		const manager = new ProjectRuntimeManager(configPath);
-		managers.push(manager);
+	test("loads directory source and changes revision when instructions change", async () => {
+		const directory = await initializedProject("watch");
+		const manager = trackManager(new ProjectRuntimeManager(directory));
 
 		await manager.ensureStarted();
-		const first = await manager.getSummary();
+		const first = manager.getSnapshot();
 		expect(first.status).toBe("valid");
-		expect(first.agents[0]?.agent.id).toBe("assistant");
+		expect(first.config?.agents.assistant).toBeDefined();
 
-		await writeFile(instructionPath, "second instruction\n");
-		manager.scheduleReload();
-		await Bun.sleep(350);
-		const second = await manager.getSummary();
+		await writeFile(join(directory, "agents/assistant/instructions.md"), "Second instruction\n");
+		await manager.refreshAfterSourceMutation();
+		const second = manager.getSnapshot();
 		expect(second.status).toBe("valid");
 		expect(second.revision).not.toBe(first.revision);
 	});
 
-	test("keeps parsed Agents visible when cross-reference validation is invalid", async () => {
-		const directory = await mkdtemp(join(tmpdir(), "openagentpack-project-invalid-"));
-		await mkdir(directory, { recursive: true });
-		const configPath = join(directory, "agents.yaml");
-		await writeFile(join(directory, "instructions.md"), "instructions\n");
-		await writeFile(configPath, validProjectYaml().replace("environment: sandbox", "environment: missing-environment"));
-		const manager = new ProjectRuntimeManager(configPath);
-		managers.push(manager);
-
+	test("marks the generated Build stale after any source-tree edit", async () => {
+		const directory = await initializedProject("build-stale");
+		const manager = trackManager(new ProjectRuntimeManager(directory));
 		await manager.ensureStarted();
-		const summary = await manager.getSummary();
-		expect(summary.status).toBe("invalid");
-		expect(summary.agents[0]?.agent.id).toBe("assistant");
-		expect(summary.diagnostics.some((diagnostic) => diagnostic.code === "config.agent.environment.unknown")).toBe(true);
-		expect(() => manager.requireRuntimeInput()).toThrow(/configuration is invalid/i);
+		await commitProjectBuild({ projectRoot: directory, baseRevision: manager.getSnapshot().revision! });
+		await manager.refreshAfterSourceMutation();
+		expect((await getProjectBuildStatus(directory)).stale).toBe(false);
+
+		await writeFile(join(directory, "notes.md"), "A manually edited project file.\n");
+		manager.scheduleReload();
+		await waitFor(() => manager.getSnapshot().sourcePaths.includes(join(directory, "notes.md")));
+		const build = await getProjectBuildStatus(directory);
+		expect(build.stale).toBe(true);
+		expect(build.reasons).toContain("Project source changed after the last Build.");
 	});
 
-	test("recovers when a missing referenced file is created later", async () => {
-		const directory = await mkdtemp(join(tmpdir(), "openagentpack-project-missing-reference-"));
-		const configPath = join(directory, "agents.yaml");
-		await writeFile(configPath, validProjectYaml("./prompts/system.md"));
-		const manager = new ProjectRuntimeManager(configPath);
-		managers.push(manager);
+	test("keeps parsed Agents visible when a cross-reference is invalid", async () => {
+		const directory = await initializedProject("invalid-reference");
+		await writeFile(
+			join(directory, "agents/assistant/agent.json"),
+			`${JSON.stringify({ name: "Assistant", model: "qwen-plus", environment: "missing" }, null, 2)}\n`,
+		);
+		const manager = trackManager(new ProjectRuntimeManager(directory));
 
 		await manager.ensureStarted();
-		expect(manager.getSnapshot().status).toBe("invalid");
-
-		await mkdir(join(directory, "prompts"));
-		await writeFile(join(directory, "prompts/system.md"), "created after Playground startup");
-		await waitFor(() => manager.getSnapshot().status === "valid");
-		expect(manager.getSnapshot().sourcePaths).toContain(join(directory, "prompts/system.md"));
+		const snapshot = manager.getSnapshot();
+		expect(snapshot.status).toBe("invalid");
+		expect(snapshot.config?.agents.assistant).toBeDefined();
+		expect(snapshot.diagnostics.some((diagnostic) => diagnostic.code === "config.agent.environment.unknown")).toBe(
+			true,
+		);
+		expect(() => manager.requireRuntimeInput()).toThrow(/directory project is invalid/i);
 	});
 
-	test("keeps a content revision while agents.yaml is syntactically invalid", async () => {
-		const directory = await mkdtemp(join(tmpdir(), "openagentpack-project-invalid-revision-"));
-		const configPath = join(directory, "agents.yaml");
-		await writeFile(configPath, "version: [\n");
-		const manager = new ProjectRuntimeManager(configPath);
-		managers.push(manager);
-
+	test("maintains a source revision while project JSON is syntactically invalid", async () => {
+		const directory = await initializedProject("invalid-json");
+		const manager = trackManager(new ProjectRuntimeManager(directory));
 		await manager.ensureStarted();
+
+		await writeFile(join(directory, "project.json"), "{\n");
+		await manager.refreshAfterSourceMutation();
 		const firstRevision = manager.getSnapshot().revision;
 		expect(manager.getSnapshot().status).toBe("invalid");
 		expect(firstRevision).toBeString();
 
-		await writeFile(configPath, "version: {\n");
+		await writeFile(join(directory, "project.json"), '{"version":\n');
 		await manager.refreshAfterSourceMutation();
 		expect(manager.getSnapshot().revision).not.toBe(firstRevision);
 	});
 });
 
-function validProjectYaml(instructions = "./instructions.md"): string {
-	return `version: "1"
-providers:
-  qoder:
-    api_key: test-token
-defaults:
-  provider: qoder
-environments:
-  sandbox:
-    config:
-      type: cloud
-agents:
-  assistant:
-    model: ultimate
-    instructions: ${instructions}
-    environment: sandbox
-`;
+async function initializedProject(name: string): Promise<string> {
+	const directory = await temporaryDirectory(name);
+	await initializeDirectoryProject({ projectRoot: directory, provider: "qoder" });
+	return directory;
+}
+
+async function temporaryDirectory(name: string): Promise<string> {
+	const directory = await mkdtemp(join(tmpdir(), `openagentpack-project-${name}-`));
+	directories.push(directory);
+	return directory;
+}
+
+function trackManager(manager: ProjectRuntimeManager): ProjectRuntimeManager {
+	managers.push(manager);
+	return manager;
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
@@ -120,5 +120,5 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<voi
 		if (predicate()) return;
 		await Bun.sleep(25);
 	}
-	throw new Error("Timed out waiting for project reload");
+	throw new Error("Timed out waiting for directory project reload");
 }

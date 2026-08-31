@@ -79,7 +79,7 @@ export function scopeProjectRuntimePlan(actions: PlannedAction[], diagnostics: D
 }
 
 function isRuntimeResourceType(type: string): boolean {
-	return type !== "deployment" && type !== "channel";
+	return Boolean(type);
 }
 
 function stableFingerprint(value: unknown): string {

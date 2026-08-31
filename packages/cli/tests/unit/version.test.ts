@@ -1,215 +1,152 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { commitPreparedProjectVersion, prepareProjectVersion } from "../../src/versioning/project-versions";
+import { createDirectoryWorkspaceVersionService } from "@openagentpack/project-workspace";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const directories: string[] = [];
-const testEnvironment = { QODER_PAT: "test-qoder-token" };
 
 afterEach(async () => {
 	for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
-describe("agents version", () => {
-	test("enable creates a Git-independent baseline snapshot and a shared local switch", async () => {
+describe("agents project version", () => {
+	test("project init creates a Git-independent baseline and shared local switch", async () => {
 		const root = await temporaryDirectory();
-		const configPath = join(root, "agents.yaml");
-		await writeFile(configPath, projectYaml("Baseline"));
+		const initialized = await runAgents(["project", "init", "--project", root, "--provider", "qoder", "--json"]);
 
-		const enabled = await runAgents(["version", "enable", "--file", configPath, "--json"], testEnvironment);
-
-		expect(enabled.exitCode).toBe(0);
-		const body = JSON.parse(enabled.stdout);
-		expect(body.versioning.enabled).toBe(true);
-		expect(body.versioning.store_root).toBe(join(await realpath(root), ".openagentpack", "versions"));
-		expect(body.version.message).toBe("Enable OpenAgentPack versioning");
-		expect(
-			await readFile(join(body.versioning.store_root, "blobs", `${body.version.source_hash}.yaml`), "utf8"),
-		).toContain("Baseline");
-
-		const repeated = await runAgents(["version", "enable", "--file", configPath, "--json"], testEnvironment);
-		expect(repeated.exitCode).toBe(0);
-		expect(JSON.parse(repeated.stdout).version).toBeNull();
+		expect(initialized.exitCode).toBe(0);
+		const body = JSON.parse(initialized.stdout);
+		expect(body.baseline_version).toMatch(/^[a-f0-9]{64}$/);
+		const status = await runAgents(["project", "version", "status", "--project", root, "--json"]);
+		expect(status.exitCode).toBe(0);
+		const versioning = JSON.parse(status.stdout);
+		expect(versioning.enabled).toBe(true);
+		expect(versioning.store_root).toBe(join(root, ".openagentpack/versions/project"));
+		expect(versioning.source_status).toBe("clean");
 	});
 
-	test("enable and disable are isolated by agents.yaml directory", async () => {
-		const firstRoot = await temporaryDirectory();
-		const secondRoot = await temporaryDirectory();
-		const firstPath = join(firstRoot, "agents.yaml");
-		const secondPath = join(secondRoot, "agents.yaml");
-		await writeFile(firstPath, projectYaml("First"));
-		await writeFile(secondPath, projectYaml("Second"));
-
-		await runAgents(["version", "enable", "--file", firstPath, "--json"], testEnvironment);
-		await runAgents(["version", "enable", "--file", secondPath, "--json"], testEnvironment);
-		const disabled = await runAgents(["version", "disable", "--file", firstPath, "--json"], testEnvironment);
-		const secondStatus = await runAgents(["version", "status", "--file", secondPath, "--json"], testEnvironment);
-
-		expect(JSON.parse(disabled.stdout).enabled).toBe(false);
-		expect(JSON.parse(secondStatus.stdout).enabled).toBe(true);
-	});
-
-	test("list, preview, and restore use full local version IDs without changing State", async () => {
-		const root = await temporaryDirectory();
-		const configPath = join(root, "agents.yaml");
-		const statePath = join(root, "agents.state.json");
-		await writeFile(configPath, projectYaml("Version one"));
-		await chmod(configPath, 0o640);
+	test("list, preview, and restore operate on the complete directory source without changing State", async () => {
+		const root = await initializedProject();
+		const instructionsPath = join(root, "agents/assistant/instructions.md");
+		const statePath = join(root, ".openagentpack/state.json");
+		const baseline = (await createDirectoryWorkspaceVersionService(root).status()).head_version!;
+		await chmod(instructionsPath, 0o640);
 		await writeFile(statePath, '{"remote":"latest"}\n');
-		const enabled = await runAgents(["version", "enable", "--file", configPath, "--json"], testEnvironment);
-		const firstVersion = JSON.parse(enabled.stdout).version.version_id as string;
+		await writeFile(instructionsPath, "Version two\n");
+		await mkdir(join(root, "assets"));
+		await writeFile(join(root, "assets/icon.bin"), new Uint8Array([0, 1, 2]));
 
-		const secondSource = projectYaml("Version two");
-		await writeFile(configPath, secondSource, { mode: 0o640 });
-		const prepared = await prepareProjectVersion(configPath, secondSource);
-		await commitPreparedProjectVersion(prepared!);
+		const service = createDirectoryWorkspaceVersionService(root);
+		const prepared = await service.prepareVersion();
+		const second = await service.commitPrepared(prepared, "Publish project");
+		if (!second) throw new Error("Expected a changed directory snapshot.");
+		expect(second.version_id).toMatch(/^[a-f0-9]{64}$/);
 
-		const listed = await runAgents(["version", "list", "--file", configPath, "--json"], testEnvironment);
+		const listed = await runAgents(["project", "version", "list", "--project", root, "--json"]);
 		expect(JSON.parse(listed.stdout).versions.map((version: { message: string }) => version.message)).toEqual([
-			"Apply agents.yaml",
-			"Enable OpenAgentPack versioning",
+			"Publish project",
+			"Initialize project",
 		]);
-		const abbreviated = await runAgents(
-			["version", "preview", firstVersion.slice(0, 12), "--file", configPath],
-			testEnvironment,
-		);
+		const abbreviated = await runAgents(["project", "version", "preview", baseline.slice(0, 12), "--project", root]);
 		expect(abbreviated.exitCode).toBe(1);
-		expect(abbreviated.stderr).toContain("64-character hexadecimal");
+		expect(abbreviated.stderr).toContain("full 64-character");
 
-		const preview = await runAgents(["version", "preview", firstVersion, "--file", configPath], testEnvironment);
+		const preview = await runAgents(["project", "version", "preview", baseline, "--project", root]);
 		expect(preview.exitCode).toBe(0);
-		expect(preview.stdout).toContain("-    instructions: Version two");
-		expect(preview.stdout).toContain("+    instructions: Version one");
-		const restored = await runAgents(
-			["version", "restore", firstVersion, "--file", configPath, "--yes", "--json"],
-			testEnvironment,
-		);
+		expect(preview.stdout).toContain("update agents/assistant/instructions.md");
+		expect(preview.stdout).toContain("delete assets/icon.bin (binary)");
+		const restored = await runAgents(["project", "version", "restore", baseline, "--project", root, "--yes", "--json"]);
 		expect(restored.exitCode).toBe(0);
-		expect(await readFile(configPath, "utf8")).toContain("Version one");
+		expect(await readFile(instructionsPath, "utf8")).toBe("You are a helpful assistant.\n");
+		expect(await stat(join(root, "assets/icon.bin")).catch(() => null)).toBeNull();
 		expect(await readFile(statePath, "utf8")).toBe('{"remote":"latest"}\n');
-		expect((await stat(configPath)).mode & 0o777).toBe(0o640);
+		expect((await stat(instructionsPath)).mode & 0o777).toBe(0o644);
+		expect((await service.status()).head_version).toBe(second.version_id);
 	});
 
-	test("successful no-op Apply snapshots dirty YAML only when versioning is enabled", async () => {
-		const root = await temporaryDirectory();
-		const configPath = join(root, "agents.yaml");
-		await writeFile(configPath, projectYaml("Initial"));
-		await runAgents(["version", "enable", "--file", configPath, "--json"], testEnvironment);
-		await writeFile(configPath, projectYaml("Applied change"));
-		await seedMatchingAgentState(root, configPath);
+	test("project build renders directory source changes against the current version head", async () => {
+		const root = await initializedProject();
+		const initialBuild = await runAgents(["project", "build", "--project", root, "--yes"]);
+		expect(initialBuild.exitCode).toBe(0);
 
-		const applied = await runAgents(["apply", "--file", configPath, "--refresh", "false", "--yes"], testEnvironment);
-		expect(applied.exitCode).toBe(0);
-		expect(applied.stderr).toContain("Created local version");
-		const listAfterApply = await runAgents(["version", "list", "--file", configPath, "--json"], testEnvironment);
-		expect(JSON.parse(listAfterApply.stdout).versions[0].message).toBe("Apply agents.yaml");
+		await writeFile(join(root, "agents/assistant/instructions.md"), "Changed while offline.\n");
+		const preview = await runAgents(["project", "build", "--project", root, "--dry-run"]);
 
-		await runAgents(["version", "disable", "--file", configPath, "--json"], testEnvironment);
-		await writeFile(configPath, projectYaml("Disabled change"));
-		await seedMatchingAgentState(root, configPath);
-		await runAgents(["apply", "--file", configPath, "--refresh", "false", "--yes"], testEnvironment);
-		const listAfterDisabledApply = await runAgents(
-			["version", "list", "--file", configPath, "--json"],
-			testEnvironment,
-		);
-		expect(JSON.parse(listAfterDisabledApply.stdout).versions[0].message).toBe("Apply agents.yaml");
+		expect(preview.exitCode).toBe(0);
+		expect(preview.stdout).toContain("Project source changes");
+		expect(preview.stdout).toMatch(/baseline [a-f0-9]{12} -> working tree/);
+		expect(preview.stdout).toContain("update agents/assistant/instructions.md");
+		expect(preview.stdout).toContain("-You are a helpful assistant.");
+		expect(preview.stdout).toContain("+Changed while offline.");
+		expect(preview.stdout).not.toContain("Generated YAML changes");
+		expect(preview.stdout).not.toContain("generated agents.yaml");
 	});
 
-	test("an Apply-time YAML race preserves recovery guidance", async () => {
-		const root = await temporaryDirectory();
-		const configPath = join(root, "agents.yaml");
-		await writeFile(configPath, projectYaml("Initial"));
-		await runAgents(["version", "enable", "--file", configPath, "--json"], testEnvironment);
-		const expectedSource = projectYaml("Expected");
-		await writeFile(configPath, expectedSource);
-		const prepared = await prepareProjectVersion(configPath, expectedSource);
-		await writeFile(configPath, projectYaml("Concurrent edit"));
+	test("enable and disable share one switch and do not remove version history", async () => {
+		const root = await initializedProject();
+		const before = await runAgents(["project", "version", "list", "--project", root, "--json"]);
+		const disabled = await runAgents(["project", "version", "disable", "--project", root, "--json"]);
+		expect(JSON.parse(disabled.stdout).enabled).toBe(false);
 
-		await expect(commitPreparedProjectVersion(prepared!)).rejects.toThrow(
-			"Remote Apply completed, but agents.yaml could not be versioned",
-		);
+		const enabled = await runAgents(["project", "version", "enable", "--project", root, "--json"]);
+		expect(JSON.parse(enabled.stdout).versioning.enabled).toBe(true);
+		const after = await runAgents(["project", "version", "list", "--project", root, "--json"]);
+		expect(JSON.parse(after.stdout).versions).toEqual(JSON.parse(before.stdout).versions);
 	});
 
-	test("sensitive literals block enable without leaking the value or creating a store", async () => {
-		const root = await temporaryDirectory();
-		const configPath = join(root, "agents.yaml");
-		const qoderReference = ["api_key: $", "{QODER_PAT}"].join("");
-		await writeFile(configPath, projectYaml("Unsafe").replace(qoderReference, "api_key: literal-do-not-leak"));
+	test("sensitive literals block snapshots without leaking the value", async () => {
+		const root = await initializedProject();
+		await runAgents(["project", "version", "disable", "--project", root, "--json"]);
+		const projectPath = join(root, "project.json");
+		const project = JSON.parse(await readFile(projectPath, "utf8"));
+		project.providers.qoder.api_key = "literal-do-not-leak";
+		await writeFile(projectPath, `${JSON.stringify(project, null, 2)}\n`);
 
-		const result = await runAgents(["version", "enable", "--file", configPath, "--json"], testEnvironment);
+		const result = await runAgents(["project", "version", "enable", "--project", root, "--json"]);
 		expect(result.exitCode).toBe(1);
 		expect(`${result.stdout}${result.stderr}`).not.toContain("literal-do-not-leak");
 		expect(result.stderr).toContain("environment variable reference");
-		const status = await runAgents(["version", "status", "--file", configPath, "--json"], testEnvironment);
-		expect(JSON.parse(status.stdout).initialized).toBe(false);
 	});
 
-	test("help exposes snapshot versions without Git or a manual create command", async () => {
-		const result = await runAgents(["version", "--help"]);
+	test("help exposes versions only below project and has no Git or manual create command", async () => {
+		const rootHelp = await runAgents(["--help"]);
+		expect(rootHelp.stdout).not.toMatch(/^\s+version\b/m);
+		expect(rootHelp.stdout).not.toMatch(/^\s+workbench\b/m);
+
+		const result = await runAgents(["project", "version", "--help"]);
 		expect(result.exitCode).toBe(0);
 		expect(result.stdout).toContain("enable");
 		expect(result.stdout).toContain("restore");
 		expect(result.stdout).not.toContain("Git");
 		expect(result.stdout).not.toMatch(/^\s+create\b/m);
 
-		const versionHelp = await runAgents(["version", "status", "--help"]);
-		expect(versionHelp.stdout).toContain("--file <path>");
-		expect(versionHelp.stdout).not.toContain("-f, --file <path>");
+		const versionHelp = await runAgents(["project", "version", "status", "--help"]);
+		expect(versionHelp.stdout).toContain("--project <directory>");
+		expect(versionHelp.stdout).not.toContain("--file");
 	});
 });
 
+async function initializedProject(): Promise<string> {
+	const root = await temporaryDirectory();
+	const result = await runAgents(["project", "init", "--project", root, "--provider", "qoder", "--json"]);
+	if (result.exitCode !== 0) throw new Error(result.stderr);
+	return root;
+}
+
 async function temporaryDirectory(): Promise<string> {
-	const directory = await mkdtemp(join(tmpdir(), "agents-cli-version-"));
+	const directory = await mkdtemp(join(tmpdir(), "agents-cli-project-version-"));
 	directories.push(directory);
 	return directory;
 }
 
-function projectYaml(instructions: string): string {
-	return `version: "1"
-providers:
-  qoder:
-    api_key: \${QODER_PAT}
-defaults:
-  provider: qoder
-agents:
-  assistant:
-    model: ultimate
-    instructions: ${instructions}
-`;
-}
-
-async function seedMatchingAgentState(root: string, configPath: string): Promise<void> {
-	const plan = await runAgents(["plan", "--file", configPath, "--refresh", "false", "--json"], testEnvironment);
-	if (plan.exitCode !== 0) throw new Error(plan.stderr);
-	const action = JSON.parse(plan.stdout).actions.find(
-		(candidate: { address: { name: string }; after?: { content_hash?: string } }) =>
-			candidate.address.name === "assistant",
-	);
-	const contentHash = action?.after?.content_hash;
-	if (!contentHash) throw new Error("Plan did not produce an Agent content hash.");
-	await writeFile(
-		join(root, "agents.state.json"),
-		JSON.stringify({
-			resources: [
-				{
-					address: { type: "agent", name: "assistant", provider: "qoder" },
-					remote_id: "agent_test",
-					content_hash: contentHash,
-					desired_hash: contentHash,
-				},
-			],
-		}),
-	);
-}
-
-async function runAgents(args: string[], environment: Record<string, string> = {}) {
+async function runAgents(args: string[]) {
 	const processHandle = Bun.spawn([process.execPath, "run", join(REPO_ROOT, "packages/cli/bin/agents.ts"), ...args], {
 		cwd: REPO_ROOT,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", ...environment },
+		env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
 	});
 	const [stdout, stderr, exitCode] = await Promise.all([
 		new Response(processHandle.stdout).text(),

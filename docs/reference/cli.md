@@ -29,10 +29,6 @@ Launch the local web UI and open an `agents.yaml` Agent directly in Preview.
 
 Playground opens the project selected by `-f`, watches the YAML and its local dependencies, and uses each Agent's declared Provider. A single Agent is selected automatically. For multiple Agents, pass `--agent <id>`; otherwise the Workbench opens for selection. Missing or invalid projects also open the diagnostic Workbench.
 
-The Workbench Resources tab edits or removes declarations already present in `agents.yaml`; it has no create action. Agent, Environment, Skill, Vault, Memory Store, and File changes require a server-generated YAML Diff before save. Local file-backed content and external ownership fields remain read-only, and referenced declarations cannot be removed. Saving writes only `agents.yaml`, refreshes the project, and automatically opens a new project runtime Plan. Apply remains a separate confirmation.
-
-Workbench does not initialize version storage automatically. The user must explicitly enable versions in the Versions tab or through `agents version enable`; that action creates a baseline when needed and updates the shared switch. `store.json` contains only the switch and head, immutable linked metadata lives under `entries/`, and complete YAML lives in content-addressed `blobs/<sha256>.yaml` files. Before every Agent- or project-scoped Apply, Workbench versions changed YAML; unchanged YAML does not create an empty version. Restore validates the selected full version ID and blob hash, then writes historical YAML back as a forward working-tree change without changing version history. `agents.state.json` and referenced files are never included. Apply, declaration writes, version writes, and restore remain mutually exclusive, while historical browsing is available during Apply.
-
 | Option | Description |
 |--------|-------------|
 | `-f, --file <path>` | Project configuration to open (default `agents.yaml`). |
@@ -40,38 +36,29 @@ Workbench does not initialize version storage automatically. The user must expli
 | `--port <n>` | Port to serve on (default `4848`). |
 | `--no-open` | Do not open a browser automatically. |
 
-Workbench Changes reviews a project runtime Plan before Apply. The plan covers declared runtime resources, including transitive dependencies, but excludes Deployment and Channel actions. The existing Agent-scoped Plan/Apply protocol remains available to Session Preview callers. Apply uses a single-use, ten-minute Plan token, requires explicit confirmation for destructive actions, replans immediately before execution, and rejects stale or newly changed plans. Temporary attachments are uploaded for Sessions without modifying YAML or state and remain recorded locally until their explicit remote deletion succeeds.
 
-## `agents workbench`
+The YAML Preview flow is read-only and does not participate in directory project Build, Publish, or versions.
 
-Launch the same local Server and open the `agents.yaml` project Workbench without creating a Session. The command shares project identity, process reuse, port handling, and configuration watching with `agents playground`.
+## `agents project`
 
-| Option | Description |
-|--------|-------------|
-| `-f, --file <path>` | Project configuration to open (default `agents.yaml`). |
-| `--port <n>` | Port to serve on (default `4848`). |
-| `--no-open` | Do not open a browser automatically. |
-
-## `agents version`
-
-Manage Git-independent local snapshot history for the selected `agents.yaml`. CLI Apply-time snapshots are disabled until versioning is enabled.
-
-All version subcommands accept `--file <path>` to select the project configuration. They intentionally do not define a command-level `-f` alias, so the option is not confused with force.
+Manage a directory project. The project root contains `project.json`, `agents/<id>/agent.json`, `agents/<id>/instructions.md`, Agent-local or shared Skill directories, and other versioned local files. `.openagentpack/` contains generated Build output, remote State, versions, locks, and recoverable trash; it is not authored source.
 
 | Subcommand | Description |
 |------------|-------------|
-| `version enable` | Initialize the local store, enable automatic versions, and create a baseline snapshot when needed. |
-| `version disable` | Disable automatic versions without deleting snapshots or working-tree changes. |
-| `version status` | Show the opt-in, store location, current version, YAML status, and operation blockers. |
-| `version list` | List local snapshots; supports `--limit`, `--cursor`, and `--json`. |
-| `version preview <full-id>` | Show a redacted Git-style Diff and restore diagnostics for a full version ID. |
-| `version restore <full-id>` | Atomically write historical YAML to the working tree; accepts `--yes` and `--json`. |
+| `project init` | Create a directory project, or convert an existing root `agents.yaml` without deleting it. Creates and enables the baseline source version. |
+| `project validate` | Validate all authored JSON, Markdown, Skill, and referenced local files without remote mutation. |
+| `project build` | Preview full directory source changes against the current version HEAD, or write deterministic `.openagentpack/build/agents.yaml`; shared Skill promotion happens only here. |
+| `project publish` | Plan and publish the current Build, then record the frozen source revision after complete success. Never runs Build implicitly. |
+| `project workbench` | Open the directory project Workbench. |
+| `project version ...` | Inspect, enable/disable, preview, or restore Git-independent full-tree versions. |
 
-The shared CLI/Workbench switch lives in the YAML-local `store.json`. Each project directory has independent history. Either host can enable or disable it, and there is no manual `version create` command.
+All project subcommands accept `--project <directory>` (default current directory). `project build --dry-run` shows version-backed directory source changes and proposed Skill moves; writing requires `--yes` or interactive confirmation. `project publish` requires a current Build and explicit confirmation, includes Deployment and Channel actions, and uses `.openagentpack/state.json` as the remote-resource ledger.
 
-When enabled, `agents apply` validates YAML and the local store before remote mutations and records dirty YAML as `Apply agents.yaml` only after all actions succeed. A no-op Apply can record a still-dirty YAML, while cancelled, failed, incomplete, or `--refresh-only` runs do not create a version. An unchanged YAML does not create an empty snapshot. If YAML or the current version changes during Apply, the remote run may already have completed but the snapshot is rejected; resolve the local conflict and rerun Apply to retry it.
+Workbench edits or removes existing Agent, Environment, Skill, Vault, Memory Store, and File declarations; it provides no create action. Agent instructions and Skill Markdown are editable, external ownership fields and File paths remain read-only, referenced declarations cannot be removed, and every save requires a server-generated redacted Diff. Saving invalidates Build. The Changes tab separates Build, Plan Publish, and Publish; it never builds or publishes implicitly.
 
-`store.json` contains only the shared switch and head. Immutable linked metadata under `entries/` points to full content-addressed YAML in `blobs/`, which is verified before restore. Plaintext credentials, invalid YAML, concurrent store writes, and stale version/source identities block creation or restore. `agents.state.json` and referenced files are never restored.
+`project version enable|disable|status|list|preview|restore` and Workbench share one switch and one store under `.openagentpack/versions/project`. Versions contain the complete authored source tree, file modes, text, binary files, and local Skill content through immutable manifests and content-addressed blobs. They never contain or restore `.openagentpack/state.json`. Restore is a forward working-tree write: it does not move history, invoke Publish, or change remote State.
+
+Build, Publish, declaration writes, and Restore share a cross-process mutation lock. Workbench additionally exposes in-process mutation state over SSE so every browser window disables saves while Publish is active. External edits remain possible; Publish uses its frozen Build/source snapshot and reports when the working tree changed during the remote run.
 
 ## `agents validate`
 

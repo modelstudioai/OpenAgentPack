@@ -26,6 +26,20 @@ test("resolves a valid in-memory config and stamps _resolved", async () => {
 	expect(loaded.config.agents?.designer?.model).toBe("qwen3.7-max");
 });
 
+test("optionally resolves environment references in an in-memory config", async () => {
+	const previous = process.env.OPENAGENTPACK_TEST_API_KEY;
+	process.env.OPENAGENTPACK_TEST_API_KEY = "resolved-test-key";
+	try {
+		const raw = validRawConfig();
+		raw.providers.bailian.api_key = `\${OPENAGENTPACK_TEST_API_KEY}`;
+		const loaded = await resolveProjectConfigFromObject(raw, { projectName: "server", resolveEnv: true });
+		expect(loaded.config.providers.bailian?.api_key).toBe("resolved-test-key");
+	} finally {
+		if (previous === undefined) delete process.env.OPENAGENTPACK_TEST_API_KEY;
+		else process.env.OPENAGENTPACK_TEST_API_KEY = previous;
+	}
+});
+
 test("throws UserError listing field paths on schema failure", async () => {
 	const bad = { version: "1" }; // missing required providers
 	let caught: unknown;

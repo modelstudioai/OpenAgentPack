@@ -1,14 +1,19 @@
 # `@openagentpack/project-versions`
 
-Git-independent, Node-only local versions for an OpenAgentPack `agents.yaml` project.
+Git-independent, Node-only local version primitives for OpenAgentPack.
 
-The service stores its switch and head pointer in `.openagentpack/versions/store.json`, immutable metadata
-in `entries/<version-id>.json`, and complete content-addressed YAML in `blobs/<sha256>.yaml`.
-`agents.state.json` and referenced files are never included.
+`createDirectoryProjectVersionService` stores full directory manifests, file modes,
+text, and binary content in immutable entries and content-addressed blobs. A host
+adapter supplies validation and atomic restore; `@openagentpack/project-workspace`
+provides the standard directory-project adapter and excludes generated Build,
+locks, versions, and remote State from source snapshots.
 
 ```ts
-import { createProjectVersionService } from "@openagentpack/project-versions";
+import { createDirectoryWorkspaceVersionService } from "@openagentpack/project-workspace";
 
-const versions = createProjectVersionService({ configPath: "agents.yaml" });
+const versions = createDirectoryWorkspaceVersionService("./my-agent");
 await versions.enable();
 ```
+
+The existing `createProjectVersionService` YAML service remains exported for
+compatibility, but project CLI and Workbench use the directory service.

@@ -3,7 +3,7 @@
  * 用法: bun run scripts/release/build.ts
  */
 
-const PACKAGES = ["sdk", "project-versions", "playground", "cli"] as const; // 拓扑顺序
+const PACKAGES = ["sdk", "project-versions", "project-workspace", "playground", "cli"] as const; // 拓扑顺序
 
 console.log("Building all publishable packages...\n");
 

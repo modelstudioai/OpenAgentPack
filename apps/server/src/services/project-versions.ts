@@ -1,26 +1,56 @@
-import { readFile } from "node:fs/promises";
-import {
-	createProjectVersionService,
-	type PreparedProjectVersion,
-	type ProjectVersion,
-	ProjectVersionError,
-	type ProjectVersionPreview,
-	type ProjectVersionStatus,
-	type ProjectVersionsPage,
+import type {
+	DirectoryProjectVersion,
+	DirectoryProjectVersionPreview,
+	DirectoryProjectVersionStatus,
+	DirectoryVersionFileChange,
+	PreparedDirectoryProjectVersion,
 } from "@openagentpack/project-versions";
+import { createDirectoryWorkspaceVersionService, inspectDirectoryProject } from "@openagentpack/project-workspace";
 import { type ProjectRuntimeManager, projectRuntimeManager } from "@/services/project-manager";
 import { projectMutationCoordinator } from "@/services/project-mutations";
 
-export type ProjectVersioningStatus = ProjectVersionStatus;
-export type ProjectVersionEntry = ProjectVersion;
-export type ProjectVersionHistoryPage = ProjectVersionsPage;
-export type WorkbenchVersionPreview = Omit<ProjectVersionPreview, "base_source_revision"> & {
+export interface ProjectVersioningStatus {
+	initialized: boolean;
+	enabled: boolean;
+	store_root: string;
+	config_path: string;
+	head_version: string | null;
+	source_status: "clean" | "modified" | "unversioned";
+	source_versioned: boolean;
+	write_blockers: string[];
+	restore_blockers: string[];
+}
+
+export interface ProjectVersionEntry {
+	version_id: string;
+	short_version: string;
+	parent_version: string | null;
+	source_hash: string;
+	message: string;
+	created_by: string;
+	created_at: string;
+}
+
+export interface ProjectVersionHistoryPage {
+	versions: ProjectVersionEntry[];
+	next_cursor: string | null;
+}
+
+export interface WorkbenchVersionPreview {
+	version_id: string;
 	base_revision: string;
-};
+	base_head_version: string;
+	before_yaml: string;
+	after_yaml: string;
+	changes: DirectoryVersionFileChange[];
+	diagnostics: DirectoryProjectVersionPreview["diagnostics"];
+	can_restore: boolean;
+	blockers: string[];
+}
 
 export interface AutomaticProjectVersionResult {
-	version: ProjectVersion | null;
-	versioning: ProjectVersionStatus;
+	version: ProjectVersionEntry | null;
+	versioning: ProjectVersioningStatus;
 }
 
 export class ProjectVersionProtocolError extends Error {
@@ -35,25 +65,23 @@ export class ProjectVersionProtocolError extends Error {
 
 export async function getProjectVersioningStatus(
 	manager: ProjectRuntimeManager = projectRuntimeManager,
-): Promise<ProjectVersionStatus> {
+): Promise<ProjectVersioningStatus> {
 	await manager.ensureStarted();
-	return withProjectVersionErrors(() => serviceFor(manager).status());
+	return statusForWire(await serviceFor(manager).status(), manager);
 }
 
 export async function setProjectVersioning(
 	input: { baseRevision: string; enabled: boolean; baselineMessage?: string },
 	manager: ProjectRuntimeManager = projectRuntimeManager,
-): Promise<ProjectVersionStatus> {
+): Promise<ProjectVersioningStatus> {
 	const lease = projectMutationCoordinator.acquire("version_enable");
 	try {
 		await assertRevision(manager, input.baseRevision);
 		const service = serviceFor(manager);
 		const status = input.enabled
-			? (await withProjectVersionErrors(() => service.enable(input.baselineMessage ?? "Enable local versions")))
-					.versioning
-			: await withProjectVersionErrors(() => service.disable());
-		await assertRevision(manager, input.baseRevision);
-		return status;
+			? (await service.enable(input.baselineMessage ?? "Enable project versions")).versioning
+			: await service.disable();
+		return statusForWire(status, manager);
 	} finally {
 		lease.release();
 	}
@@ -62,41 +90,46 @@ export async function setProjectVersioning(
 export async function listProjectVersions(
 	input: { cursor?: string; limit?: number } = {},
 	manager: ProjectRuntimeManager = projectRuntimeManager,
-): Promise<ProjectVersionsPage> {
-	return withProjectVersionErrors(() => serviceFor(manager).listVersions(input));
+): Promise<ProjectVersionHistoryPage> {
+	const page = await serviceFor(manager).listVersions(input);
+	return { versions: page.versions.map(versionForWire), next_cursor: page.next_cursor };
 }
 
 export async function prepareProjectVersionForApply(
 	input: { baseRevision: string },
 	manager: ProjectRuntimeManager = projectRuntimeManager,
-): Promise<PreparedProjectVersion | null> {
+): Promise<PreparedDirectoryProjectVersion> {
 	await assertRevision(manager, input.baseRevision);
 	const service = serviceFor(manager);
-	const status = await withProjectVersionErrors(() => service.status());
-	if (!status.enabled) return null;
-	const source = await readFile(manager.configPath, "utf8");
-	await assertRevision(manager, input.baseRevision);
-	return withProjectVersionErrors(() => service.prepareVersion(source));
+	const inspection = await inspectDirectoryProject(manager.projectRoot);
+	if (inspection.project_revision !== input.baseRevision) {
+		throw new ProjectVersionProtocolError("Project changed before Publish.", 409);
+	}
+	return service.prepareVersion({
+		project_revision: inspection.project_revision,
+		canonical_yaml: inspection.canonical_yaml,
+		files: inspection.source_files,
+	});
 }
 
 export async function commitProjectVersionAfterApply(
-	prepared: PreparedProjectVersion | null,
+	prepared: PreparedDirectoryProjectVersion | null,
 	message: string,
 	manager: ProjectRuntimeManager = projectRuntimeManager,
 ): Promise<AutomaticProjectVersionResult> {
 	const service = serviceFor(manager);
-	if (!prepared) {
-		return { version: null, versioning: await withProjectVersionErrors(() => service.status()) };
-	}
-	const version = await withProjectVersionErrors(() => service.commitPrepared(prepared, message));
-	return { version, versioning: await withProjectVersionErrors(() => service.status()) };
+	const version = prepared ? await service.commitPrepared(prepared, message) : null;
+	return {
+		version: version ? versionForWire(version) : null,
+		versioning: statusForWire(await service.status(), manager),
+	};
 }
 
 export async function releaseProjectVersionAfterApply(
-	prepared: PreparedProjectVersion | null,
+	prepared: PreparedDirectoryProjectVersion | null,
 	manager: ProjectRuntimeManager = projectRuntimeManager,
 ): Promise<void> {
-	await withProjectVersionErrors(() => serviceFor(manager).releasePrepared(prepared));
+	await serviceFor(manager).releasePrepared(prepared);
 }
 
 export async function previewProjectVersion(
@@ -104,11 +137,11 @@ export async function previewProjectVersion(
 	manager: ProjectRuntimeManager = projectRuntimeManager,
 ): Promise<WorkbenchVersionPreview> {
 	await assertRevision(manager, input.baseRevision);
-	const status = await withProjectVersionErrors(() => serviceFor(manager).status());
+	const status = await serviceFor(manager).status();
 	assertHeadVersion(input.baseHeadVersion, status.head_version);
-	const preview = await withProjectVersionErrors(() => serviceFor(manager).previewVersion(input.versionId));
+	const preview = await serviceFor(manager).previewVersion(input.versionId);
 	await assertRevision(manager, input.baseRevision);
-	return toWorkbenchPreview(preview, input.baseRevision);
+	return previewForWire(preview, input.baseRevision);
 }
 
 export async function restoreProjectVersion(
@@ -119,66 +152,80 @@ export async function restoreProjectVersion(
 	try {
 		await assertRevision(manager, input.baseRevision);
 		const service = serviceFor(manager);
-		const preview = await withProjectVersionErrors(() => service.previewVersion(input.versionId));
+		const preview = await service.previewVersion(input.versionId);
 		assertHeadVersion(input.baseHeadVersion, preview.base_head_version);
 		if (!preview.can_restore) {
-			const message =
+			throw new ProjectVersionProtocolError(
 				preview.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ??
-				preview.blockers[0] ??
-				"This version cannot be restored.";
-			throw new ProjectVersionProtocolError(message, 422);
+					preview.blockers[0] ??
+					"Version cannot be restored.",
+				422,
+			);
 		}
-		await withProjectVersionErrors(() =>
-			service.restoreVersion(input.versionId, {
-				headVersion: input.baseHeadVersion,
-				sourceRevision: preview.base_source_revision,
-			}),
-		);
+		await service.restoreVersion(input.versionId, {
+			headVersion: input.baseHeadVersion,
+			projectRevision: preview.base_project_revision,
+		});
 		const newRevision = await manager.refreshAfterSourceMutation();
 		if (!newRevision) throw new ProjectVersionProtocolError("The restored project has no revision.", 500);
-		return { ...toWorkbenchPreview(preview, input.baseRevision), new_revision: newRevision };
+		return { ...previewForWire(preview, input.baseRevision), new_revision: newRevision };
 	} finally {
 		lease.release();
 	}
 }
 
 function serviceFor(manager: ProjectRuntimeManager) {
-	return createProjectVersionService({ configPath: manager.configPath });
+	return createDirectoryWorkspaceVersionService(manager.projectRoot);
 }
 
-function toWorkbenchPreview(preview: ProjectVersionPreview, baseRevision: string): WorkbenchVersionPreview {
-	const { base_source_revision: _baseSourceRevision, ...wirePreview } = preview;
-	return { ...wirePreview, base_revision: baseRevision };
+function statusForWire(status: DirectoryProjectVersionStatus, manager: ProjectRuntimeManager): ProjectVersioningStatus {
+	return {
+		initialized: status.initialized,
+		enabled: status.enabled,
+		store_root: status.store_root,
+		config_path: manager.projectRoot,
+		head_version: status.head_version,
+		source_status: status.source_status,
+		source_versioned: status.source_status === "clean",
+		write_blockers: status.write_blockers,
+		restore_blockers: status.restore_blockers,
+	};
+}
+
+function versionForWire(version: DirectoryProjectVersion): ProjectVersionEntry {
+	return {
+		version_id: version.version_id,
+		short_version: version.short_version,
+		parent_version: version.parent_version,
+		source_hash: version.tree_hash,
+		message: version.message,
+		created_by: version.created_by,
+		created_at: version.created_at,
+	};
+}
+
+function previewForWire(preview: DirectoryProjectVersionPreview, baseRevision: string): WorkbenchVersionPreview {
+	return {
+		version_id: preview.version_id,
+		base_revision: baseRevision,
+		base_head_version: preview.base_head_version,
+		before_yaml: preview.before_yaml,
+		after_yaml: preview.after_yaml,
+		changes: preview.changes,
+		diagnostics: preview.diagnostics,
+		can_restore: preview.can_restore,
+		blockers: preview.blockers,
+	};
 }
 
 async function assertRevision(manager: ProjectRuntimeManager, expected: string): Promise<void> {
-	const current = await manager.computeCurrentSourceRevision();
-	if (current !== expected) {
-		throw new ProjectVersionProtocolError("Project configuration changed. Reload before changing versions.", 409);
+	if ((await manager.computeCurrentSourceRevision()) !== expected) {
+		throw new ProjectVersionProtocolError("Project files changed. Reload before changing versions.", 409);
 	}
 }
 
 function assertHeadVersion(expected: string | null, current: string | null): void {
 	if (expected !== current) {
-		throw new ProjectVersionProtocolError("The current local version changed. Reload versions and retry.", 409);
+		throw new ProjectVersionProtocolError("The current local version changed. Reload and retry.", 409);
 	}
-}
-
-async function withProjectVersionErrors<Result>(operation: () => Promise<Result>): Promise<Result> {
-	try {
-		return await operation();
-	} catch (error) {
-		if (error instanceof ProjectVersionProtocolError) throw error;
-		if (error instanceof ProjectVersionError) {
-			throw new ProjectVersionProtocolError(error.message, statusForProjectVersionError(error));
-		}
-		throw error;
-	}
-}
-
-function statusForProjectVersionError(error: ProjectVersionError): number {
-	if (/64-character|message must be|cursor is invalid/i.test(error.message)) return 400;
-	if (/not found|no versions|blob.*missing/i.test(error.message)) return 404;
-	if (/changed|disabled|another process|mutation lease/i.test(error.message)) return 409;
-	return 422;
 }

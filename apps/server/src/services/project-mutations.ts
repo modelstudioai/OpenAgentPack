@@ -1,6 +1,7 @@
 export type ProjectMutationKind =
 	| "agent_apply"
 	| "project_apply"
+	| "project_build"
 	| "declaration_write"
 	| "version_enable"
 	| "version_write"
@@ -29,7 +30,7 @@ export interface ProjectMutationLease {
 }
 
 /**
- * One process owns one agents.yaml project, so a small in-process lease is the
+ * One process owns one directory project, so a small in-process lease is the
  * authoritative write gate. It intentionally does not try to lock external
  * editors; file-watcher revision checks handle those changes as a later plan.
  */

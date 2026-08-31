@@ -6,12 +6,12 @@ The CLI fetches the matching Playground version on demand the first time you sta
 
 ```sh
 agents playground -f agents.yaml
-agents workbench -f agents.yaml
+agents project workbench --project ./my-agent
 ```
 
-Both commands launch the same loopback-only local API and WebUI. `agents playground` opens a single Agent directly in Preview (use `--agent <id>` for multi-Agent projects), while `agents workbench` opens the project console without creating a Session. The selected `agents.yaml` is the only source of truth: Playground lists its Agents, watches referenced local files, previews and applies one Agent's runtime resources, and starts pinned debugging Sessions with live events and artifacts. Workbench does not initialize version storage automatically: Versions explicitly enables the same Git-independent switch used by the CLI, creates a baseline when needed, and browses or restores history. When enabled, successful Apply versions dirty YAML. It never versions State or referenced files. Missing, invalid, or empty projects open the diagnostic Workbench.
+Both commands launch the same loopback-only local API and WebUI, but they have different sources. `agents playground` keeps the standalone `agents.yaml` Session Preview. `agents project workbench` opens a directory project, watches its complete source tree, edits existing JSON/Markdown declarations, previews and writes Build output, publishes the reviewed Build, and browses or restores full source snapshots.
 
-Session Preview never writes YAML. Workbench writes `agents.yaml` only after an explicit resource save or version restore; Providers and models cannot be overridden globally in the UI, and Deployment declarations are shown read-only. Temporary Session attachments are kept outside `agents.yaml` and `agents.state.json`; delete them explicitly from the workbench to remove the remote file.
+Session Preview never writes YAML. Directory Workbench writes authored source only after explicit save or restore; generated YAML is written only by Build. Providers cannot be edited in the UI, and Deployment declarations are shown read-only but included in full project Publish. Temporary Session attachments and remote State remain outside version snapshots.
 
 If the configuration is missing or invalid, the workbench still opens with diagnostics and automatically recovers after an external edit. Existing Sessions in the same server process keep their original runtime snapshot while new Plans, Applies, uploads, and Sessions remain disabled.
 

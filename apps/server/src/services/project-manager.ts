@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { basename, resolve } from "node:path";
+import {
+	getProjectBuildStatus,
+	inspectDirectoryProject,
+	PROJECT_BUILD_FILE,
+	PROJECT_METADATA_FILE,
+	PROJECT_STATE_FILE,
+	resolveDirectoryProjectRuntime,
+} from "@openagentpack/project-workspace";
 import {
 	type AgentWithReadiness,
 	type BackendRuntimeInput,
@@ -10,8 +17,6 @@ import {
 	listAgentsWithReadiness,
 	type ResolvedProjectConfig,
 	readProjectRuntime,
-	resolveProjectConfig,
-	validateProjectConfig,
 } from "@openagentpack/sdk";
 import { type FSWatcher, watch } from "chokidar";
 import { type ProjectMutationSnapshot, projectMutationCoordinator } from "@/services/project-mutations";
@@ -64,6 +69,7 @@ export interface ProjectSummary {
 	agents: ProjectAgentSummary[];
 	deployments: ProjectDeploymentSummary[];
 	active_mutation: ProjectMutationSnapshot | null;
+	build: { exists: boolean; stale: boolean; reasons: string[]; yaml_hash?: string };
 }
 
 type ProjectListener = (event: ProjectChangeEvent) => void;
@@ -78,6 +84,7 @@ export class ProjectUnavailableError extends Error {
 
 export class ProjectRuntimeManager {
 	readonly configPath: string;
+	readonly projectRoot: string;
 	readonly projectId: string;
 	private snapshot: ProjectSnapshot;
 	private startPromise?: Promise<void>;
@@ -86,15 +93,16 @@ export class ProjectRuntimeManager {
 	private readonly listeners = new Set<ProjectListener>();
 	private readinessCache?: { revision: string; agents: AgentWithReadiness[] };
 
-	constructor(configPath = process.env.AGENTS_CONFIG_PATH?.trim() || "agents.yaml") {
-		this.configPath = resolve(configPath);
-		this.projectId = createHash("sha256").update(this.configPath).digest("hex").slice(0, 16);
+	constructor(projectDirectory = process.env.AGENTS_PROJECT_ROOT?.trim() || ".") {
+		this.projectRoot = resolve(projectDirectory);
+		this.configPath = resolve(this.projectRoot, PROJECT_BUILD_FILE);
+		this.projectId = createHash("sha256").update(this.projectRoot).digest("hex").slice(0, 16);
 		this.snapshot = {
 			status: "loading",
 			configPath: this.configPath,
-			projectName: basename(dirname(this.configPath)),
+			projectName: basename(this.projectRoot),
 			diagnostics: [],
-			sourcePaths: [this.configPath],
+			sourcePaths: [resolve(this.projectRoot, PROJECT_METADATA_FILE)],
 		};
 	}
 
@@ -109,13 +117,13 @@ export class ProjectRuntimeManager {
 
 	async computeCurrentSourceRevision(): Promise<string> {
 		await this.ensureStarted();
-		return computeProjectRevision([...this.snapshot.sourcePaths]);
+		return (await inspectDirectoryProject(this.projectRoot)).project_revision;
 	}
 
 	requireRuntimeInput(): BackendRuntimeInput {
 		if (this.snapshot.status !== "valid" || !this.snapshot.input) {
 			throw new ProjectUnavailableError(
-				`Project configuration is ${this.snapshot.status}. Fix ${this.configPath} before starting a new operation.`,
+				`Directory project is ${this.snapshot.status}. Fix ${this.projectRoot} before starting a new operation.`,
 			);
 		}
 		return this.snapshot.input;
@@ -153,6 +161,12 @@ export class ProjectRuntimeManager {
 			})),
 			deployments: projectDeployments(snapshot.config),
 			active_mutation: projectMutationCoordinator.getSnapshot(),
+			build: await getProjectBuildStatus(this.projectRoot).then((status) => ({
+				exists: status.exists,
+				stale: status.stale,
+				reasons: status.reasons,
+				yaml_hash: status.manifest?.yaml_hash,
+			})),
 		};
 	}
 
@@ -186,54 +200,60 @@ export class ProjectRuntimeManager {
 		const previous = this.snapshot;
 		let next: ProjectSnapshot;
 		try {
-			if (!existsSync(this.configPath)) {
+			if (!existsSync(resolve(this.projectRoot, PROJECT_METADATA_FILE))) {
 				next = {
 					status: "missing",
 					configPath: this.configPath,
-					projectName: basename(dirname(this.configPath)),
+					projectName: basename(this.projectRoot),
 					diagnostics: [
 						{
 							severity: "error",
 							code: "project.config.missing",
-							message: `Configuration file not found: ${this.configPath}`,
+							message: `Directory project not found: ${resolve(this.projectRoot, PROJECT_METADATA_FILE)}`,
 						},
 					],
-					sourcePaths: [this.configPath],
+					sourcePaths: [resolve(this.projectRoot, PROJECT_METADATA_FILE)],
 				};
 			} else {
-				const loaded = await resolveProjectConfig(this.configPath);
-				const diagnostics = validateProjectConfig(loaded.config);
-				const revision = await computeProjectRevision(loaded.sourcePaths);
+				const inspection = await inspectDirectoryProject(this.projectRoot);
+				const diagnostics = [...inspection.diagnostics, ...inspection.warnings];
+				const revision = inspection.project_revision;
 				const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
-				const input: BackendRuntimeInput = {
-					projectName: loaded.projectName,
-					config: loaded.config,
-					configPath: loaded.configPath,
-					providers: loaded.config.providers,
-					stateBackend: new LocalFileStateBackend({ configPath: loaded.configPath }),
-					stateScope: { projectId: loaded.projectName },
-				};
+				const loaded = inspection.loaded;
+				const runtimeLoaded = loaded && !hasErrors ? await resolveDirectoryProjectRuntime(this.projectRoot) : loaded;
+				const input: BackendRuntimeInput | undefined = runtimeLoaded
+					? {
+							projectName: basename(this.projectRoot),
+							config: runtimeLoaded.config,
+							configPath: this.configPath,
+							providers: runtimeLoaded.config.providers,
+							stateBackend: new LocalFileStateBackend({ statePath: resolve(this.projectRoot, PROJECT_STATE_FILE) }),
+							stateScope: { projectId: basename(this.projectRoot) },
+						}
+					: undefined;
 				next = {
 					status: hasErrors ? "invalid" : "valid",
-					configPath: loaded.configPath,
-					projectName: loaded.projectName,
+					configPath: this.configPath,
+					projectName: basename(this.projectRoot),
 					revision,
 					diagnostics,
-					config: loaded.config,
+					config: runtimeLoaded?.config,
 					input,
-					sourcePaths: loaded.sourcePaths,
+					sourcePaths: inspection.source_files.map((file) => resolve(this.projectRoot, file.path)),
 				};
 			}
 		} catch (error) {
 			const failedSourcePaths =
 				error && typeof error === "object" && "sourcePaths" in error && Array.isArray(error.sourcePaths)
 					? error.sourcePaths.filter((sourcePath): sourcePath is string => typeof sourcePath === "string")
-					: [this.configPath];
-			const revision = await computeProjectRevision(failedSourcePaths).catch(() => undefined);
+					: [resolve(this.projectRoot, PROJECT_METADATA_FILE)];
+			const revision = await inspectDirectoryProject(this.projectRoot)
+				.then((value) => value.project_revision)
+				.catch(() => undefined);
 			next = {
 				status: "invalid",
 				configPath: this.configPath,
-				projectName: basename(dirname(this.configPath)),
+				projectName: basename(this.projectRoot),
 				revision,
 				diagnostics: [
 					{
@@ -248,7 +268,7 @@ export class ProjectRuntimeManager {
 
 		this.snapshot = next;
 		this.readinessCache = undefined;
-		await this.resetWatcher(next.sourcePaths);
+		await this.resetWatcher();
 		if (snapshotIdentity(previous) !== snapshotIdentity(next)) {
 			this.emit({
 				type:
@@ -263,10 +283,13 @@ export class ProjectRuntimeManager {
 		for (const listener of this.listeners) listener(event);
 	}
 
-	private async resetWatcher(sourcePaths: string[]): Promise<void> {
+	private async resetWatcher(): Promise<void> {
 		await this.closeWatcher();
-		const watcher = watch(collectWatchPaths(sourcePaths), {
+		const watcher = watch(this.projectRoot, {
 			ignoreInitial: true,
+			ignored: (path) =>
+				path === resolve(this.projectRoot, ".openagentpack") ||
+				path.startsWith(`${resolve(this.projectRoot, ".openagentpack")}/`),
 			usePolling: typeof Bun !== "undefined",
 			interval: 100,
 			awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 20 },
@@ -286,66 +309,10 @@ export class ProjectRuntimeManager {
 	}
 }
 
-function collectWatchPaths(sourcePaths: string[]): string[] {
-	const watchPaths = new Set<string>();
-	for (const sourcePath of sourcePaths) {
-		if (existsSync(sourcePath)) {
-			watchPaths.add(sourcePath);
-			continue;
-		}
-		let existingParent = dirname(sourcePath);
-		while (!existsSync(existingParent)) {
-			const parent = dirname(existingParent);
-			if (parent === existingParent) break;
-			existingParent = parent;
-		}
-		watchPaths.add(existingParent);
-	}
-	return [...watchPaths];
-}
-
 function snapshotIdentity(snapshot: ProjectSnapshot): string {
 	return `${snapshot.status}:${snapshot.revision ?? ""}:${snapshot.diagnostics
 		.map((diagnostic) => `${diagnostic.severity}:${diagnostic.code}:${diagnostic.message}`)
 		.join("|")}`;
-}
-
-async function computeProjectRevision(sourcePaths: string[]): Promise<string> {
-	const hash = createHash("sha256");
-	const visited = new Set<string>();
-	for (const sourcePath of [...sourcePaths].sort()) {
-		await appendPathToHash(hash, sourcePath, visited);
-	}
-	return hash.digest("hex");
-}
-
-async function appendPathToHash(
-	hash: ReturnType<typeof createHash>,
-	sourcePath: string,
-	visited: Set<string>,
-): Promise<void> {
-	let sourceRealPath: string;
-	try {
-		sourceRealPath = await realpath(sourcePath);
-	} catch {
-		hash.update(`missing:${sourcePath}\n`);
-		return;
-	}
-	if (visited.has(sourceRealPath)) return;
-	visited.add(sourceRealPath);
-	const sourceStat = await stat(sourceRealPath);
-	if (sourceStat.isDirectory()) {
-		hash.update(`directory:${sourcePath}\n`);
-		for (const entry of (await readdir(sourceRealPath)).sort()) {
-			await appendPathToHash(hash, resolve(sourceRealPath, entry), visited);
-		}
-		return;
-	}
-	if (sourceStat.isFile()) {
-		hash.update(`file:${sourcePath}\n`);
-		hash.update(await readFile(sourceRealPath));
-		hash.update("\n");
-	}
 }
 
 function projectAgentDetails(
@@ -374,6 +341,10 @@ function projectDeployments(config: ResolvedProjectConfig | undefined): ProjectD
 		initial_event_types: deployment.initial_events.map((event) => event.type),
 		resource_types: (deployment.resources ?? []).map((resource) => resource.type),
 	}));
+}
+
+if (process.env.AGENTS_CONFIG_PATH?.trim() && process.env.AGENTS_PROJECT_ROOT?.trim()) {
+	throw new Error("AGENTS_CONFIG_PATH and AGENTS_PROJECT_ROOT cannot be used by the same Workbench process.");
 }
 
 export const projectRuntimeManager = new ProjectRuntimeManager();

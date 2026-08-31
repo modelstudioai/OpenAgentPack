@@ -31,6 +31,13 @@ module.exports = {
 			to: { path: "^(packages/cli|packages/playground|apps/server|apps/webui)/" },
 		},
 		{
+			name: "no-project-workspace-to-hosts-or-apps",
+			severity: "error",
+			comment: "@openagentpack/project-workspace is a shared Node engine and must not depend on hosts or applications.",
+			from: { path: "^packages/project-workspace/" },
+			to: { path: "^(packages/cli|packages/playground|apps/server|apps/webui)/" },
+		},
+		{
 			name: "no-sdk-deep-imports",
 			severity: "error",
 			comment: "Non-SDK code must use the @openagentpack/sdk public export surface instead of SDK internals.",
@@ -56,6 +63,13 @@ module.exports = {
 			comment: "Browser-facing code must use Workbench APIs instead of importing the Node-only version engine.",
 			from: { path: "^apps/webui/src/" },
 			to: { path: "^packages/project-versions/" },
+		},
+		{
+			name: "no-webui-project-workspace-runtime-import",
+			severity: "error",
+			comment: "Browser-facing code must use Workbench APIs instead of importing the Node-only workspace engine.",
+			from: { path: "^apps/webui/src/" },
+			to: { path: "^packages/project-workspace/" },
 		},
 	],
 	options: {

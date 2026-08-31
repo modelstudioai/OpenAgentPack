@@ -1,6 +1,7 @@
 import { basename, dirname, resolve } from "node:path";
 import { UserError } from "../errors.ts";
 import type { ProjectConfig, ResolvedProjectConfig } from "../types/config.ts";
+import { interpolateEnvVars } from "../utils/env.ts";
 import { resolveFileReferences } from "./file-resolver.ts";
 import { projectConfigSchema } from "./schema.ts";
 import { loadConfig } from "./yaml-loader.ts";
@@ -53,6 +54,8 @@ export interface ResolveProjectConfigFromObjectOptions {
 	projectName: string;
 	/** Base path used to resolve any `file:` references (defaults to process.cwd()). */
 	basePath?: string;
+	/** Resolve `${ENV_VAR}` references recursively before schema validation. */
+	resolveEnv?: boolean;
 }
 
 /**
@@ -66,7 +69,8 @@ export async function resolveProjectConfigFromObject(
 	options: ResolveProjectConfigFromObjectOptions,
 ): Promise<LoadedProjectConfig> {
 	const basePath = resolve(options.basePath ?? process.cwd());
-	const result = projectConfigSchema.safeParse(rawConfig);
+	const input = options.resolveEnv ? interpolateObjectEnv(rawConfig) : rawConfig;
+	const result = projectConfigSchema.safeParse(input);
 	if (!result.success) {
 		const errors = result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
 		throw new UserError(errors.join("\n"));
@@ -78,6 +82,15 @@ export async function resolveProjectConfigFromObject(
 	const sourcePaths = collectProjectSourcePaths(parsed, anchor, false);
 	const config = await resolveFileReferences(parsed, anchor);
 	return { configPath: basePath, projectName: options.projectName, config, sourcePaths };
+}
+
+function interpolateObjectEnv(value: unknown): unknown {
+	if (typeof value === "string") return interpolateEnvVars(value, true);
+	if (Array.isArray(value)) return value.map(interpolateObjectEnv);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, interpolateObjectEnv(entry)]),
+	);
 }
 
 function collectProjectSourcePaths(config: ProjectConfig, configPath: string, includeConfigPath: boolean): string[] {

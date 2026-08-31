@@ -1,7 +1,6 @@
 import type { PlannedAction, SessionEvent } from "@openagentpack/sdk";
 import {
 	AlertTriangle,
-	Box,
 	Braces,
 	CheckCircle2,
 	ChevronRight,
@@ -9,7 +8,6 @@ import {
 	ExternalLink,
 	FileText,
 	LoaderCircle,
-	Paperclip,
 	Play,
 	RefreshCw,
 	Search,
@@ -24,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type Attachment,
 	applyProject,
+	buildProject,
 	cancelSession,
 	type DeclarationType,
 	deleteAttachment,
@@ -34,10 +33,14 @@ import {
 	type OperationEvent,
 	operationEventSource,
 	type ProjectAgent,
+	type ProjectBuild,
 	type ProjectPlan,
 	type ProjectSummary,
 	type ProjectVersioningStatus,
+	type ProjectVersionPreview,
 	planProject,
+	previewProjectBuild,
+	previewProjectVersion,
 	projectEventSource,
 	type SessionDetail,
 	sendSessionMessage,
@@ -47,18 +50,17 @@ import {
 } from "@/lib/project-api";
 import { comparePlanActions } from "@/resources/plan-impact";
 import { ResourcesPanel } from "@/resources/ResourcesPanel";
+import { SourceFileDiff } from "@/versions/SourceFileDiff";
 import { VersionsPanel } from "@/versions/VersionsPanel";
 
-type WorkbenchTab = "overview" | "resources" | "changes" | "versions" | "debug" | "artifacts" | "deployments";
+type WorkbenchTab = "overview" | "changes" | "versions" | "debug" | "artifacts";
 
 const TAB_LABELS: Array<{ id: WorkbenchTab; label: string }> = [
 	{ id: "overview", label: "Overview" },
-	{ id: "resources", label: "Resources" },
 	{ id: "changes", label: "Changes" },
 	{ id: "versions", label: "Versions" },
 	{ id: "debug", label: "Debug" },
 	{ id: "artifacts", label: "Artifacts" },
-	{ id: "deployments", label: "Deployments" },
 ];
 const ACTIVE_OPERATION_KEY = "openagentpack.playground.activeOperation";
 
@@ -74,6 +76,11 @@ export default function App() {
 	const [plan, setPlan] = useState<ProjectPlan>();
 	const [baselinePlan, setBaselinePlan] = useState<ProjectPlan>();
 	const [planBusy, setPlanBusy] = useState(false);
+	const [buildBusy, setBuildBusy] = useState(false);
+	const [buildPreview, setBuildPreview] = useState<ProjectBuild>();
+	const [sourcePreviewBusy, setSourcePreviewBusy] = useState(false);
+	const [sourcePreview, setSourcePreview] = useState<ProjectVersionPreview>();
+	const [sourcePreviewError, setSourcePreviewError] = useState<string>();
 	const [applyBusy, setApplyBusy] = useState(false);
 	const [operationEvents, setOperationEvents] = useState<OperationEvent[]>([]);
 	const [actionError, setActionError] = useState<string>();
@@ -92,9 +99,11 @@ export default function App() {
 	const sessionSourceRef = useRef<EventSource | null>(null);
 	const projectRef = useRef<ProjectSummary | undefined>(undefined);
 	const projectRequestGenerationRef = useRef(0);
+	const buildPreviewRequestGenerationRef = useRef(0);
+	const sourcePreviewRequestGenerationRef = useRef(0);
 	const projectValid = project?.status === "valid";
 	const writeBlockedReason = project?.active_mutation
-		? `Project ${project.active_mutation.kind.replace(/_/g, " ")} is running. Drafts remain editable, but YAML and version writes are disabled until it finishes.`
+		? `Project ${project.active_mutation.kind.replace(/_/g, " ")} is running. Drafts remain editable, but source and version writes are disabled until it finishes.`
 		: undefined;
 
 	const loadVersioningStatus = useCallback(async () => {
@@ -144,6 +153,8 @@ export default function App() {
 			if (current && current.status === snapshot?.status && current.revision === snapshot.revision) return;
 			setPlan(undefined);
 			setBaselinePlan(undefined);
+			setBuildPreview(undefined);
+			setSourcePreview(undefined);
 			setOperationEvents([]);
 			void loadProject();
 		});
@@ -166,6 +177,8 @@ export default function App() {
 				}
 				setPlan(undefined);
 				setBaselinePlan(undefined);
+				setBuildPreview(undefined);
+				setSourcePreview(undefined);
 				setOperationEvents([]);
 				void loadProject();
 			});
@@ -267,26 +280,16 @@ export default function App() {
 				setBaselinePlan(undefined);
 				sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
 				if (result.error) setActionError(result.error);
-				void (async () => {
-					await loadProject(true);
-					setPlanBusy(true);
-					try {
-						setPlan(await planProject());
-					} catch (error) {
-						if (!result.error) setActionError(errorMessage(error));
-					} finally {
-						setPlanBusy(false);
-					}
-				})();
+				void loadProject(true);
 				source.close();
 			});
 			source.onerror = () => {
-				setActionError("Apply progress stream disconnected; reconnecting with the same operation ID…");
+				setActionError("Publish progress stream disconnected; reconnecting with the same operation ID…");
 				void getOperation(operationId).catch((error) => {
 					if ((error as { status?: number }).status !== 404) return;
 					setApplyBusy(false);
 					setActionError(
-						"The Playground server restarted and interrupted this Apply. Create a fresh Plan before retrying.",
+						"The Workbench server restarted and interrupted this Publish. Create a fresh Plan before retrying.",
 					);
 					sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
 					source.close();
@@ -304,33 +307,102 @@ export default function App() {
 		connectOperation(operationId);
 	}, [connectOperation]);
 
-	const handlePlan = async () => {
-		setPlanBusy(true);
-		setBaselinePlan(undefined);
+	const loadBuildPreview = useCallback(async (revision: string) => {
+		const requestGeneration = ++buildPreviewRequestGenerationRef.current;
+		setBuildBusy(true);
 		setActionError(undefined);
-		setOperationEvents([]);
 		try {
-			setPlan(await planProject());
+			const preview = await previewProjectBuild(revision);
+			if (requestGeneration !== buildPreviewRequestGenerationRef.current) return;
+			setBuildPreview(preview);
 		} catch (error) {
+			if (requestGeneration !== buildPreviewRequestGenerationRef.current) return;
+			setBuildPreview(undefined);
 			setActionError(errorMessage(error));
 		} finally {
-			setPlanBusy(false);
+			if (requestGeneration === buildPreviewRequestGenerationRef.current) setBuildBusy(false);
 		}
-	};
+	}, []);
 
-	const handleApply = async () => {
-		if (!plan) return;
-		if (plan.destructive && !window.confirm("This plan deletes remote resources. Apply the reviewed plan?")) return;
-		setApplyBusy(true);
+	useEffect(() => {
+		if (tab !== "changes" || !projectValid || !project?.revision || project.active_mutation) return;
+		void loadBuildPreview(project.revision);
+		return () => {
+			buildPreviewRequestGenerationRef.current++;
+			setBuildBusy(false);
+		};
+	}, [loadBuildPreview, project?.active_mutation, project?.revision, projectValid, tab]);
+
+	const loadSourcePreview = useCallback(async (revision: string, headVersion: string) => {
+		const requestGeneration = ++sourcePreviewRequestGenerationRef.current;
+		setSourcePreviewBusy(true);
+		setSourcePreviewError(undefined);
+		try {
+			const preview = await previewProjectVersion(headVersion, revision, headVersion);
+			if (requestGeneration !== sourcePreviewRequestGenerationRef.current) return;
+			setSourcePreview(preview);
+		} catch (error) {
+			if (requestGeneration !== sourcePreviewRequestGenerationRef.current) return;
+			setSourcePreview(undefined);
+			setSourcePreviewError(errorMessage(error));
+		} finally {
+			if (requestGeneration === sourcePreviewRequestGenerationRef.current) setSourcePreviewBusy(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (tab !== "changes") return;
+		const revision = project?.revision;
+		const headVersion = versioningStatus?.head_version;
+		if (!revision || !headVersion) {
+			sourcePreviewRequestGenerationRef.current++;
+			setSourcePreview(undefined);
+			setSourcePreviewBusy(false);
+			setSourcePreviewError(undefined);
+			return;
+		}
+		void loadSourcePreview(revision, headVersion);
+		return () => {
+			sourcePreviewRequestGenerationRef.current++;
+			setSourcePreviewBusy(false);
+		};
+	}, [loadSourcePreview, project?.revision, tab, versioningStatus?.head_version]);
+
+	const handlePublish = async () => {
+		if (!project?.revision) return;
+		let preview = buildPreview;
+		setBuildBusy(true);
+		setPlan(undefined);
 		setActionError(undefined);
 		setOperationEvents([]);
 		try {
-			const accepted = await applyProject(plan.plan_token, plan.destructive);
+			preview ??= await previewProjectBuild(project.revision);
+			setBuildPreview(preview);
+			if (!preview.can_build) throw new Error("Project source contains errors and cannot be built.");
+			await buildProject(project.revision);
+			await loadProject(false, !selectedAgentId);
+			setBuildBusy(false);
+
+			setPlanBusy(true);
+			const nextPlan = await planProject();
+			setPlan(nextPlan);
+			setPlanBusy(false);
+			if (
+				nextPlan.destructive &&
+				!window.confirm("This Publish deletes remote resources. Continue with the generated plan?")
+			)
+				return;
+
+			setApplyBusy(true);
+			const accepted = await applyProject(nextPlan.plan_token, nextPlan.destructive);
 			sessionStorage.setItem(ACTIVE_OPERATION_KEY, accepted.operation_id);
 			connectOperation(accepted.operation_id);
 		} catch (error) {
 			setApplyBusy(false);
 			setActionError(errorMessage(error));
+		} finally {
+			setBuildBusy(false);
+			setPlanBusy(false);
 		}
 	};
 
@@ -347,19 +419,11 @@ export default function App() {
 		setTab("changes");
 		setActionError(undefined);
 		await loadProject(false, deletedSelectedAgent);
-		setPlanBusy(true);
+		setBuildPreview(undefined);
+		setSourcePreview(undefined);
 		setOperationEvents([]);
-		try {
-			const nextPlan = await planProject();
-			setPlan(nextPlan);
-			setBaselinePlan(previousPlan);
-		} catch (error) {
-			setPlan(undefined);
-			setBaselinePlan(undefined);
-			setActionError(errorMessage(error));
-		} finally {
-			setPlanBusy(false);
-		}
+		setPlan(undefined);
+		setBaselinePlan(previousPlan);
 	};
 
 	const handleVersionRestored = async () => {
@@ -367,17 +431,11 @@ export default function App() {
 		setActionError(undefined);
 		await loadProject(false, !selectedAgentId);
 		await loadVersioningStatus();
-		setPlanBusy(true);
+		setBuildPreview(undefined);
+		setSourcePreview(undefined);
 		setBaselinePlan(undefined);
 		setOperationEvents([]);
-		try {
-			setPlan(await planProject());
-		} catch (error) {
-			setPlan(undefined);
-			setActionError(errorMessage(error));
-		} finally {
-			setPlanBusy(false);
-		}
+		setPlan(undefined);
 	};
 
 	const handleUpload = async (fileList: FileList | null) => {
@@ -477,11 +535,11 @@ export default function App() {
 				<div className="brand-mark">
 					<Braces />
 					<span>OpenAgentPack</span>
-					<small>Playground</small>
+					<small>Directory Workbench</small>
 				</div>
 				<div className="project-identity">
 					<strong>{project?.project_name ?? "Loading project"}</strong>
-					<span title={project?.config_file}>{project?.config_file ?? "agents.yaml"}</span>
+					<span title={project?.config_file}>{project?.config_file ?? "directory project"}</span>
 				</div>
 				<div className="project-health">
 					<StatusPill status={reloading ? "loading" : (project?.status ?? "loading")} />
@@ -501,7 +559,7 @@ export default function App() {
 			{project && project.status !== "valid" && (
 				<Banner
 					tone="warning"
-					message={`Project is ${project.status}. Existing Sessions remain available, but new Plan, Apply, upload, and Session operations are disabled.`}
+					message={`Project is ${project.status}. Existing Sessions remain available, but Build, Publish, upload, and new Session operations are disabled.`}
 				/>
 			)}
 			{project?.diagnostics.map((diagnostic) => (
@@ -601,6 +659,7 @@ export default function App() {
 									</div>
 								)}
 							</section>
+							{selectedAgent && <ReadinessDiagnostics agent={selectedAgent} />}
 							<nav className="workspace-tabs">
 								{TAB_LABELS.map((item) => (
 									<button
@@ -616,32 +675,34 @@ export default function App() {
 							{actionError && <Banner tone="error" message={actionError} compact />}
 							{tab === "overview" &&
 								(selectedAgent ? (
-									<Overview agent={selectedAgent} />
+									<ResourcesPanel
+										projectRevision={project?.revision}
+										projectValid={projectValid}
+										selectedAgentId={selectedAgent.agent.id}
+										writeBlockedReason={writeBlockedReason}
+										onCommitted={handleDeclarationCommitted}
+									/>
 								) : (
-									<AgentRequiredPanel action="view its overview" />
+									<AgentRequiredPanel action="edit its resources" />
 								))}
-							{tab === "resources" && selectedAgent && (
-								<ResourcesPanel
-									projectRevision={project?.revision}
-									projectValid={projectValid}
-									selectedAgentId={selectedAgent.agent.id}
-									writeBlockedReason={writeBlockedReason}
-									onCommitted={handleDeclarationCommitted}
-								/>
-							)}
-							{tab === "resources" && !selectedAgent && <AgentRequiredPanel action="edit its resources" />}
 							{tab === "changes" && (
 								<ChangesPanel
 									plan={plan}
 									baselinePlan={baselinePlan}
+									buildPreview={buildPreview}
+									buildBusy={buildBusy}
+									sourcePreview={sourcePreview}
+									sourcePreviewBusy={sourcePreviewBusy || versioningLoading}
+									sourcePreviewError={sourcePreviewError ?? versioningError}
+									versioningInitialized={versioningStatus?.initialized ?? false}
+									headVersion={versioningStatus?.head_version ?? null}
 									planBusy={planBusy}
 									applyBusy={applyBusy}
 									projectValid={projectValid}
 									versioningEnabled={versioningStatus?.enabled ?? false}
 									mutationActive={Boolean(project.active_mutation)}
 									operationEvents={operationEvents}
-									onPlan={handlePlan}
-									onApply={handleApply}
+									onPublish={handlePublish}
 								/>
 							)}
 							{tab === "versions" && (
@@ -688,20 +749,12 @@ export default function App() {
 									empty="Artifacts and tool outputs will appear here after a run."
 								/>
 							)}
-							{tab === "deployments" && selectedAgent && (
-								<DeploymentsPanel
-									deployments={(project?.deployments ?? []).filter(
-										(deployment) => deployment.agent === selectedAgent.agent.id,
-									)}
-								/>
-							)}
-							{tab === "deployments" && !selectedAgent && <AgentRequiredPanel action="view Deployments" />}
 						</>
 					) : (
 						<div className="empty-state">
 							<ServerCog />
 							<h2>No Agent selected</h2>
-							<p>Fix agents.yaml or adjust the filters to select an existing Agent.</p>
+							<p>Fix the directory project or adjust the filters to select an existing Agent.</p>
 						</div>
 					)}
 				</main>
@@ -710,105 +763,98 @@ export default function App() {
 	);
 }
 
-function Overview({ agent }: { agent: ProjectAgent }) {
-	return (
-		<section className="content-grid">
-			<InfoCard
-				icon={<Box />}
-				title="Runtime"
-				rows={[
-					["Provider", agent.agent.provider],
-					["Model", formatValue(agent.agent.model)],
-					["Environment", agent.details.environment ?? "—"],
-					["Vault", agent.details.vault ?? "—"],
-				]}
-			/>
-			<InfoCard
-				icon={<Braces />}
-				title="Tools & MCP"
-				rows={[
-					["Builtins", formatValue((agent.agent.tools as { builtin?: string[] } | undefined)?.builtin ?? [])],
-					["MCP servers", agent.agent.mcpServers.join(", ") || "—"],
-				]}
-			/>
-			<InfoCard
-				icon={<FileText />}
-				title="Skills & memory"
-				rows={[
-					["Skills", agent.agent.skills.map((skill) => skill.id).join(", ") || "—"],
-					["Memory stores", agent.details.memory_stores.join(", ") || "—"],
-				]}
-			/>
-			<InfoCard
-				icon={<Paperclip />}
-				title="Declared resources"
-				rows={
-					agent.details.resources.length
-						? agent.details.resources.map((resource) => [resource.type, resource.mount_path ?? "default mount"])
-						: [["Resources", "—"]]
-				}
-			/>
-		</section>
-	);
-}
-
 function ChangesPanel({
 	plan,
 	baselinePlan,
+	buildPreview,
+	buildBusy,
+	sourcePreview,
+	sourcePreviewBusy,
+	sourcePreviewError,
+	versioningInitialized,
+	headVersion,
 	planBusy,
 	applyBusy,
 	projectValid,
 	versioningEnabled,
 	mutationActive,
 	operationEvents,
-	onPlan,
-	onApply,
+	onPublish,
 }: {
 	plan?: ProjectPlan;
 	baselinePlan?: ProjectPlan;
+	buildPreview?: ProjectBuild;
+	buildBusy: boolean;
+	sourcePreview?: ProjectVersionPreview;
+	sourcePreviewBusy: boolean;
+	sourcePreviewError?: string;
+	versioningInitialized: boolean;
+	headVersion: string | null;
 	planBusy: boolean;
 	applyBusy: boolean;
 	projectValid: boolean;
 	versioningEnabled: boolean;
 	mutationActive: boolean;
 	operationEvents: OperationEvent[];
-	onPlan(): void;
-	onApply(): void;
+	onPublish(): void;
 }) {
 	const impact = plan && baselinePlan ? comparePlanActions(baselinePlan.actions, plan.actions) : undefined;
 	return (
 		<section className="panel-stack">
 			<div className="action-toolbar">
 				<div>
-					<h2>Project runtime resource plan</h2>
-					<p>All declared runtime resources are in scope. Deployments and Channels are explicitly excluded.</p>
+					<h2>Publish</h2>
+					<p>Publish builds the current directory source, generates a remote plan, and executes it as one operation.</p>
 				</div>
 				<div className="toolbar-buttons">
-					<button
-						type="button"
-						className="secondary-button"
-						disabled={!projectValid || planBusy || applyBusy || mutationActive}
-						onClick={onPlan}
+					<span
+						className={`auto-preview-status ${
+							buildBusy ? "loading" : buildPreview?.can_build ? "ready" : buildPreview ? "blocked" : ""
+						}`}
 					>
-						{planBusy ? <LoaderCircle className="spin" /> : <RefreshCw />}Plan
-					</button>
+						{buildBusy ? (
+							<LoaderCircle className="spin" />
+						) : buildPreview?.can_build ? (
+							<CheckCircle2 />
+						) : buildPreview ? (
+							<AlertTriangle />
+						) : (
+							<RefreshCw />
+						)}
+						{buildBusy
+							? "Checking…"
+							: buildPreview?.can_build
+								? "Ready to publish"
+								: buildPreview
+									? "Needs attention"
+									: "Automatic checks"}
+					</span>
 					<button
 						type="button"
 						className="primary-button"
-						disabled={!plan || applyBusy || mutationActive}
-						onClick={onApply}
+						disabled={!projectValid || !buildPreview?.can_build || buildBusy || planBusy || applyBusy || mutationActive}
+						onClick={onPublish}
 					>
-						{applyBusy ? <LoaderCircle className="spin" /> : <Play />}Apply reviewed plan
+						{buildBusy || planBusy || applyBusy ? <LoaderCircle className="spin" /> : <Play />}
+						{buildBusy ? "Preparing…" : planBusy ? "Planning…" : applyBusy ? "Publishing…" : "Publish"}
 					</button>
 				</div>
 			</div>
+			<SourceChangesCard
+				preview={sourcePreview}
+				busy={sourcePreviewBusy}
+				error={sourcePreviewError}
+				initialized={versioningInitialized}
+				headVersion={headVersion}
+			/>
+			{buildPreview && <PublishChecks preview={buildPreview} />}
 			{!versioningEnabled && (
 				<div className="version-notice warning">
 					<AlertTriangle />
-					<span>Local versions are disabled. This Apply will not create a local agents.yaml version.</span>
+					<span>Project versions are disabled. This Publish will not record a directory snapshot.</span>
 				</div>
 			)}
-			{plan ? (
+			{plan && (
 				<div className="plan-card">
 					<div className="plan-meta">
 						<span>{plan.actions.filter((action) => action.action !== "no-op").length} changes</span>
@@ -831,17 +877,17 @@ function ChangesPanel({
 								title="This edit"
 								description="Actions introduced or changed by the declaration you just saved."
 								actions={impact.currentEdit}
-								empty="This edit introduced no Apply action."
+								empty="This edit introduced no Publish action."
 							/>
 							{impact.resolvedByEdit.length > 0 && <ResolvedPlanActions actions={impact.resolvedByEdit} />}
 							<PlanActionGroup
 								title="Already pending"
-								description="These actions existed before this edit and are still included in the project Apply."
+								description="These actions existed before this edit and are still included in project Publish."
 								actions={impact.alreadyPending}
 								empty="No pre-existing project changes remain."
 							/>
 							<p className="plan-scope-notice">
-								Apply reviewed plan executes both groups above. Resolved items require no remote action.
+								Publish executes both groups above. Resolved items require no remote action.
 							</p>
 						</>
 					) : (
@@ -854,15 +900,10 @@ function ChangesPanel({
 						</div>
 					))}
 				</div>
-			) : (
-				<div className="empty-panel">
-					<CircleDot />
-					<p>Create a fresh plan to compare agents.yaml, state, and remote resources.</p>
-				</div>
 			)}
 			{operationEvents.length > 0 && (
 				<div className="operation-log">
-					<h3>Apply progress</h3>
+					<h3>Publish progress</h3>
 					{operationEvents.map((event) => (
 						<div key={event.index}>
 							<time>{new Date(event.timestamp).toLocaleTimeString()}</time>
@@ -873,6 +914,89 @@ function ChangesPanel({
 				</div>
 			)}
 		</section>
+	);
+}
+
+function SourceChangesCard({
+	preview,
+	busy,
+	error,
+	initialized,
+	headVersion,
+}: {
+	preview?: ProjectVersionPreview;
+	busy: boolean;
+	error?: string;
+	initialized: boolean;
+	headVersion: string | null;
+}) {
+	return (
+		<div className="plan-card">
+			<div className="plan-meta">
+				<strong>Source changes</strong>
+				{headVersion && <code>baseline {headVersion.slice(0, 12)}</code>}
+				{preview && <span>{preview.changes.length} changed file(s)</span>}
+			</div>
+			{busy ? (
+				<div className="version-preview-empty">
+					<LoaderCircle className="spin" />
+					<p>Comparing the working directory with the latest published version…</p>
+				</div>
+			) : error ? (
+				<div className="version-notice warning">
+					<AlertTriangle />
+					<span>{error}</span>
+				</div>
+			) : !initialized || !headVersion ? (
+				<div className="version-notice warning">
+					<AlertTriangle />
+					<span>Enable project versions to create a baseline for full directory source changes.</span>
+				</div>
+			) : preview ? (
+				preview.changes.length > 0 ? (
+					preview.changes.map((change) => (
+						<SourceFileDiff
+							key={change.path}
+							change={change}
+							version={headVersion.slice(0, 12)}
+							direction="working-tree"
+						/>
+					))
+				) : (
+					<p className="version-preview-empty">The working directory matches the latest published version.</p>
+				)
+			) : (
+				<p className="version-preview-empty">Waiting for the latest version comparison.</p>
+			)}
+		</div>
+	);
+}
+
+function PublishChecks({ preview }: { preview: ProjectBuild }) {
+	const diagnostics = [...preview.diagnostics, ...preview.warnings];
+	if (preview.organization_moves.length === 0 && diagnostics.length === 0) return null;
+	return (
+		<div className="plan-card">
+			<div className="plan-meta">
+				<strong>Publish checks</strong>
+				<span>{preview.organization_moves.length} organization move(s)</span>
+				<span>{diagnostics.length} diagnostic(s)</span>
+			</div>
+			{preview.organization_moves.map((move) => (
+				<div className="plan-diagnostic warning" key={`${move.from}:${move.to}`}>
+					<strong>move shared skill {move.skill_id}</strong>
+					<span>
+						{move.from} → {move.to}
+					</span>
+				</div>
+			))}
+			{diagnostics.map((diagnostic) => (
+				<div className={`plan-diagnostic ${diagnostic.severity}`} key={`${diagnostic.code}:${diagnostic.message}`}>
+					<strong>{diagnostic.code}</strong>
+					<span>{diagnostic.message}</span>
+				</div>
+			))}
+		</div>
 	);
 }
 
@@ -930,7 +1054,7 @@ function DebugPanel({
 					<div className="panel-heading">
 						<div>
 							<h2>Temporary attachments</h2>
-							<p>Uploaded for Sessions only; never written to agents.yaml.</p>
+							<p>Uploaded for Sessions only; never written to directory project source.</p>
 						</div>
 						<label className={`upload-button ${!projectValid ? "disabled" : ""}`}>
 							<Upload />
@@ -1031,48 +1155,6 @@ function DebugPanel({
 	);
 }
 
-function DeploymentsPanel({ deployments }: { deployments: NonNullable<ProjectSummary["deployments"]> }) {
-	return (
-		<section className="panel-stack">
-			<div className="readonly-note">
-				<ShieldAlert />
-				<span>
-					Deployment declarations are read-only in Playground v1 and are excluded from Workbench project Plan/Apply. Use
-					the CLI deployment flow for mutations.
-				</span>
-			</div>
-			{deployments.length ? (
-				deployments.map((deployment) => (
-					<article className="deployment-card" key={deployment.id}>
-						<div>
-							<span className="eyebrow">deployment</span>
-							<h3>{deployment.id}</h3>
-							<p>{deployment.description ?? "No description declared."}</p>
-						</div>
-						<dl>
-							<dt>Provider</dt>
-							<dd>{deployment.provider ?? "inherited"}</dd>
-							<dt>Schedule</dt>
-							<dd>
-								{deployment.schedule ? `${deployment.schedule.expression} (${deployment.schedule.timezone})` : "manual"}
-							</dd>
-							<dt>Initial events</dt>
-							<dd>{deployment.initial_event_types.join(", ")}</dd>
-							<dt>Resources</dt>
-							<dd>{deployment.resource_types.join(", ") || "—"}</dd>
-						</dl>
-					</article>
-				))
-			) : (
-				<div className="empty-panel">
-					<ServerCog />
-					<p>No Deployment references this Agent.</p>
-				</div>
-			)}
-		</section>
-	);
-}
-
 function EventsPanel({ events, empty }: { events: SessionEvent[]; empty: string }) {
 	return (
 		<div className="event-list">
@@ -1105,25 +1187,6 @@ function EventsPanel({ events, empty }: { events: SessionEvent[]; empty: string 
 				</div>
 			)}
 		</div>
-	);
-}
-
-function InfoCard({ icon, title, rows }: { icon: React.ReactNode; title: string; rows: string[][] }) {
-	return (
-		<article className="info-card">
-			<header>
-				{icon}
-				<h2>{title}</h2>
-			</header>
-			<dl>
-				{rows.map(([label, value]) => (
-					<div key={label}>
-						<dt>{label}</dt>
-						<dd>{value}</dd>
-					</div>
-				))}
-			</dl>
-		</article>
 	);
 }
 
@@ -1218,6 +1281,34 @@ function ReadinessBadge({ agent }: { agent: ProjectAgent }) {
 				</small>
 			</div>
 		</div>
+	);
+}
+
+function ReadinessDiagnostics({ agent }: { agent: ProjectAgent }) {
+	const diagnostics = agent.readiness.diagnostics;
+	if (diagnostics.length === 0) return null;
+	const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
+	return (
+		<section
+			className={`readiness-diagnostics ${hasErrors ? "error" : "warning"}`}
+			aria-label="Agent readiness diagnostics"
+		>
+			<header>
+				<AlertTriangle />
+				<div>
+					<strong>Why this Agent is {agent.readiness.status}</strong>
+					<small>Resolve these diagnostics before starting a debug Session.</small>
+				</div>
+			</header>
+			<ul>
+				{diagnostics.map((diagnostic) => (
+					<li className={diagnostic.severity} key={`${diagnostic.code}:${diagnostic.message}`}>
+						<code>{diagnostic.code}</code>
+						<span>{diagnostic.message}</span>
+					</li>
+				))}
+			</ul>
+		</section>
 	);
 }
 

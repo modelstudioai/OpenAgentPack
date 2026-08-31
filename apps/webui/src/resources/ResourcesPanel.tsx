@@ -4,7 +4,6 @@ import {
 	CheckCircle2,
 	Code2,
 	Edit3,
-	Eye,
 	FileText,
 	KeyRound,
 	LoaderCircle,
@@ -12,7 +11,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type DeclarationPatchOperation,
 	type DeclarationPreview,
@@ -40,6 +39,7 @@ interface ResourcesPanelProps {
 
 type EditorAction = "edit" | "delete";
 type FieldKind = "text" | "textarea" | "json" | "string-or-json" | "credentials";
+const AUTO_PREVIEW_DELAY_MS = 350;
 
 interface FieldDefinition {
 	name: string;
@@ -97,6 +97,7 @@ const FIELD_DEFINITIONS: Record<DeclarationType, FieldDefinition[]> = {
 	skill: [
 		{ name: "name", label: "Display name", kind: "text" },
 		{ name: "source", label: "Source", kind: "text", required: true },
+		{ name: "content", label: "SKILL.md", kind: "textarea", required: true },
 		{ name: "description", label: "Description", kind: "textarea" },
 		{ name: "version", label: "Version", kind: "text" },
 		{ name: "origin", label: "Origin", kind: "text" },
@@ -193,8 +194,8 @@ export function ResourcesPanel({
 				<div>
 					<h2>{selectedAgentId} resources</h2>
 					<p>
-						Edit this Agent and the declarations it references in agents.yaml. New declarations are intentionally
-						unavailable.
+						Edit this Agent and the declarations it references in the directory project. New declarations are
+						intentionally unavailable.
 					</p>
 				</div>
 			</div>
@@ -203,7 +204,7 @@ export function ResourcesPanel({
 			{loading ? (
 				<div className="empty-panel">
 					<LoaderCircle className="spin" />
-					<p>Reading declarations from agents.yaml…</p>
+					<p>Reading declarations from directory source files…</p>
 				</div>
 			) : (
 				<div className="resource-groups">
@@ -245,7 +246,7 @@ export function ResourcesPanel({
 												disabled={!projectValid}
 												onClick={() => setEditor({ resource, action: "delete" })}
 											>
-												<Trash2 /> Remove from agents.yaml
+												<Trash2 /> Remove from project
 											</button>
 										</div>
 									))}
@@ -303,7 +304,9 @@ function DeclarationEditor({
 	const [preview, setPreview] = useState<DeclarationPreview>();
 	const [previewSignature, setPreviewSignature] = useState("");
 	const [localError, setLocalError] = useState<string>();
-	const [busy, setBusy] = useState(false);
+	const [previewBusy, setPreviewBusy] = useState(false);
+	const [commitBusy, setCommitBusy] = useState(false);
+	const previewRequestGenerationRef = useRef(0);
 
 	const currentSignature = useMemo(
 		() => JSON.stringify({ action, enabled: [...enabledFields].sort(), values, secretReplacements }),
@@ -312,7 +315,7 @@ function DeclarationEditor({
 	const previewIsCurrent = previewSignature === currentSignature;
 	const credentials = useMemo(() => parseCredentialDraft(values.credentials), [values.credentials]);
 
-	const buildOperations = (): DeclarationPatchOperation[] => {
+	const buildOperations = useCallback((): DeclarationPatchOperation[] => {
 		const operations: DeclarationPatchOperation[] = [];
 		for (const field of fields) {
 			const existed = field.name in resource.declaration;
@@ -326,34 +329,58 @@ function DeclarationEditor({
 				operations.push({ op: "set", path: [field.name], value: withSecrets });
 			}
 		}
-		if (operations.length === 0) throw new Error("Change at least one field before previewing this edit.");
 		return operations;
-	};
+	}, [enabledFields, fields, resource.declaration, secretReplacements, values]);
 
-	const handlePreview = async () => {
-		setBusy(true);
-		setLocalError(undefined);
-		try {
-			const operations = action === "edit" ? buildOperations() : [];
-			const result = await previewDeclaration(
-				resource.type,
-				resource.id,
-				revision,
-				action === "edit" ? "update" : "delete",
-				operations,
-			);
-			setPreview(result);
-			setPreviewSignature(currentSignature);
-		} catch (caught) {
-			setLocalError(errorMessage(caught));
-		} finally {
-			setBusy(false);
-		}
-	};
+	const runPreview = useCallback(
+		async (signature: string, requestGeneration: number) => {
+			setPreviewBusy(true);
+			setLocalError(undefined);
+			try {
+				const operations = action === "edit" ? buildOperations() : [];
+				if (action === "edit" && operations.length === 0) {
+					if (previewRequestGenerationRef.current !== requestGeneration) return;
+					setPreview(undefined);
+					setPreviewSignature("");
+					return;
+				}
+				const result = await previewDeclaration(
+					resource.type,
+					resource.id,
+					revision,
+					action === "edit" ? "update" : "delete",
+					operations,
+				);
+				if (previewRequestGenerationRef.current !== requestGeneration) return;
+				setPreview(result);
+				setPreviewSignature(signature);
+			} catch (caught) {
+				if (previewRequestGenerationRef.current !== requestGeneration) return;
+				setPreview(undefined);
+				setPreviewSignature("");
+				setLocalError(errorMessage(caught));
+			} finally {
+				if (previewRequestGenerationRef.current === requestGeneration) setPreviewBusy(false);
+			}
+		},
+		[action, buildOperations, resource.id, resource.type, revision],
+	);
+
+	useEffect(() => {
+		const requestGeneration = ++previewRequestGenerationRef.current;
+		const timer = setTimeout(
+			() => void runPreview(currentSignature, requestGeneration),
+			action === "delete" ? 0 : AUTO_PREVIEW_DELAY_MS,
+		);
+		return () => {
+			clearTimeout(timer);
+			if (previewRequestGenerationRef.current === requestGeneration) previewRequestGenerationRef.current++;
+		};
+	}, [action, currentSignature, runPreview]);
 
 	const handleCommit = async () => {
-		if (!preview?.can_commit || !previewIsCurrent || writeBlockedReason) return;
-		setBusy(true);
+		if (!preview?.can_commit || !previewIsCurrent || previewBusy || writeBlockedReason) return;
+		setCommitBusy(true);
 		setLocalError(undefined);
 		try {
 			const baselinePlan = await planProject().catch(() => undefined);
@@ -367,7 +394,7 @@ function DeclarationEditor({
 		} catch (caught) {
 			setLocalError(errorMessage(caught));
 		} finally {
-			setBusy(false);
+			setCommitBusy(false);
 		}
 	};
 
@@ -422,7 +449,6 @@ function DeclarationEditor({
 														else next.delete(field.name);
 														return next;
 													});
-													setPreview(undefined);
 												}}
 											/>
 											<span>{field.label}</span>
@@ -435,7 +461,6 @@ function DeclarationEditor({
 												readOnly={readOnly}
 												onChange={(value) => {
 													setValues((current) => ({ ...current, [field.name]: value }));
-													setPreview(undefined);
 												}}
 											/>
 										)}
@@ -450,7 +475,6 @@ function DeclarationEditor({
 												replacements={secretReplacements}
 												onChange={(key, value) => {
 													setSecretReplacements((current) => ({ ...current, [key]: value }));
-													setPreview(undefined);
 												}}
 											/>
 										)}
@@ -462,11 +486,11 @@ function DeclarationEditor({
 						<div className="delete-declaration-copy">
 							<AlertTriangle />
 							<h3>
-								Remove {resource.type}.{resource.id} from agents.yaml?
+								Remove {resource.type}.{resource.id} from the directory project?
 							</h3>
 							<p>
 								This only removes the local declaration. Remote deletion happens later through a reviewed project Plan
-								and Apply. Local source files are never deleted.
+								and Publish. File declarations never delete their referenced local files.
 							</p>
 						</div>
 					)}
@@ -476,11 +500,12 @@ function DeclarationEditor({
 					<div className="preview-toolbar">
 						<div>
 							<h3>Server preview</h3>
-							<p>Preview is required and never writes agents.yaml.</p>
+							<p>Preview updates automatically after you pause editing and never writes project source files.</p>
 						</div>
-						<button type="button" className="secondary-button" disabled={busy} onClick={() => void handlePreview()}>
-							{busy ? <LoaderCircle className="spin" /> : <Eye />} Preview YAML Diff
-						</button>
+						<span className={`auto-preview-status ${previewBusy ? "loading" : previewIsCurrent ? "ready" : ""}`}>
+							{previewBusy ? <LoaderCircle className="spin" /> : previewIsCurrent ? <CheckCircle2 /> : <RefreshCw />}
+							{previewBusy ? "Previewing…" : previewIsCurrent ? "Preview current" : "Auto preview"}
+						</span>
 					</div>
 
 					{preview && previewIsCurrent ? (
@@ -489,7 +514,13 @@ function DeclarationEditor({
 						<div className="preview-placeholder">
 							<Code2 />
 							<span>
-								{preview ? "Fields changed; refresh the preview before saving." : "No preview generated yet."}
+								{previewBusy
+									? "Generating the latest YAML Diff…"
+									: preview
+										? "Fields changed; preview will refresh automatically."
+										: action === "edit"
+											? "Change a field to generate a preview automatically."
+											: "Generating delete preview…"}
 							</span>
 						</div>
 					)}
@@ -498,8 +529,8 @@ function DeclarationEditor({
 				<footer className="declaration-editor-footer">
 					<span>
 						{writeBlockedReason
-							? "Apply is running; this draft is preserved, but saving is temporarily disabled."
-							: "Saving updates agents.yaml only. The next Apply creates its local snapshot automatically when versioning is enabled."}
+							? "Publish is running; this draft is preserved, but saving is temporarily disabled."
+							: "Saving updates directory source only. Run Build before the next Publish."}
 					</span>
 					<div>
 						<button type="button" className="secondary-button" onClick={onClose}>
@@ -508,11 +539,13 @@ function DeclarationEditor({
 						<button
 							type="button"
 							className={action === "delete" ? "danger-button" : "primary-button"}
-							disabled={busy || !preview?.can_commit || !previewIsCurrent || Boolean(writeBlockedReason)}
+							disabled={
+								previewBusy || commitBusy || !preview?.can_commit || !previewIsCurrent || Boolean(writeBlockedReason)
+							}
 							onClick={() => void handleCommit()}
 						>
-							{busy ? <LoaderCircle className="spin" /> : action === "delete" ? <Trash2 /> : <CheckCircle2 />}
-							{action === "delete" ? "Remove declaration" : "Save agents.yaml"}
+							{commitBusy ? <LoaderCircle className="spin" /> : action === "delete" ? <Trash2 /> : <CheckCircle2 />}
+							{action === "delete" ? "Remove declaration" : "Save project files"}
 						</button>
 					</div>
 				</footer>
@@ -595,8 +628,8 @@ function PreviewResult({ preview }: { preview: DeclarationPreview }) {
 		<div className="declaration-preview-result">
 			<div className="yaml-unified-diff">
 				<div className="yaml-diff-file-header">
-					<span>--- agents.yaml · before</span>
-					<span>+++ agents.yaml · after</span>
+					<span>--- project source · before</span>
+					<span>+++ project source · after</span>
 				</div>
 				<div className="yaml-diff-hunk">
 					@@ -1,{diff.beforeLineCount} +1,{diff.afterLineCount} @@
@@ -619,7 +652,7 @@ function PreviewResult({ preview }: { preview: DeclarationPreview }) {
 			</div>
 			<div className={`commit-readiness ${preview.can_commit ? "ready" : "blocked"}`}>
 				{preview.can_commit ? <CheckCircle2 /> : <AlertTriangle />}
-				<span>{preview.can_commit ? "Ready to save agents.yaml" : "Save blocked by validation or references"}</span>
+				<span>{preview.can_commit ? "Ready to save project files" : "Save blocked by validation or references"}</span>
 			</div>
 			{preview.references.length > 0 && (
 				<div className="preview-findings">

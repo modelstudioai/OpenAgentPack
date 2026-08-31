@@ -31,7 +31,20 @@ import {
 import { migrateCommand } from "./commands/migrate.ts";
 import { modelsListCommand } from "./commands/models.ts";
 import { planCommand } from "./commands/plan.ts";
-import { playgroundCommand, workbenchCommand } from "./commands/playground.ts";
+import { playgroundCommand } from "./commands/playground.ts";
+import {
+	projectBuildCommand,
+	projectInitCommand,
+	projectPublishCommand,
+	projectValidateCommand,
+	projectVersionDisableCommand,
+	projectVersionEnableCommand,
+	projectVersionListCommand,
+	projectVersionPreviewCommand,
+	projectVersionRestoreCommand,
+	projectVersionStatusCommand,
+	projectWorkbenchCommand,
+} from "./commands/project.ts";
 import {
 	sessionCreateCommand,
 	sessionDeleteCommand,
@@ -44,14 +57,6 @@ import {
 import { stateImportCommand, stateListCommand, stateRemoveCommand, stateShowCommand } from "./commands/state.ts";
 import { syncCommand } from "./commands/sync.ts";
 import { validateCommand } from "./commands/validate.ts";
-import {
-	versionDisableCommand,
-	versionEnableCommand,
-	versionListCommand,
-	versionPreviewCommand,
-	versionRestoreCommand,
-	versionStatusCommand,
-} from "./commands/version.ts";
 import { configureLogger } from "./logger.ts";
 import {
 	configFileOption,
@@ -135,13 +140,97 @@ program
 	.option("--no-open", "Do not open a browser automatically")
 	.action(withResolvedConfigFile(playgroundCommand));
 
-program
+const projectCmd = program.command("project").description("Manage a directory-based Agent project");
+
+projectCmd
+	.command("init")
+	.description("Create or convert a directory-based Agent project")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--provider <provider>", "Provider for a new project", "bailian")
+	.option("--json", "Output as JSON")
+	.action(projectInitCommand);
+
+projectCmd
+	.command("validate")
+	.description("Validate all directory project source files")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectValidateCommand);
+
+projectCmd
+	.command("build")
+	.description("Organize project files and generate .openagentpack/build/agents.yaml")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--dry-run", "Preview Build without changing files")
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--json", "Output as JSON")
+	.action(projectBuildCommand);
+
+projectCmd
+	.command("publish")
+	.description("Publish the current immutable Build to the configured provider")
+	.option("--project <directory>", "Project directory", ".")
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--refresh <value>", "Refresh state before planning (true/false)", parseBooleanOption, true)
+	.option("--concurrency <n>", "Max independent resources to publish in parallel", parsePositiveInteger)
+	.addOption(providerOption("Target provider", { allowAll: true, defaultValue: "all" }))
+	.option("--json", "Output as JSON")
+	.action(projectPublishCommand);
+
+projectCmd
 	.command("workbench")
-	.description("Launch the agents.yaml project workbench")
-	.addOption(configFileOption())
+	.description("Launch the directory project Workbench")
+	.option("--project <directory>", "Project directory", ".")
 	.option("--port <n>", "Port to serve on (default 4848)")
 	.option("--no-open", "Do not open a browser automatically")
-	.action(withResolvedConfigFile(workbenchCommand));
+	.action(projectWorkbenchCommand);
+
+const projectVersionCmd = projectCmd.command("version").description("Manage directory project snapshots");
+
+projectVersionCmd
+	.command("enable")
+	.description("Enable Publish-time project versions and create a baseline when needed")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionEnableCommand);
+
+projectVersionCmd
+	.command("disable")
+	.description("Disable Publish-time project versions without removing history")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionDisableCommand);
+
+projectVersionCmd
+	.command("status")
+	.description("Show directory project version status")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionStatusCommand);
+
+projectVersionCmd
+	.command("list")
+	.description("List directory project versions")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--limit <n>", "Maximum versions to return", parsePositiveInteger)
+	.option("--cursor <cursor>", "Pagination cursor")
+	.option("--json", "Output as JSON")
+	.action(projectVersionListCommand);
+
+projectVersionCmd
+	.command("preview <version>")
+	.description("Preview a historical directory project version")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionPreviewCommand);
+
+projectVersionCmd
+	.command("restore <version>")
+	.description("Restore a historical version to the project working directory")
+	.option("--project <directory>", "Project directory", ".")
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--json", "Output as JSON")
+	.action(projectVersionRestoreCommand);
 
 program
 	.command("validate")
@@ -229,53 +318,6 @@ stateCmd
 		),
 	)
 	.action(withResolvedConfigFile(stateImportCommand));
-
-const versionCmd = program.command("version").description("Manage local snapshot versions of agents.yaml");
-
-versionCmd
-	.command("enable")
-	.description("Enable Apply-time local versioning for this agents.yaml")
-	.addOption(configFileOption({ short: false }))
-	.option("--json", "Output as JSON")
-	.action(withResolvedConfigFile(versionEnableCommand));
-
-versionCmd
-	.command("disable")
-	.description("Disable Apply-time local versioning without removing history")
-	.addOption(configFileOption({ short: false }))
-	.option("--json", "Output as JSON")
-	.action(withResolvedConfigFile(versionDisableCommand));
-
-versionCmd
-	.command("status")
-	.description("Show local versioning status for this agents.yaml")
-	.addOption(configFileOption({ short: false }))
-	.option("--json", "Output as JSON")
-	.action(withResolvedConfigFile(versionStatusCommand));
-
-versionCmd
-	.command("list")
-	.description("List local snapshots of this agents.yaml")
-	.addOption(configFileOption({ short: false }))
-	.option("--limit <n>", "Maximum versions to return (default 50, max 100)", parsePositiveInteger)
-	.option("--cursor <cursor>", "Pagination cursor returned by the previous page")
-	.option("--json", "Output as JSON")
-	.action(withResolvedConfigFile(versionListCommand));
-
-versionCmd
-	.command("preview <version>")
-	.description("Preview a historical agents.yaml version")
-	.addOption(configFileOption({ short: false }))
-	.option("--json", "Output as JSON")
-	.action(withResolvedConfigFile(versionPreviewCommand));
-
-versionCmd
-	.command("restore <version>")
-	.description("Restore a historical agents.yaml version to the working tree")
-	.addOption(configFileOption({ short: false }))
-	.option("-y, --yes", "Skip confirmation prompt")
-	.option("--json", "Output as JSON")
-	.action(withResolvedConfigFile(versionRestoreCommand));
 
 const sessionCmd = program.command("session").description("Manage agent sessions (runtime)");
 

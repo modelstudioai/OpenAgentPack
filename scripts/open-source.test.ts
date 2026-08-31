@@ -43,6 +43,7 @@ describe("open-source repository invariants", () => {
 		const packagePaths = [
 			"packages/sdk/package.json",
 			"packages/project-versions/package.json",
+			"packages/project-workspace/package.json",
 			"packages/playground/package.json",
 			"packages/cli/package.json",
 		];
