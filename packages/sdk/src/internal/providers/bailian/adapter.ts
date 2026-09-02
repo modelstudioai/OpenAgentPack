@@ -562,6 +562,9 @@ export class BailianAdapter implements ProviderAdapter {
 	// exercise the full surface through real project code rather than raw fetch.
 
 	async createVault(name: string, decl: VaultDecl): Promise<RemoteResource> {
+		// Validate every nested credential before creating the parent Vault so an
+		// unsupported declaration cannot leave an empty remote Vault behind.
+		for (const credential of decl.credentials ?? []) mapCredential(credential);
 		const body = mapVault(name, decl, this.projectName);
 		const res = (await this.client.post("/vaults", body)) as Record<string, unknown>;
 		const vaultId = res.id as string;
@@ -634,6 +637,7 @@ export class BailianAdapter implements ProviderAdapter {
 				display_name: (raw.display_name as string) ?? (raw.id as string),
 				auth_type: (auth.type as string) ?? "",
 				secret_name: auth.secret_name as string | undefined,
+				mcp_server_url: auth.mcp_server_url as string | undefined,
 				networking_type: networking?.type as string | undefined,
 				metadata: metadata
 					? Object.fromEntries(

@@ -33,7 +33,9 @@ async function makeRuntime(
 			display_name: string;
 			auth_type: string;
 			secret_name?: string;
+			mcp_server_url?: string;
 			networking_type?: string;
+			metadata?: Record<string, string>;
 		}>;
 		drifted?: boolean;
 	} = {},
@@ -110,12 +112,51 @@ describe("scoped Vault Credential create", () => {
 					auth_type: "environment_variable",
 					secret_name: "API_TOKEN",
 					networking_type: "unrestricted",
+					metadata: { owner: "cli" },
 				},
 			],
 		});
 		const result = await createVaultCredential(runtime, "production", "api-token", { refresh: false });
 
 		expect(result).toMatchObject({ credentialId: "credential_existing", adopted: true });
+		expect(getCreateCalls()).toBe(0);
+	});
+
+	test("rejects a same-name remote credential when metadata differs", async () => {
+		const { runtime, getCreateCalls } = await makeRuntime({
+			remoteCredentials: [
+				{
+					id: "credential_existing",
+					display_name: "api-token",
+					auth_type: "environment_variable",
+					secret_name: "API_TOKEN",
+					networking_type: "unrestricted",
+					metadata: { owner: "someone-else" },
+				},
+			],
+		});
+
+		await expect(createVaultCredential(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(
+			/different remote credential/,
+		);
+		expect(getCreateCalls()).toBe(0);
+	});
+
+	test("rejects Bailian static_bearer before checking or mutating the remote vault", async () => {
+		const { runtime, getCreateCalls, getListCalls } = await makeRuntime();
+		runtime.config.vaults!.production!.credentials = [
+			{
+				name: "api-token",
+				type: "static_bearer",
+				mcp_server_url: "https://mcp.example.com",
+				access_token: "secret",
+			},
+		];
+
+		await expect(planVaultCredentialCreate(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(
+			/Bailian only supports 'environment_variable'/,
+		);
+		expect(getListCalls()).toBe(0);
 		expect(getCreateCalls()).toBe(0);
 	});
 

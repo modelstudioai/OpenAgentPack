@@ -131,6 +131,11 @@ async function prepareVaultCredentialCreate(
 	if (vault.credentials.slice(0, -1).some((entry) => entry.name === credentialName)) {
 		throw new UserError(`Vault '${vaultName}' already declares a credential named '${credentialName}'.`);
 	}
+	if (provider === "bailian" && credential.type !== "environment_variable") {
+		throw new UserError(
+			`Credential '${credentialName}' uses '${credential.type}', but Bailian only supports 'environment_variable' credentials.`,
+		);
+	}
 
 	const address: ResourceAddress = { type: "vault", name: vaultName, provider };
 	const priorConfig = structuredClone(ctx.config) as ResolvedProjectConfig;
@@ -199,9 +204,21 @@ function resolveVaultProvider(
 }
 
 function credentialMatches(remote: VaultCredentialInfo, desired: CredentialDecl): boolean {
+	if (remote.auth_type !== desired.type || !metadataMatches(remote.metadata, desired.metadata)) return false;
+	if (desired.type === "static_bearer") return remote.mcp_server_url === desired.mcp_server_url;
 	return (
-		remote.auth_type === desired.type &&
 		remote.secret_name === desired.secret_name &&
 		(remote.networking_type ?? "unrestricted") === (desired.networking?.type ?? "unrestricted")
+	);
+}
+
+function metadataMatches(
+	remote: Record<string, string> | undefined,
+	desired: Record<string, string> | undefined,
+): boolean {
+	const remoteEntries = Object.entries(remote ?? {});
+	const desiredEntries = Object.entries(desired ?? {});
+	return (
+		remoteEntries.length === desiredEntries.length && desiredEntries.every(([key, value]) => remote?.[key] === value)
 	);
 }

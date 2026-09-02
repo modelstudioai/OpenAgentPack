@@ -54,24 +54,17 @@ export function mapVault(name: string, decl: VaultDecl, projectName?: string): u
 export function mapCredential(cred: CredentialDecl): unknown {
 	// Bailian's credentials API currently only accepts `environment_variable`
 	// authType; `static_bearer` is rejected with CREDENTIAL_AUTH_TYPE_ERROR.
-	if (cred.type === "environment_variable") {
-		const body: Record<string, unknown> = {
-			auth: {
-				type: "environment_variable",
-				secret_name: cred.secret_name,
-				secret_value: cred.secret_value,
-				networking: cred.networking ?? { type: "unrestricted" },
-			},
-			display_name: cred.name,
-		};
-		if (cred.metadata) body.metadata = cred.metadata;
-		return body;
+	if (cred.type !== "environment_variable") {
+		throw new UserError(
+			`credential '${cred.name}': Bailian only supports credential type 'environment_variable', but '${cred.type}' was declared.`,
+		);
 	}
 	const body: Record<string, unknown> = {
 		auth: {
-			type: cred.type,
-			token: cred.access_token,
-			mcp_server_url: cred.mcp_server_url,
+			type: "environment_variable",
+			secret_name: cred.secret_name,
+			secret_value: cred.secret_value,
+			networking: cred.networking ?? { type: "unrestricted" },
 		},
 		display_name: cred.name,
 	};

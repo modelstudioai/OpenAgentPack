@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { ProjectRuntimeContext } from "../../src/internal/core/project-runtime.ts";
-import { planProjectContext } from "../../src/internal/core/resource-runtime.ts";
+import { executePlannedProject, planProjectContext } from "../../src/internal/core/resource-runtime.ts";
 import { computeResourceHash } from "../../src/internal/planner/hasher.ts";
+import { ConflictError } from "../../src/internal/providers/base-client.ts";
+import type { ProviderAdapter } from "../../src/internal/providers/interface.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { ResolvedProjectConfig } from "../../src/internal/types/config.ts";
 import type { ResourceAddress } from "../../src/internal/types/state.ts";
@@ -119,6 +121,7 @@ describe("generic resource create-only planning", () => {
 		expect(existingPlan.plan.diagnostics).toContainEqual(
 			expect.objectContaining({ code: "resource.create_only.blocked", severity: "error" }),
 		);
+		await expect(executePlannedProject(existingPlan)).rejects.toThrow(/must be new/);
 
 		const dependencyPlan = await planProjectContext(runtime(resolvedConfig), {
 			provider,
@@ -132,6 +135,42 @@ describe("generic resource create-only planning", () => {
 				message: expect.stringContaining("environment.dev (create)"),
 			}),
 		);
+	});
+
+	test("does not adopt or update an untracked remote resource after a create conflict", async () => {
+		let findCalls = 0;
+		let updateCalls = 0;
+		const providerAdapter = {
+			name: provider,
+			createEnvironment: async () => {
+				throw new ConflictError(409, "already exists", "Bailian API");
+			},
+			findResource: async () => {
+				findCalls += 1;
+				return { id: "env_existing", type: "environment" };
+			},
+			updateEnvironment: async () => {
+				updateCalls += 1;
+				return { id: "env_existing", type: "environment" };
+			},
+		} as unknown as ProviderAdapter;
+		const context = runtime(config());
+		context.providers.set(provider, providerAdapter);
+		const address: ResourceAddress = { type: "environment", name: "dev", provider };
+		const planned = await planProjectContext(context, {
+			provider,
+			scope: { roots: [address] },
+			mode: "create-only",
+			refresh: false,
+		});
+
+		const execution = await executePlannedProject(planned);
+
+		expect(execution.partial).toBe(true);
+		expect(execution.results[0]?.error).toContain("Create-only cannot adopt or reconcile");
+		expect(findCalls).toBe(0);
+		expect(updateCalls).toBe(0);
+		expect(context.state.getResource(address)).toBeUndefined();
 	});
 
 	test("requires scope and leaves full planning behavior unchanged", async () => {

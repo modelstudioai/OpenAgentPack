@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { commonReleaseVersion, validateReleaseIdentity } from "./channel.ts";
+import { betaDistTag, commonReleaseVersion, validateReleaseIdentity } from "./channel.ts";
 
 describe("release channel guard", () => {
 	test("accepts stable versions only on main", () => {
@@ -13,17 +13,24 @@ describe("release channel guard", () => {
 	});
 
 	test("accepts deterministic beta snapshots from main and feature branches", () => {
-		expect(validateReleaseIdentity("beta", "main", "1.2.3-beta-a1b2c3d-20260720")).toEqual({
+		expect(validateReleaseIdentity("beta", "main", "1.2.3-beta-a1b2c3d-0d6e4079-20260720")).toEqual({
 			channel: "beta",
-			version: "1.2.3-beta-a1b2c3d-20260720",
+			version: "1.2.3-beta-a1b2c3d-0d6e4079-20260720",
 			distTag: "beta",
 		});
-		expect(validateReleaseIdentity("beta", "feat/Managed_Agent.API", "1.2.3-beta-a1b2c3d-20260720")).toEqual({
+		expect(validateReleaseIdentity("beta", "feat/Managed_Agent.API", "1.2.3-beta-a1b2c3d-ddfd87db-20260720")).toEqual({
 			channel: "beta",
-			version: "1.2.3-beta-a1b2c3d-20260720",
-			distTag: "beta-feat-managed-agent-api",
+			version: "1.2.3-beta-a1b2c3d-ddfd87db-20260720",
+			distTag: "beta-feat-managed-agent-api-ddfd87db",
 		});
-		expect(() => validateReleaseIdentity("beta", "///", "1.2.3-beta-a1b2c3d-20260720")).toThrow("letter or number");
+		expect(betaDistTag("feat/foo_bar")).not.toBe(betaDistTag("feat/foo-bar"));
+		expect(betaDistTag("feat/foo.bar")).not.toBe(betaDistTag("feat/foo-bar"));
+		expect(() => validateReleaseIdentity("beta", "///", "1.2.3-beta-a1b2c3d-ddfd87db-20260720")).toThrow(
+			"letter or number",
+		);
+		expect(() => validateReleaseIdentity("beta", "main", "1.2.3-beta-a1b2c3d-ddfd87db-20260720")).toThrow(
+			"another ref",
+		);
 		expect(() => validateReleaseIdentity("beta", "main", "1.2.3-beta.0")).toThrow("unexpected format");
 	});
 

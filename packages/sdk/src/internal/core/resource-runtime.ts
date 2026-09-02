@@ -299,6 +299,11 @@ export async function executePlannedProject(
 		concurrency?: number;
 	} = {},
 ): Promise<ResourceExecutionResult> {
+	if (planned.mode === "create-only") {
+		const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+		if (errorDiagnostic) throw new UserError(errorDiagnostic.message);
+	}
+
 	const decision = await decideDestructive(planned.destructiveActions, {
 		policy: options.policy,
 		confirm: options.confirm,
@@ -320,6 +325,7 @@ export async function executePlannedProject(
 			providers: ctx.providers,
 			state: ctx.state,
 			onFeedback: options.onFeedback,
+			createOnly: planned.mode === "create-only",
 		},
 		{ concurrency: options.concurrency },
 	);

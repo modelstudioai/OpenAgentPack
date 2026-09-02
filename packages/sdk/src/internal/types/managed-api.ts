@@ -38,6 +38,7 @@ export interface VaultCredentialInfo {
 	display_name: string;
 	auth_type: string;
 	secret_name?: string;
+	mcp_server_url?: string;
 	networking_type?: string;
 	metadata?: Record<string, string>;
 }

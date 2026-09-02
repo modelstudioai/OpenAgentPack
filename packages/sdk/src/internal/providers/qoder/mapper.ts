@@ -266,7 +266,7 @@ export function mapDeployment(
 	uploadedFiles?: Map<string, string>,
 ): unknown {
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		agent:
 			refs.agent_version !== undefined
 				? { id: refs.agent_id, type: "agent", version: refs.agent_version }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -12,7 +13,7 @@ export interface ReleaseIdentity {
 const root = resolve(import.meta.dirname, "../..");
 const releasePackages = ["sdk", "playground", "cli"] as const;
 const stableVersion = /^[0-9]+\.[0-9]+\.[0-9]+$/;
-export const betaSnapshotVersion = /^[0-9]+\.[0-9]+\.[0-9]+-beta-[0-9a-f]{7}-\d{8}$/;
+export const betaSnapshotVersion = /^[0-9]+\.[0-9]+\.[0-9]+-beta-[0-9a-f]{7}-([0-9a-f]{8})-\d{8}$/;
 
 export function releasePackageVersions(): string[] {
 	return releasePackages.map((pkg) => {
@@ -38,10 +39,14 @@ export function betaDistTag(ref: string): "beta" | `beta-${string}` {
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")
-		.slice(0, 64)
+		.slice(0, 48)
 		.replace(/-+$/g, "");
 	if (!slug) throw new Error(`beta release ref must contain at least one letter or number; found ${ref}`);
-	return `beta-${slug}`;
+	return `beta-${slug}-${releaseRefHash(ref)}`;
+}
+
+export function releaseRefHash(ref: string): string {
+	return createHash("sha256").update(ref).digest("hex").slice(0, 8);
 }
 
 export function validateReleaseIdentity(channel: ReleaseChannel, ref: string, version: string): ReleaseIdentity {
@@ -51,10 +56,19 @@ export function validateReleaseIdentity(channel: ReleaseChannel, ref: string, ve
 		return { channel, version, distTag: "latest" };
 	}
 
-	if (!betaSnapshotVersion.test(version)) {
+	const distTag = betaDistTag(ref);
+	const snapshotMatch = betaSnapshotVersion.exec(version);
+	if (!snapshotMatch) {
 		throw new Error(`beta snapshot version has an unexpected format: ${version}`);
 	}
-	return { channel, version, distTag: betaDistTag(ref) };
+	const versionRefHash = snapshotMatch[1];
+	const expectedRefHash = releaseRefHash(ref);
+	if (versionRefHash !== expectedRefHash) {
+		throw new Error(
+			`beta snapshot version belongs to another ref; expected hash ${expectedRefHash}, found ${versionRefHash}`,
+		);
+	}
+	return { channel, version, distTag };
 }
 
 function option(name: string): string | undefined {

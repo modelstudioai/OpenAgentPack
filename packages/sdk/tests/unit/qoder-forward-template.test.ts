@@ -1087,6 +1087,47 @@ describe("Qoder Forward default memory store", () => {
 		expect(calls).toEqual([["idn_1", "tmpl_1", { name: "Support memory" }]]);
 	});
 
+	test("does not reconcile an existing default Store during create-only execution", async () => {
+		const config = forwardConfig();
+		config.defaults = { provider: "qoder", identity: "zhang" };
+		config.identities = { zhang: { external_id: "zhang" } };
+		config.agents!.assistant!.default_memory_store = { name: "Support memory" };
+		const state = StateManager.initialize(tmpPath("default-memory-create-only"));
+		state.setResource({
+			address: { type: "identity", name: "zhang", provider: "qoder" },
+			remote_id: "idn_1",
+			content_hash: "identity-hash",
+		});
+		state.setResource({
+			address: { type: "template", name: "assistant", provider: "qoder" },
+			remote_id: "tmpl_1",
+			content_hash: "template-hash",
+		});
+		const calls: unknown[] = [];
+		const provider = {
+			reconcileDefaultMemoryStore: async (...args: unknown[]) => {
+				calls.push(args);
+				return { status: "updated", memory_store_id: "memstore_default" };
+			},
+		} as unknown as ProviderAdapter;
+
+		await executePlan(
+			{
+				actions: [
+					{
+						action: "no-op",
+						address: { type: "template", name: "assistant", provider: "qoder" },
+						dependencies: [],
+					},
+				],
+				diagnostics: [],
+			},
+			{ config, providers: new Map([["qoder", provider]]), state, createOnly: true },
+		);
+
+		expect(calls).toEqual([]);
+	});
+
 	test("does not reconcile Qoder defaults when the execution plan targets another provider", async () => {
 		const config = forwardConfig();
 		config.defaults = { provider: "all", identity: "zhang" };

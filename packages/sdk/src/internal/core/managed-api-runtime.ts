@@ -328,7 +328,10 @@ const BAILIAN_OPERATIONS: Record<string, ManagedAgentOperationCapability> = {
 	"skill.versions": API_KEY,
 	"skill.download": API_KEY,
 	"vault.create": { ...API_KEY, reason: "YAML declaration plus scoped create-only apply." },
-	"vault.credential.create": { ...API_KEY, reason: "YAML declaration plus scoped Vault transaction." },
+	"vault.credential.create": {
+		...API_KEY,
+		reason: "YAML declaration plus scoped Vault transaction; Bailian supports environment_variable credentials only.",
+	},
 	"vault.list": API_KEY,
 	"vault.get": API_KEY,
 	"vault.search": CLIENT_SEARCH,

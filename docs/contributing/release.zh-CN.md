@@ -38,11 +38,11 @@ bun run changeset
 2. 选择要发布的准确分支，channel 选择 `beta`，输入 `PUBLISH`，然后运行。
 3. 检查提交、自动生成的精确版本和 job 信息后，批准 `npm-release` Environment deployment。
 
-工作流根据所选提交生成不修改 Git 历史的不可变版本，例如 `0.4.0-beta-a1b2c3d-20260827`，并创建对应的不可变 Git tag。从 `main` 发布时仍使用 npm 的共享 `beta` dist-tag；从其他分支发布时使用分支独立标签，例如 `beta-feat-managed-agent-api-commands`，因此不会覆盖共享 `beta` 渠道。job 信息会输出准确标签。随后，它会在 Linux、Windows、macOS 的 Node.js 22 和 24 环境中，从公共 npm registry 安装该精确版本。只有六个消费者 job 全部通过，才创建 GitHub prerelease。
+工作流根据所选提交和完整 ref 生成不修改 Git 历史的不可变版本，例如 `0.4.0-beta-a1b2c3d-24767cc1-20260827`，并创建对应的不可变 Git tag。从 `main` 发布时仍使用 npm 的共享 `beta` dist-tag；从其他分支发布时使用分支独立标签，例如 `beta-feat-managed-agent-api-commands-24767cc1`。精确版本和分支标签都包含完整 ref 的稳定哈希，因此不同 ref 即使指向同一提交，或规范化后的可读部分相同，也不会共用版本或标签；同一 ref 和提交重跑仍然幂等。job 信息会输出准确标签。随后，它会在 Linux、Windows、macOS 的 Node.js 22 和 24 环境中，从公共 npm registry 安装该精确版本。只有六个消费者 job 全部通过，才创建 GitHub prerelease。
 
 需要下一个 Beta 时，从更新后的分支再次运行 **Publish npm**。每个新提交都会生成新的不可变快照版本，并且不会消费 changeset。如果 `npm-release` Environment 配置了 deployment branch 限制，需要在保留 Required reviewers 的同时，把目标 Beta 分支模式加入允许范围。
 
-可以使用 job 输出的分支标签安装，例如 `npm install @openagentpack/sdk@beta-feat-managed-agent-api-commands`；固定自动生成的精确版本最可复现。
+可以使用 job 输出的分支标签安装，例如 `npm install @openagentpack/sdk@beta-feat-managed-agent-api-commands-24767cc1`；固定自动生成的精确版本最可复现。
 
 ## 发布稳定版
 
@@ -93,7 +93,7 @@ npm install --global @openagentpack/cli
 npm install --global @openagentpack/cli@beta
 
 # 固定或临时体验某个精确 Beta 版本
-npx @openagentpack/cli@0.4.0-beta-a1b2c3d-20260827 --version
+npx @openagentpack/cli@0.4.0-beta-a1b2c3d-24767cc1-20260827 --version
 
 # SDK
 npm install @openagentpack/sdk
