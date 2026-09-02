@@ -1,5 +1,12 @@
 # @openagentpack/playground
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [40d170a]
+  - @openagentpack/sdk@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
