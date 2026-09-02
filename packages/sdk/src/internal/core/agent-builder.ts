@@ -20,6 +20,7 @@ export interface AgentMcpBuildInput {
 }
 
 export interface AgentBuildInput {
+	name?: string;
 	description?: string;
 	model?: AgentDecl["model"];
 	instructions?: string;
@@ -79,6 +80,7 @@ export function buildAgentDecl(base: AgentDecl | undefined, input: AgentBuildInp
 
 	const agent: AgentDecl = {
 		...(base ?? {}),
+		name: input.name ?? base?.name,
 		description: input.description ?? base?.description,
 		model,
 		instructions: input.instructions ?? base?.instructions ?? "",

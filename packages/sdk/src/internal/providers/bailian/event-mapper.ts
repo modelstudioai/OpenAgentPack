@@ -27,6 +27,8 @@ export function toSessionEvent(raw: Record<string, unknown>): ProviderSessionEve
 	const event: ProviderSessionEvent = { type, raw_type: rawType, raw };
 	if (typeof raw.id === "string") event.id = raw.id;
 	if (typeof raw.role === "string") event.role = raw.role;
+	const threadId = extractSessionThreadId(raw);
+	if (threadId) event.session_thread_id = threadId;
 
 	if (type === "message") {
 		// Plain `message` events carry `role`, but the `thread_message_sent` /
@@ -65,6 +67,18 @@ export function toSessionEvent(raw: Record<string, unknown>): ProviderSessionEve
 	// the same download card.
 
 	return event;
+}
+
+function extractSessionThreadId(raw: Record<string, unknown>): string | undefined {
+	if (typeof raw.session_thread_id === "string") return raw.session_thread_id;
+	const metadata = raw.metadata;
+	if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+		const value = (metadata as Record<string, unknown>).session_thread_id;
+		if (typeof value === "string") return value;
+	}
+	const data = firstContentData(raw);
+	if (typeof data?.session_thread_id === "string") return data.session_thread_id;
+	return undefined;
 }
 
 function extractContentText(raw: Record<string, unknown>): string {

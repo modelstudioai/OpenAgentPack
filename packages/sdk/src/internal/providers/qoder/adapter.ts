@@ -409,6 +409,7 @@ export class QoderAdapter implements ProviderAdapter {
 		}
 
 		return compactDeep({
+			name: raw.name,
 			description: raw.description,
 			model: normalizeModel(raw.model),
 			instructions: raw.system,

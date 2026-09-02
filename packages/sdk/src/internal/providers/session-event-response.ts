@@ -4,21 +4,28 @@ import type { EventListOptions, ProviderSessionEvent, ProviderSessionEventList }
  * Shared `listSessionEvents` implementation for the managed-agents-style events
  * endpoint. All providers paginate with the same opaque forward cursor
  * (`page` in, `next_page` out) and shape the same `{events, has_more, next_page}`
- * response; they differ only in whether the Agents-style `after_id` resume marker
- * is forwarded (qoder accepts it; claude/bailian reject it). `has_more` reads the
- * server field when present and otherwise derives from `next_page` — equivalent
- * for endpoints that omit `has_more`.
+ * response. Providers differ in whether the Agents-style `after_id` resume marker and
+ * server-side `types` filtering are supported. `has_more` reads the server field when
+ * present and otherwise derives from `next_page` — equivalent for endpoints that omit
+ * `has_more`.
  */
 export async function listSessionEventsPaged(
 	client: { get(path: string): Promise<unknown> },
 	sessionId: string,
 	options: EventListOptions | undefined,
 	toEvent: (raw: Record<string, unknown>) => ProviderSessionEvent,
-	config?: { forwardAfterId?: boolean },
+	config?: { forwardAfterId?: boolean; forwardTypes?: boolean },
 ): Promise<ProviderSessionEventList> {
 	const params = new URLSearchParams();
 	if (options?.limit) params.set("limit", String(options.limit));
 	if (options?.order) params.set("order", options.order);
+	if (config?.forwardTypes !== false) {
+		for (const type of options?.types ?? []) params.append("types", type);
+	}
+	if (options?.created_at_gt) params.set("created_at[gt]", options.created_at_gt);
+	if (options?.created_at_gte) params.set("created_at[gte]", options.created_at_gte);
+	if (options?.created_at_lt) params.set("created_at[lt]", options.created_at_lt);
+	if (options?.created_at_lte) params.set("created_at[lte]", options.created_at_lte);
 	const pageCursor = options?.page_token ?? options?.page;
 	if (pageCursor) params.set("page", pageCursor);
 	if (config?.forwardAfterId && options?.after_id) params.set("after_id", options.after_id);

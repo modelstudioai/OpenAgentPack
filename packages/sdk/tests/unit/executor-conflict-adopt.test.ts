@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecContext } from "../../src/internal/executor/context.ts";
@@ -317,25 +317,30 @@ describe("executor conflict-adopt", () => {
 	});
 
 	test("skill ConflictError → multi searchNames → adopt as-is without rebuild", async () => {
+		const projectDir = mkdtempSync(join(tmpdir(), "exec-conflict-skill-"));
+		writeFileSync(
+			join(projectDir, "SKILL.md"),
+			"---\nname: manifest-skill\ndescription: Conflict adoption fixture\n---\n",
+		);
 		const skillConfig: ProjectConfig = {
 			version: "1",
 			providers: { bailian: { api_key: "test", workspace_id: "ws" } },
 			defaults: { provider: "bailian" },
 			skills: {
 				"my-skill": {
-					source: "skills/my-skill",
+					source: "SKILL.md",
 				},
 			},
 		};
 
 		const existingSkill: RemoteResource = { id: "skill_remote", type: "skill" };
-		let findCalls = 0;
+		const findNames: string[] = [];
 		const provider = {
 			name: "bailian",
 			validate: async () => {},
-			findResource: async () => {
-				findCalls += 1;
-				return findCalls === 1 ? null : existingSkill;
+			findResource: async (_type: string, name: string) => {
+				findNames.push(name);
+				return findNames.length === 4 ? existingSkill : null;
 			},
 			createSkill: async () => {
 				throw new ConflictError(409, "已存在自定义相同SkillName", "Bailian API");
@@ -364,17 +369,22 @@ describe("executor conflict-adopt", () => {
 		const state = StateManager.initialize(tmpPath());
 		const ctx: ExecContext = {
 			config: skillConfig,
-			configPath: "/tmp/agents.yaml",
+			configPath: join(projectDir, "agents.yaml"),
 			providers: new Map([["bailian", provider]]),
 			state,
 		};
 
-		const result = await executePlan(skillPlan, ctx);
+		try {
+			const result = await executePlan(skillPlan, ctx);
 
-		expect(result.partial).toBe(false);
-		expect(result.results[0].status).toBe("success");
-		const saved = state.getResource({ type: "skill", name: "my-skill", provider: "bailian" })!;
-		expect(saved.remote_id).toBe("skill_remote");
+			expect(result.partial).toBe(false);
+			expect(result.results[0].status).toBe("success");
+			expect(findNames).toEqual(["my-skill", "manifest-skill", "my-skill", "manifest-skill"]);
+			const saved = state.getResource({ type: "skill", name: "my-skill", provider: "bailian" })!;
+			expect(saved.remote_id).toBe("skill_remote");
+		} finally {
+			rmSync(projectDir, { recursive: true, force: true });
+		}
 	});
 });
 

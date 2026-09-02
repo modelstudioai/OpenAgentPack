@@ -136,6 +136,7 @@ export const CloudAgentSchema = z.object({
 	created_at: z.string().optional(),
 	updated_at: z.string().optional(),
 	archived_at: z.string().nullish(),
+	attributes: z.record(z.string(), z.unknown()).optional(),
 });
 export type CloudAgent = z.infer<typeof CloudAgentSchema>;
 
@@ -161,6 +162,7 @@ export const CloudEnvironmentSchema = z.object({
 	created_at: z.string().optional(),
 	updated_at: z.string().optional(),
 	archived_at: z.string().nullish(),
+	attributes: z.record(z.string(), z.unknown()).optional(),
 });
 export type CloudEnvironment = z.infer<typeof CloudEnvironmentSchema>;
 
@@ -180,6 +182,7 @@ export const CloudVaultSchema = z.object({
 	created_at: z.string().nullish(),
 	updated_at: z.string().nullish(),
 	archived_at: z.string().nullish(),
+	attributes: z.record(z.string(), z.unknown()).optional(),
 });
 export type CloudVault = z.infer<typeof CloudVaultSchema>;
 

@@ -4,6 +4,7 @@ import type { IStateManager } from "../state/state-manager.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import { emitRuntimeFeedback, type RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceState } from "../types/state.ts";
+import { addressKey } from "../types/state.ts";
 import { contentHash } from "../utils/hash.ts";
 import { getResourceDeclaration } from "./declaration.ts";
 import { diffChangedPaths } from "./plan-semantics.ts";
@@ -28,6 +29,7 @@ export async function refreshState(
 	providers: ReadonlyMap<string, DriftReadAdapter & Pick<ResourceCrudAdapter, "findResource">>,
 	options: {
 		targetProviders?: string[];
+		resourceKeys?: ReadonlySet<string>;
 		config?: ProjectConfig;
 		quiet?: boolean;
 		onFeedback?: RuntimeFeedbackSink;
@@ -39,6 +41,9 @@ export async function refreshState(
 	let dirty = false;
 
 	for (const res of resources) {
+		if (options.resourceKeys && !options.resourceKeys.has(addressKey(res.address))) {
+			continue;
+		}
 		// Skip resources from providers not in scope
 		if (options.targetProviders && !options.targetProviders.includes(res.address.provider)) {
 			continue;

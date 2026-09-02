@@ -64,6 +64,7 @@ jobs:
         run: >-
           bun run scripts/release/snapshot.ts apply
           --sha "${{ github.sha }}"
+          --ref "${{ github.ref_name }}"
 
       - name: Validate channel, branch, and package versions
         id: release

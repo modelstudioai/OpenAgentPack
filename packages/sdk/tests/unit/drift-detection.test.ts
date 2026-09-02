@@ -100,6 +100,7 @@ describe("Qoder comparable fixtures", () => {
 		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
 
 		expect(adapter.normalizeRemote("agent", agentPayload)).toEqual({
+			name: "assistant",
 			description: "Agents live drift original agent",
 			model: "ultimate",
 			instructions: "You are a temporary Agents live drift validation agent. Reply with original.\n",

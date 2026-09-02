@@ -139,7 +139,9 @@ export async function executePlan(
 	// Qoder creates the writable default Store lazily on the first Forward Session.
 	// Reconcile on every apply (including an otherwise no-op plan), so the first apply
 	// after that Session converges its display metadata without creating a throwaway Session.
-	await reconcileDefaultMemoryStores(ctx, new Set(plan.actions.map((action) => action.address.provider)));
+	if (!ctx.createOnly) {
+		await reconcileDefaultMemoryStores(ctx, new Set(plan.actions.map((action) => action.address.provider)));
+	}
 
 	// delete: run serially, preserving the planner's reverse dependency order.
 	for (const action of deletions) {
@@ -392,6 +394,7 @@ async function executeActionInner(
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						mode: apiMode,
+						createOnly: ctx.createOnly,
 						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl, apiMode),
 					});
 					adopted = true;
@@ -417,6 +420,7 @@ async function executeActionInner(
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						mode: apiMode,
+						createOnly: ctx.createOnly,
 						onExisting: (existing) => provider.updateEnvironment(existing.id!, remoteName, decl, apiMode),
 					});
 					adopted = true;
@@ -443,6 +447,7 @@ async function executeActionInner(
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						mode: apiMode,
+						createOnly: ctx.createOnly,
 						onExisting: async (existing) => {
 							await provider.deleteVault(existing.id!, apiMode);
 							return provider.createVault(name, decl, apiMode);
@@ -486,6 +491,7 @@ async function executeActionInner(
 				// uploading (avoids wasteful zip upload + OSS delay).
 				const existing = await findExistingByNames(provider, "skill", searchNames, apiMode);
 				if (existing) {
+					if (ctx.createOnly) throw createOnlyExistingResourceError(address, existing.name);
 					result = existing.resource;
 					emitRuntimeFeedback(ctx.onFeedback, {
 						type: "resource_adopted",
@@ -501,6 +507,7 @@ async function executeActionInner(
 						result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 							mode: apiMode,
 							searchNames,
+							createOnly: ctx.createOnly,
 							onExisting: async (existing) => existing,
 						});
 						adopted = true;
@@ -571,6 +578,7 @@ async function executeActionInner(
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
 						mode: apiMode,
+						createOnly: ctx.createOnly,
 						onExisting: async (existing) => reconcile(existing.id!),
 					});
 					adopted = true;
@@ -589,6 +597,7 @@ async function executeActionInner(
 					result = await provider.createAgent(remoteName, decl, refs);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						createOnly: ctx.createOnly,
 						onExisting: (existing) => provider.updateAgent(existing.id!, remoteName, decl, refs),
 					});
 					adopted = true;
@@ -612,6 +621,7 @@ async function executeActionInner(
 					result = await createTemplate(remoteName, decl, refs);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						createOnly: ctx.createOnly,
 						onExisting: (existing) => updateTemplate(existing.id!, remoteName, decl, refs),
 					});
 					adopted = true;
@@ -646,6 +656,7 @@ async function executeActionInner(
 					result = await createIdentity(name, decl);
 				} catch (err) {
 					if (!(err instanceof ConflictError)) throw err;
+					if (ctx.createOnly) throw createOnlyExistingResourceError(address);
 					const existing = await provider.findResource("identity", decl.external_id!);
 					if (!existing?.id) throw err;
 					result = await updateIdentity(existing.id, name, decl);
@@ -669,6 +680,7 @@ async function executeActionInner(
 					result = await createChannel(name, decl, refs);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						createOnly: ctx.createOnly,
 						onExisting: (existing) => updateChannel(existing.id!, name, decl, refs),
 					});
 					adopted = true;
@@ -688,6 +700,7 @@ async function executeActionInner(
 				} catch (err) {
 					const preparedFiles = err instanceof DeploymentCreateConflictError ? err.preparedFiles : undefined;
 					const existing = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						createOnly: ctx.createOnly,
 						onExisting: (existing) =>
 							provider.updateDeployment(existing.id!, name, decl, refs, ctx.configPath ?? "", preparedFiles),
 					});
@@ -704,6 +717,7 @@ async function executeActionInner(
 				// path so the existing deployment is updated with a single set of uploads.
 				const existing = hasLocalFileSources ? await findExistingByNames(provider, "deployment", [name]) : null;
 				if (existing) {
+					if (ctx.createOnly) throw createOnlyExistingResourceError(address, existing.name);
 					result = await provider.updateDeployment(existing.resource.id!, name, decl, refs, ctx.configPath ?? "");
 					emitRuntimeFeedback(ctx.onFeedback, {
 						type: "resource_adopted",
@@ -860,12 +874,14 @@ async function adoptOnConflict(
 	opts: {
 		searchNames?: string[];
 		mode?: ProviderResourceMode;
+		createOnly?: boolean;
 		onExisting: (existing: RemoteResource) => Promise<RemoteResource>;
 	},
 ): Promise<RemoteResource> {
 	if (!(err instanceof ConflictError)) throw err;
 
 	const candidates = opts.searchNames?.length ? opts.searchNames : [address.name];
+	if (opts.createOnly) throw createOnlyExistingResourceError(address, candidates.join('" / "'));
 	const existing = await findExistingByNames(provider, address.type, candidates, opts.mode);
 	if (!existing) throw nameReservedError(err, address, candidates.join('" / "'));
 
@@ -876,6 +892,13 @@ async function adoptOnConflict(
 		message: `adopt ${address.type}.${address.name} (${address.provider}) — already existed remotely as "${existing.name}"`,
 	});
 	return opts.onExisting(existing.resource);
+}
+
+function createOnlyExistingResourceError(address: ResourceAddress, remoteName = address.name): UserError {
+	return new UserError(
+		`Create-only cannot adopt or reconcile existing ${address.type} "${remoteName}" on provider '${address.provider}'. ` +
+			"Choose a new name, or use a normal apply/import workflow to manage the existing resource.",
+	);
 }
 
 // A conflict was reported (name already exists) but the resource can't be found remotely to

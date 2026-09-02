@@ -1520,6 +1520,12 @@
 													"archived_at": {
 														"type": "string",
 														"nullable": true
+													},
+													"attributes": {
+														"type": "object",
+														"additionalProperties": {
+															"nullable": true
+														}
 													}
 												},
 												"required": ["id"]
@@ -1793,6 +1799,12 @@
 													"archived_at": {
 														"type": "string",
 														"nullable": true
+													},
+													"attributes": {
+														"type": "object",
+														"additionalProperties": {
+															"nullable": true
+														}
 													}
 												},
 												"required": ["id"]
@@ -2062,6 +2074,12 @@
 													"archived_at": {
 														"type": "string",
 														"nullable": true
+													},
+													"attributes": {
+														"type": "object",
+														"additionalProperties": {
+															"nullable": true
+														}
 													}
 												},
 												"required": ["id"]

@@ -23,7 +23,15 @@ export {
 	writeProjectRuntime,
 } from "./internal/core/project-runtime.ts";
 
-export type { ResolvedProjectConfig } from "./internal/types/config.ts";
+export type {
+	CredentialDecl,
+	DeploymentDecl,
+	EnvironmentDecl,
+	ProjectConfig,
+	ResolvedProjectConfig,
+	SkillDecl,
+	VaultDecl,
+} from "./internal/types/config.ts";
 export type { LoadedProjectConfig } from "./internal/parser/index.ts";
 export {
 	resolveProjectConfig,
@@ -34,6 +42,7 @@ export {
 	decideDestructive,
 	executePlannedProject,
 	importResource,
+	planProjectWithStateBackend,
 	planProjectContext,
 	syncProjectResourcesWithStateBackend,
 } from "./internal/core/resource-runtime.ts";
@@ -42,8 +51,10 @@ export type {
 	ResourceActionResult,
 	ResourceExecutionResult,
 	ResourcePlanResult,
+	ResourcePlanScope,
 	ResourceRefreshResult,
 	ResourceRuntimeOptions,
+	ResourceSyncMode,
 	ResourceSyncRun,
 } from "./internal/core/resource-runtime.ts";
 
@@ -79,7 +90,81 @@ export {
 	runDeploymentForContext,
 } from "./internal/core/deployment-runtime.ts";
 
-export type { DeploymentListFilter, DeploymentListResult } from "./internal/providers/interface.ts";
+export type {
+	DeploymentInfo,
+	DeploymentListFilter,
+	DeploymentListResult,
+	DeploymentRunResult,
+} from "./internal/providers/interface.ts";
+
+export {
+	archiveRemoteSession,
+	downloadRemoteFile,
+	downloadRemoteSkill,
+	getManagedAgentProviderCapabilities,
+	getRemoteAgent,
+	getRemoteDeployment,
+	getRemoteDeploymentRun,
+	getRemoteEnvironment,
+	getRemoteSkill,
+	getRemoteSkillDownloadInfo,
+	getRemoteSkillVersion,
+	getRemoteVault,
+	listRemoteAgents,
+	listRemoteAgentVersions,
+	listRemoteDeploymentRuns,
+	listRemoteDeployments,
+	listRemoteEnvironments,
+	listRemoteFiles,
+	listRemoteSkills,
+	listRemoteSkillVersions,
+	listRemoteVaults,
+	runRemoteDeployment,
+	sendRemoteSessionEvents,
+	setRemoteDeploymentPaused,
+	updateRemoteSession,
+} from "./internal/core/managed-api-runtime.ts";
+export type { ManagedApiTarget } from "./internal/core/managed-api-runtime.ts";
+export type {
+	AgentListOptions,
+	AgentPage,
+	AgentVersionListOptions,
+	CursorListOptions,
+	CursorPage,
+	DeploymentRunInfo,
+	DeploymentRunPage,
+	EnvironmentListOptions,
+	EnvironmentPage,
+	FileListOptions,
+	FilePage,
+	ManagedAgentOperationAuth,
+	ManagedAgentOperationCapability,
+	ManagedAgentProviderCapabilities,
+	SessionEventInput,
+	SessionEventSendResult,
+	SessionUpdateInput,
+	SkillDownloadInfo,
+	SkillListOptions,
+	SkillPage,
+	SkillVersionInfo,
+	SkillVersionListOptions,
+	SkillVersionPage,
+	VaultListOptions,
+	VaultPage,
+	VaultCredentialInfo,
+} from "./internal/types/managed-api.ts";
+
+export {
+	createVaultCredential,
+	createVaultCredentialWithStateBackend,
+	planVaultCredentialCreate,
+	planVaultCredentialCreateWithStateBackend,
+} from "./internal/core/vault-credential-runtime.ts";
+export type {
+	VaultCredentialCreateOptions,
+	VaultCredentialCreatePlan,
+	VaultCredentialCreateResult,
+} from "./internal/core/vault-credential-runtime.ts";
 
 export type {
 	DestroyDefaultMemoryStoreResult,
@@ -148,7 +233,15 @@ export {
 	listCloudAgents,
 	listCloudEnvironments,
 	listCloudVaults,
+	planAgentResources,
+	planAgentResourcesWithStateBackend,
 	syncAgentResourcesWithStateBackend,
+} from "./internal/core/agent-runtime.ts";
+export type {
+	AgentResourcePlan,
+	AgentResourcePlanOptions,
+	AgentResourceSyncMode,
+	AgentResourceSyncOptions,
 } from "./internal/core/agent-runtime.ts";
 
 export type { CollectedSessionEvents } from "./internal/core/session-runtime.ts";
@@ -198,8 +291,13 @@ export {
 	type ProviderConfig,
 	type ProviderConfigProvider,
 } from "./internal/provider-config.ts";
-export type { ProviderSessionInfo } from "./internal/types/session.ts";
-export type { ProviderSessionEvent } from "./internal/types/session-event.ts";
+export type { ProviderSessionInfo, SessionFilter, SessionListResult } from "./internal/types/session.ts";
+export type {
+	EventListOptions,
+	EventStreamOptions,
+	ProviderSessionEvent,
+	ProviderSessionEventList,
+} from "./internal/types/session-event.ts";
 export type { ProviderFileInfo } from "./internal/types/file.ts";
 export type { ProviderSkillInfo } from "./internal/types/skill-info.ts";
 
@@ -212,6 +310,8 @@ export { LocalFileStateBackend } from "./internal/state/local-file-state-backend
 export type { StateScope } from "./internal/state/backend.ts";
 
 export { extractSkillZipFiles } from "./internal/utils/normalize-skill-zip.ts";
+export { inspectSkillSource } from "./internal/core/skill-source.ts";
+export type { SkillSourceInspection } from "./internal/core/skill-source.ts";
 
 export type {
 	RuntimeFeedbackEvent,

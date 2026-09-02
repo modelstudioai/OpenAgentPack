@@ -11,6 +11,24 @@ export interface DependencyGraph {
 	edges: Map<string, Set<string>>;
 }
 
+/** Resolve explicit resource roots plus every declared transitive dependency. */
+export function collectDependencyClosure(graph: DependencyGraph, roots: readonly ResourceAddress[]): ResourceAddress[] {
+	const selected = new Map<string, ResourceAddress>();
+
+	function visit(address: ResourceAddress): void {
+		const key = addressKey(address);
+		if (selected.has(key)) return;
+		selected.set(key, graph.nodes.get(key) ?? address);
+		for (const dependencyKey of graph.edges.get(key) ?? []) {
+			const dependency = graph.nodes.get(dependencyKey);
+			if (dependency) visit(dependency);
+		}
+	}
+
+	for (const root of roots) visit(root);
+	return [...selected.values()];
+}
+
 export function buildDependencyGraph(config: ProjectConfig, targetProviders: string[]): DependencyGraph {
 	const nodes = new Map<string, ResourceAddress>();
 	const edges = new Map<string, Set<string>>();

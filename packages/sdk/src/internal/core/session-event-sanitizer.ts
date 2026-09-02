@@ -63,6 +63,7 @@ export function sanitizeSessionEvent(
 	if (event.tool_input !== undefined) metadata.tool_input = event.tool_input;
 	if (event.status !== undefined) metadata.status = event.status;
 	if (event.stop_reason !== undefined) metadata.stop_reason = event.stop_reason;
+	if (event.session_thread_id !== undefined) metadata.session_thread_id = event.session_thread_id;
 	// Always surface the engine's 7-class bucket so the renderer never has to re-derive it
 	// for events the provider already classified. For unmapped raw types (type==="unknown")
 	// we omit it on purpose, leaving the renderer to bucket by raw_type — its Agents-vocab table

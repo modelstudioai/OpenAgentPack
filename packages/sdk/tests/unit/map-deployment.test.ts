@@ -35,6 +35,7 @@ function minimalRefs(): ResolvedDeploymentRefs {
 describe("Claude mapDeployment", () => {
 	test("full decl produces correct body", () => {
 		const decl: DeploymentDecl = {
+			name: "Daily Report",
 			agent: "researcher",
 			agent_version: 3,
 			description: "Daily report",
@@ -68,7 +69,7 @@ describe("Claude mapDeployment", () => {
 
 		const body = mapDeployment("daily-report", decl, fullRefs(), "myproj") as Record<string, unknown>;
 
-		expect(body.name).toBe("daily-report");
+		expect(body.name).toBe("Daily Report");
 		expect(body.agent).toEqual({ id: "agent_123", type: "agent", version: 3 });
 		expect(body.environment_id).toBe("env_456");
 		expect(body.vault_ids).toEqual(["vault_a"]);
@@ -227,6 +228,7 @@ describe("Qoder mapDeploymentToSession", () => {
 describe("Qoder mapDeployment", () => {
 	test("full decl produces a native deployment body", () => {
 		const decl: DeploymentDecl = {
+			name: "Daily Report",
 			agent: "researcher",
 			agent_version: 3,
 			description: "Daily report",
@@ -262,7 +264,7 @@ describe("Qoder mapDeployment", () => {
 		const uploaded = new Map([["./local.txt", "file_uploaded"]]);
 		const body = mapQoderDeployment("daily-report", decl, fullRefs(), "myproj", uploaded) as Record<string, unknown>;
 
-		expect(body.name).toBe("daily-report");
+		expect(body.name).toBe("Daily Report");
 		expect(body.agent).toEqual({ id: "agent_123", type: "agent", version: 3 });
 		expect(body.environment_id).toBe("env_456");
 		// Qoder's /deployments API rejects tunnel_id (HTTP 400) — never sent.
@@ -408,6 +410,7 @@ describe("Bailian mapDeployment", () => {
 
 	test("full decl produces a native deployment body with object agent", () => {
 		const decl: DeploymentDecl = {
+			name: "Daily Report",
 			agent: "researcher",
 			agent_version: 3,
 			description: "Daily",
@@ -435,7 +438,7 @@ describe("Bailian mapDeployment", () => {
 		const uploaded = new Map([["./report-template.md", "file_uploaded"]]);
 		const body = mapBailianDeployment("daily-report", decl, fullRefs(), "myproj", uploaded) as Record<string, unknown>;
 
-		expect(body.name).toBe("daily-report");
+		expect(body.name).toBe("Daily Report");
 		expect(body.agent).toEqual({ id: "agent_123", version: 3 });
 		expect(body.environment_id).toBe("env_456");
 		expect(body.vault_ids).toEqual(["vault_a"]);

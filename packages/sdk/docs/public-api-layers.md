@@ -18,10 +18,17 @@ The public entry exposes domain workflows that return structured domain results.
 New CLI and WebUI behavior should start here.
 
 - Project/resource workflows: config resolution, planning, apply, and destroy.
-- Agent workflows: agent listing, readiness, resource planning, and sync.
-- Session workflows: creation, runs, follow-up messages, event listing, and
-  summaries.
-- Deployment workflows: listing, details, and runs.
+- Agent workflows: agent listing/detail/version reads, readiness, resource
+  planning, and sync.
+- Managed-resource reads: environment, skill/version/download, vault, and file
+  metadata/content APIs with opaque cursor preservation.
+- Session workflows: creation, list/get/update/archive/delete, runs, follow-up
+  messages, raw event send/list/stream, and summaries. Managed Agents child
+  threads remain event metadata (`session_thread_id`); there is no independent
+  public Thread resource API.
+- Deployment workflows: list/get/search, run history, run, pause, and unpause.
+- Operation capabilities: provider-scoped support/auth/reason metadata for
+  API-oriented command hosts.
 - State workflows: a file/in-memory `StateManager` plus state-address parsing.
 - Validation/model workflows: config validation and provider/model discovery.
 
