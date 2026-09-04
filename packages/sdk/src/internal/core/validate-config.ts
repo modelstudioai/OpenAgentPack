@@ -11,6 +11,7 @@ import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
+import { validateCredentialPolicy } from "../validation/vault-credential.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 
 export interface ValidateProjectConfigOptions {
@@ -156,6 +157,19 @@ export function collectProviderCapabilities(
 			continue;
 		}
 		const caps = def.capabilities;
+
+		for (const [name, vault] of Object.entries(config.vaults ?? {})) {
+			if (vault.provider && vault.provider !== providerName) continue;
+			for (const credential of vault.credentials) {
+				for (const issue of validateCredentialPolicy(providerName, credential)) {
+					diagnostics.error(
+						`${providerName}.vault.${issue.code}`,
+						`vault.${name} credential '${credential.name}': ${issue.message}`,
+						{ type: "vault", name, provider: providerName },
+					);
+				}
+			}
+		}
 
 		for (const [name, environment] of Object.entries(config.environments ?? {})) {
 			if (environment.provider && environment.provider !== providerName) continue;

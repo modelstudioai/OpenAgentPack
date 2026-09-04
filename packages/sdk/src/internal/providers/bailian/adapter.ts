@@ -57,6 +57,7 @@ import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
+import { BAILIAN_CREDENTIAL_INJECTION_LOCATION, validateCredentialPolicy } from "../../validation/vault-credential.ts";
 import { toRemoteResource } from "../base-client.ts";
 import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
@@ -639,6 +640,8 @@ export class BailianAdapter implements ProviderAdapter {
 				secret_name: auth.secret_name as string | undefined,
 				mcp_server_url: auth.mcp_server_url as string | undefined,
 				networking_type: networking?.type as string | undefined,
+				networking: networking as CredentialDecl["networking"],
+				injection_location: auth.injection_location as VaultCredentialInfo["injection_location"],
 				metadata: metadata
 					? Object.fromEntries(
 							Object.entries(metadata).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -655,9 +658,28 @@ export class BailianAdapter implements ProviderAdapter {
 	async updateCredential(
 		vaultId: string,
 		credentialId: string,
-		patch: { display_name?: string; metadata?: Record<string, string> },
+		patch: {
+			display_name?: string;
+			metadata?: Record<string, string>;
+			auth?: {
+				type: "environment_variable";
+				secret_name?: string;
+				secret_value?: string;
+				networking?: { allowed_hosts: string[] };
+			};
+		},
 	): Promise<RemoteResource> {
-		const res = (await this.client.post(`/vaults/${vaultId}/credentials/${credentialId}`, patch)) as Record<
+		if (patch.auth) {
+			const policyIssue = validateCredentialPolicy("bailian", patch.auth)[0];
+			if (policyIssue) throw new UserError(policyIssue.message);
+		}
+		const body = {
+			...patch,
+			...(patch.auth
+				? { auth: { ...patch.auth, injection_location: { ...BAILIAN_CREDENTIAL_INJECTION_LOCATION } } }
+				: {}),
+		};
+		const res = (await this.client.post(`/vaults/${vaultId}/credentials/${credentialId}`, body)) as Record<
 			string,
 			unknown
 		>;

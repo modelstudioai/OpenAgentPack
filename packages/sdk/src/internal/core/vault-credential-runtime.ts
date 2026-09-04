@@ -4,6 +4,7 @@ import type { ProviderAdapter } from "../providers/interface.ts";
 import type { CredentialDecl, ResolvedProjectConfig } from "../types/config.ts";
 import type { VaultCredentialInfo } from "../types/managed-api.ts";
 import type { ResourceAddress, ResourceState } from "../types/state.ts";
+import { BAILIAN_CREDENTIAL_INJECTION_LOCATION, validateCredentialPolicy } from "../validation/vault-credential.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider, readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 import { planProjectContext } from "./resource-runtime.ts";
@@ -131,6 +132,8 @@ async function prepareVaultCredentialCreate(
 	if (vault.credentials.slice(0, -1).some((entry) => entry.name === credentialName)) {
 		throw new UserError(`Vault '${vaultName}' already declares a credential named '${credentialName}'.`);
 	}
+	const policyIssue = validateCredentialPolicy(provider, credential)[0];
+	if (policyIssue) throw new UserError(policyIssue.message);
 	if (provider === "bailian" && credential.type !== "environment_variable") {
 		throw new UserError(
 			`Credential '${credentialName}' uses '${credential.type}', but Bailian only supports 'environment_variable' credentials.`,
@@ -179,7 +182,7 @@ async function prepareVaultCredentialCreate(
 				(remoteCredential) => remoteCredential.display_name === credentialName,
 			)
 		: [];
-	const exact = sameName.find((remoteCredential) => credentialMatches(remoteCredential, credential));
+	const exact = sameName.find((remoteCredential) => credentialMatches(provider, remoteCredential, credential));
 	if (sameName.length > 0 && !exact) {
 		throw new UserError(`Vault '${vaultName}' already has a different remote credential named '${credentialName}'.`);
 	}
@@ -203,13 +206,33 @@ function resolveVaultProvider(
 	throw new UserError("Cannot infer one provider for Vault Credential create.");
 }
 
-function credentialMatches(remote: VaultCredentialInfo, desired: CredentialDecl): boolean {
+function credentialMatches(provider: string, remote: VaultCredentialInfo, desired: CredentialDecl): boolean {
 	if (remote.auth_type !== desired.type || !metadataMatches(remote.metadata, desired.metadata)) return false;
 	if (desired.type === "static_bearer") return remote.mcp_server_url === desired.mcp_server_url;
+	if (provider !== "bailian") {
+		return (
+			remote.secret_name === desired.secret_name &&
+			(remote.networking_type ?? "unrestricted") === (desired.networking?.type ?? "unrestricted")
+		);
+	}
+	const desiredHosts = credentialHosts(desired.networking);
+	const remoteHosts = credentialHosts(remote.networking ?? { type: remote.networking_type });
+	const remoteLocation = remote.injection_location;
+	// Only an explicit remote policy can prove this credential uses the fixed injection locations.
 	return (
 		remote.secret_name === desired.secret_name &&
-		(remote.networking_type ?? "unrestricted") === (desired.networking?.type ?? "unrestricted")
+		desiredHosts !== undefined &&
+		remoteHosts !== undefined &&
+		desiredHosts.length === remoteHosts.length &&
+		desiredHosts.every((host) => remoteHosts.includes(host)) &&
+		remoteLocation?.header === BAILIAN_CREDENTIAL_INJECTION_LOCATION.header &&
+		remoteLocation?.body === BAILIAN_CREDENTIAL_INJECTION_LOCATION.body
 	);
+}
+
+function credentialHosts(networking: { type?: string; allowed_hosts?: string[] } | undefined): string[] | undefined {
+	if (networking?.allowed_hosts !== undefined) return [...new Set(networking.allowed_hosts)];
+	return networking?.type === "limited" ? undefined : ["*"];
 }
 
 function metadataMatches(

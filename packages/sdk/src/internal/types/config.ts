@@ -100,6 +100,13 @@ export interface VaultDecl {
 
 export type CredentialType = "static_bearer" | "environment_variable";
 
+export interface CredentialNetworking {
+	/** Required when networking is declared for non-Bailian providers; optional for Bailian. */
+	type?: "unrestricted" | "limited";
+	/** Bailian only. Other providers retain their networking.type contract. */
+	allowed_hosts?: string[];
+}
+
 export interface CredentialDecl {
 	name: string;
 	type: CredentialType;
@@ -111,7 +118,7 @@ export interface CredentialDecl {
 	// environment_variable
 	secret_name?: string;
 	secret_value?: string;
-	networking?: { type: "unrestricted" | "limited" };
+	networking?: CredentialNetworking;
 }
 
 // --- Memory Store ---

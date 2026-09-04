@@ -1,7 +1,9 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as sdk from "@openagentpack/sdk";
+import * as runtimeFactory from "@/services/runtime-factory";
 
 let activeProvider = "qoder";
 let executionStatus: "success" | "failed" = "success";
@@ -9,8 +11,9 @@ let executionGate: Promise<void> | undefined;
 const missingRemoteIds = new Set<string>();
 const unavailableProviders = new Set<string>();
 let runError: { type: string; message: string } | undefined;
+let deploymentDeleteId: string | undefined;
 
-mock.module("@/services/runtime-factory", () => ({
+const runtimeStubs = {
 	loadCompiledRuntimeInput: async (playbookId: string, providerOverride?: string) => {
 		const provider = providerOverride ?? activeProvider;
 		if (unavailableProviders.has(provider)) throw new Error(`credentials unavailable for ${provider}`);
@@ -33,15 +36,14 @@ mock.module("@/services/runtime-factory", () => ({
 			compiled: { agentId: "agent", agent: { id: playbookId }, agentConfigHash: "hash" },
 		};
 	},
-}));
+};
 
-mock.module("@openagentpack/sdk", () => ({
-	UserError: class UserError extends Error {},
+const sdkStubs = {
 	syncAgentResourcesWithStateBackend: async () => ({ status: "completed" }),
 	writeProjectRuntime: async (input: unknown, fn: (ctx: unknown) => unknown) => fn({ input }),
 	planProjectContext: async (ctx: { input: { config: { deployments?: Record<string, unknown> } } }) => {
 		const configured = Object.keys(ctx.input.config.deployments ?? {});
-		const id = configured[0] ?? globalThis.__deploymentDeleteId;
+		const id = configured[0] ?? deploymentDeleteId;
 		return {
 			executionContext: ctx,
 			plan: {
@@ -81,12 +83,45 @@ mock.module("@openagentpack/sdk", () => ({
 		provider: activeProvider,
 		result: { session_id: runError ? null : "session", ...(runError ? { error: runError } : {}) },
 	}),
-}));
+};
+
+const spies: Array<{ mockRestore(): void }> = [];
+
+function installMocks() {
+	// The fixtures intentionally model only the fields consumed by this service.
+	// Spy on functions, never replace the SDK barrel or runtime-factory exports.
+	spies.push(
+		spyOn(runtimeFactory, "loadCompiledRuntimeInput").mockImplementation(
+			runtimeStubs.loadCompiledRuntimeInput as unknown as typeof runtimeFactory.loadCompiledRuntimeInput,
+		),
+		spyOn(sdk, "syncAgentResourcesWithStateBackend").mockImplementation(
+			sdkStubs.syncAgentResourcesWithStateBackend as typeof sdk.syncAgentResourcesWithStateBackend,
+		),
+		spyOn(sdk, "writeProjectRuntime").mockImplementation(
+			sdkStubs.writeProjectRuntime as typeof sdk.writeProjectRuntime,
+		),
+		spyOn(sdk, "planProjectContext").mockImplementation(
+			sdkStubs.planProjectContext as unknown as typeof sdk.planProjectContext,
+		),
+		spyOn(sdk, "executePlannedProject").mockImplementation(
+			sdkStubs.executePlannedProject as typeof sdk.executePlannedProject,
+		),
+		spyOn(sdk, "getDeploymentDetailsForContext").mockImplementation(
+			sdkStubs.getDeploymentDetailsForContext as unknown as typeof sdk.getDeploymentDetailsForContext,
+		),
+		spyOn(sdk, "pauseDeploymentForContext").mockImplementation(
+			sdkStubs.pauseDeploymentForContext as typeof sdk.pauseDeploymentForContext,
+		),
+		spyOn(sdk, "runDeploymentForContext").mockImplementation(
+			sdkStubs.runDeploymentForContext as typeof sdk.runDeploymentForContext,
+		),
+	);
+}
 
 const manage = await import("../src/services/deployments/manage");
 const testDir = await mkdtemp(join(tmpdir(), "opencma-deployments-"));
 const storePath = join(testDir, "deployments.json");
-process.env.AGENTS_DEPLOYMENTS_PATH = storePath;
+let previousStorePath: string | undefined;
 
 function input(name: string) {
 	return { name, playbookId: "base", prompt: "test", expression: "0 9 * * *", timezone: "Asia/Shanghai" };
@@ -103,6 +138,8 @@ async function stored() {
 }
 
 beforeEach(async () => {
+	previousStorePath = process.env.AGENTS_DEPLOYMENTS_PATH;
+	process.env.AGENTS_DEPLOYMENTS_PATH = storePath;
 	await rm(storePath, { force: true });
 	activeProvider = "qoder";
 	executionStatus = "success";
@@ -110,11 +147,17 @@ beforeEach(async () => {
 	missingRemoteIds.clear();
 	unavailableProviders.clear();
 	runError = undefined;
-	globalThis.__deploymentDeleteId = undefined;
+	deploymentDeleteId = undefined;
+	installMocks();
+});
+
+afterEach(() => {
+	for (const spy of spies.splice(0)) spy.mockRestore();
+	if (previousStorePath === undefined) delete process.env.AGENTS_DEPLOYMENTS_PATH;
+	else process.env.AGENTS_DEPLOYMENTS_PATH = previousStorePath;
 });
 
 afterAll(async () => {
-	delete process.env.AGENTS_DEPLOYMENTS_PATH;
 	await rm(testDir, { recursive: true, force: true });
 });
 
@@ -127,7 +170,7 @@ describe("managed deployments consistency", () => {
 
 	test("retains the local record when provider delete returns a failed result", async () => {
 		const created = await manage.createManagedDeployment(input("keep-me"));
-		globalThis.__deploymentDeleteId = created.id;
+		deploymentDeleteId = created.id;
 		executionStatus = "failed";
 		await expect(manage.deleteManagedDeployment(created.id)).rejects.toThrow("provider failed");
 		expect((await stored()).deployments.map((item) => item.id)).toEqual([created.id]);
@@ -177,7 +220,3 @@ describe("managed deployments consistency", () => {
 		await expect(manage.runManagedDeployment(created.id)).rejects.toThrow("provider rejected the run");
 	});
 });
-
-declare global {
-	var __deploymentDeleteId: string | undefined;
-}
