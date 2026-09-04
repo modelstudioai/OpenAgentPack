@@ -1,6 +1,6 @@
 {
 	"name": "@openagentpack/project-versions",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "Git-independent content-addressed project versioning for OpenAgentPack",
 	"license": "Apache-2.0",
 	"keywords": [
