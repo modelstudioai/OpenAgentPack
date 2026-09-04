@@ -18,7 +18,7 @@
 	],
 	"scripts": {
 		"prepare": "bash scripts/setup-githooks.sh",
-		"audit": "bun audit",
+		"audit": "bun scripts/audit.ts",
 		"lint": "biome check . --diagnostic-level=warn --error-on-warnings",
 		"lint:fix": "biome check --write .",
 		"lint:changed": "bash scripts/lint-changed.sh",
@@ -34,18 +34,24 @@
 		"dev": "bun run dev:server & bun run dev:webui & wait",
 		"dev:webui": "bun run --cwd apps/webui dev",
 		"dev:server": "bun run --cwd apps/server dev",
-		"typecheck": "bun run build:sdk && bun run typecheck:scripts && bun run typecheck:sdk && bun run typecheck:cli && bun run typecheck:playbooks && bun run typecheck:playground && bun run typecheck:webui && bun run typecheck:server",
+		"typecheck": "bun run build:sdk && bun run build:project-versions && bun run build:project-workspace && bun run typecheck:scripts && bun run typecheck:sdk && bun run typecheck:project-versions && bun run typecheck:project-workspace && bun run typecheck:cli && bun run typecheck:playbooks && bun run typecheck:playground && bun run typecheck:webui && bun run typecheck:server",
 		"build:sdk": "bun run --cwd packages/sdk build",
+		"build:project-versions": "bun run --cwd packages/project-versions build",
+		"build:project-workspace": "bun run --cwd packages/project-workspace build",
 		"typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit",
 		"typecheck:sdk": "bun run --cwd packages/sdk typecheck",
+		"typecheck:project-versions": "bun run --cwd packages/project-versions typecheck",
+		"typecheck:project-workspace": "bun run --cwd packages/project-workspace typecheck",
 		"typecheck:cli": "bun run --cwd packages/cli typecheck",
 		"typecheck:playbooks": "bun run --cwd packages/playbooks typecheck",
 		"typecheck:playground": "bun run --cwd packages/playground typecheck",
 		"typecheck:webui": "bun run --cwd apps/webui typecheck",
 		"typecheck:server": "bun run --cwd apps/server typecheck",
-		"test": "bun run build:sdk && bun run test:verification && bun run test:sdk && bun run test:cli && bun run test:playbooks && bun run test:webui && bun run test:server",
+		"test": "bun run build:sdk && bun run build:project-versions && bun run build:project-workspace && bun run test:verification && bun run test:sdk && bun run test:project-versions && bun run test:project-workspace && bun run test:cli && bun run test:playbooks && bun run test:webui && bun run test:server",
 		"test:verification": "bun test scripts/*.test.ts scripts/release/*.test.ts",
 		"test:sdk": "bun run --cwd packages/sdk test",
+		"test:project-versions": "bun run --cwd packages/project-versions test",
+		"test:project-workspace": "bun run --cwd packages/project-workspace test",
 		"test:cli": "bun run --cwd packages/cli test",
 		"test:playbooks": "bun run --cwd packages/playbooks test",
 		"test:webui": "bun run --cwd apps/webui test",
@@ -72,12 +78,15 @@
 		"typescript": "^6.0.3"
 	},
 	"overrides": {
+		"@tiptap/extension-bubble-menu": "3.30.4",
+		"@tiptap/extension-floating-menu": "3.30.4",
 		"brace-expansion": "5.0.9",
 		"esbuild": "0.28.1",
 		"fast-equals": "5.3.3",
 		"js-yaml": "4.3.1",
 		"nanoid": "3.3.18",
-		"postcss": "8.5.23"
+		"postcss": "8.5.23",
+		"prosemirror-model": "1.25.11"
 	},
 	"trustedDependencies": [
 		"@ast-grep/cli"

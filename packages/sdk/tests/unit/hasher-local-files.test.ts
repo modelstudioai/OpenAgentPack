@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildDependencyGraph } from "../../src/internal/graph/dependency.ts";
 import { computeResourceHash } from "../../src/internal/planner/hasher.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
 import type { ProjectConfig } from "../../src/internal/types/config.ts";
@@ -18,6 +19,29 @@ function stateLookup(state: StateFile) {
 }
 
 describe("local file content hashing", () => {
+	test("orders declared Files before their Agent without changing the remote Agent hash", async () => {
+		const config: ProjectConfig = {
+			version: "1",
+			providers: { qoder: {} },
+			defaults: { provider: "qoder" },
+			files: { input: { source: "input.txt" } },
+			agents: {
+				assistant: {
+					model: "auto",
+					instructions: "Read input.",
+					files: [{ file: "input", mount_path: "/data/input.txt" }],
+				},
+			},
+		};
+		const graph = buildDependencyGraph(config, ["qoder"]);
+		expect([...(graph.edges.get("qoder.agent.assistant") ?? [])]).toContain("qoder.file.input");
+		const address: ResourceAddress = { type: "agent", name: "assistant", provider: "qoder" };
+		const originalHash = await computeResourceHash(address, config);
+		config.agents!.assistant!.files![0]!.mount_path = "/data/renamed.txt";
+
+		expect(await computeResourceHash(address, config)).toBe(originalHash);
+	});
+
 	test("plans an update when a declared File's content changes at the same source path", async () => {
 		const directory = mkdtempSync(join(tmpdir(), "agents-file-hash-"));
 		try {

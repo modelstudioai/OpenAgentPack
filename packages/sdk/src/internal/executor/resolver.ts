@@ -97,7 +97,9 @@ export function resolveTemplateRefs(
 			environment.environment_id ?? requireRef(state, { type: "environment", name: agent.environment, provider }),
 		...(agent.tunnel ? { tunnel_id: resolveTunnelIdFromConfig(config, agent.tunnel, provider) } : {}),
 		vault_ids: agent.vault ? [requireRef(state, { type: "vault", name: agent.vault, provider })] : [],
-		file_ids: (agent.files ?? []).map((file) => requireRef(state, { type: "file", name: file, provider })),
+		file_ids: (agent.files ?? [])
+			.filter((file): file is string => typeof file === "string")
+			.map((file) => requireRef(state, { type: "file", name: file, provider })),
 		memory_store_ids: memoryStoreIds,
 		owned_memory_store_ids: state
 			.listResources()

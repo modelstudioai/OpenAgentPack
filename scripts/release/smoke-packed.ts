@@ -2,10 +2,9 @@
  * Pack the exact publish manifests, install them as an external npm consumer,
  * then exercise every public SDK entry point plus the CLI and Playground bins.
  *
- * `--sdk-only` restricts the run to the SDK package: pack/install only the sdk
- * tarball (still with --engine-strict) and execute the SDK entry-point imports.
- * This is the mode CI uses on Node versions below the cli/playground engines
- * floor (>=22) to enforce the SDK's own >=18.17.0 engines contract.
+ * `--sdk-only` restricts the run to the Node 18-compatible library packages:
+ * SDK, project-versions, and project-workspace. This is the mode CI uses below
+ * the CLI/Playground Node floor to enforce the libraries' >=18.17.0 contract.
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -28,7 +27,9 @@ export function isSdkOnly(argv: readonly string[]): boolean {
 }
 
 export function smokePackages(sdkOnly: boolean): readonly (typeof PACKAGES)[number][] {
-	return sdkOnly ? PACKAGES.filter((pkg) => pkg === "sdk") : PACKAGES;
+	return sdkOnly
+		? PACKAGES.filter((pkg) => pkg === "sdk" || pkg === "project-versions" || pkg === "project-workspace")
+		: PACKAGES;
 }
 
 type PackedPackage = { filename: string };
@@ -153,7 +154,7 @@ async function main(): Promise<void> {
 				"node",
 				"--input-type=module",
 				"--eval",
-				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle");',
+				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const versions = await import("@openagentpack/project-versions"); const workspace = await import("@openagentpack/project-workspace"); if (typeof versions.createProjectVersionService !== "function") throw new Error("project-versions export missing"); if (typeof workspace.previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
 			],
 			consumer,
 		);
@@ -174,7 +175,7 @@ async function main(): Promise<void> {
 			await smokePlayground(consumer);
 		}
 		const nodeVersion = run(["node", "--version"], consumer, "pipe");
-		console.log(`✓ Packed ${sdkOnly ? "SDK package installs" : "packages install"} and run under ${nodeVersion}`);
+		console.log(`✓ Packed ${sdkOnly ? "library packages install" : "packages install"} and run under ${nodeVersion}`);
 	} finally {
 		rmSync(temporaryRoot, { recursive: true, force: true });
 	}

@@ -25,6 +25,8 @@ export {
 
 export type {
 	CredentialDecl,
+	CredentialInjectionLocation,
+	CredentialNetworking,
 	DeploymentDecl,
 	EnvironmentDecl,
 	ProjectConfig,
@@ -63,6 +65,9 @@ export {
 	validateProjectConfig,
 } from "./internal/core/validate-config.ts";
 export type { ValidateProjectConfigOptions } from "./internal/core/validate-config.ts";
+
+export { inspectProjectSource } from "./internal/core/project-source-security.ts";
+export type { ProjectSourceInspection } from "./internal/core/project-source-security.ts";
 
 export {
 	resolveSyncProvider,
@@ -229,6 +234,7 @@ export {
 	deleteCloudEnvironment,
 	deleteCloudVault,
 	getAgent,
+	isAgentRunnable,
 	listAgentsWithReadiness,
 	listCloudAgents,
 	listCloudEnvironments,
@@ -330,6 +336,7 @@ export {
 	AgentRecoveryActionSchema,
 	AgentSkillRefSchema,
 	AgentSyncResultSchema,
+	AgentSyncReasonSchema,
 	AgentSyncRunSchema,
 	AgentSyncStatusSchema,
 	AgentWithReadinessSchema,
@@ -371,6 +378,7 @@ export type {
 	AgentRecoveryAction,
 	AgentSkillRef,
 	AgentSyncResult,
+	AgentSyncReason,
 	AgentSyncRun,
 	AgentSyncStatus,
 	AgentWithReadiness,

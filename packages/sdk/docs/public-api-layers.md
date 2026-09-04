@@ -30,7 +30,8 @@ New CLI and WebUI behavior should start here.
 - Operation capabilities: provider-scoped support/auth/reason metadata for
   API-oriented command hosts.
 - State workflows: a file/in-memory `StateManager` plus state-address parsing.
-- Validation/model workflows: config validation and provider/model discovery.
+- Validation/model workflows: config validation, redacted source inspection,
+  and provider/model discovery.
 
 Service APIs return domain objects (sessions, plans, diagnostics, resources,
 provider-neutral metadata). They do not return terminal rows, React view

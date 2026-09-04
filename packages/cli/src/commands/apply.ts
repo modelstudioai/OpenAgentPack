@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import { assertLegacyYamlNotShadowed } from "@openagentpack/project-workspace";
 import { decideDestructive, executePlannedProject, type PlannedAction, UserError } from "@openagentpack/sdk";
 import chalk from "chalk";
 import { assertProviderConfigured, buildCliRuntime } from "../config-loader.ts";
@@ -91,6 +92,7 @@ export async function applyCommand(options: {
 	refreshOnly?: boolean;
 	concurrency?: number;
 }) {
+	await assertLegacyYamlNotShadowed(options.file);
 	const ctx = await buildCliRuntime(options.file);
 	assertProviderConfigured(ctx, options.provider);
 
@@ -127,7 +129,6 @@ export async function applyCommand(options: {
 	const creates = actionable.filter((a) => a.action === "create");
 	const updates = actionable.filter((a) => a.action === "update");
 	const deletes = planned.destructiveActions;
-
 	console.log(
 		`\n${chalk.green(`${creates.length} to create`)}, ${chalk.yellow(`${updates.length} to update`)}, ${chalk.red(`${deletes.length} to destroy`)}\n`,
 	);
@@ -190,10 +191,11 @@ export async function applyCommand(options: {
 
 	s.stop("Apply finished.");
 
-	if (failed > 0) {
-		p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, { output: process.stderr });
-		throw new UserError("Apply failed.");
-	} else {
-		p.log.success(`Apply complete! ${succeeded} actions executed successfully.`, { output: process.stderr });
+	if (failed > 0 || skipped > 0) {
+		p.log.warning(`${succeeded} succeeded, ${failed} failed, ${skipped} skipped.`, {
+			output: process.stderr,
+		});
+		throw new UserError(failed > 0 ? "Apply failed." : "Apply incomplete: one or more actions were skipped.");
 	}
+	p.log.success(`Apply complete! ${succeeded} actions executed successfully.`, { output: process.stderr });
 }

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseYaml } from "yaml";
 import type { ProjectConfig } from "../types/config.ts";
-import { interpolateEnvVars } from "../utils/env.ts";
+import { interpolateEnvVars, interpolateObjectEnv } from "../utils/env.ts";
 import { projectConfigSchema } from "./schema.ts";
 
 export interface LoadResult {
@@ -9,7 +9,11 @@ export interface LoadResult {
 	errors: string[];
 }
 
-export async function loadConfig(filePath: string, resolveEnv = false): Promise<LoadResult> {
+export async function loadConfig(
+	filePath: string,
+	resolveEnv = false,
+	environment?: Record<string, string | undefined>,
+): Promise<LoadResult> {
 	let raw: string;
 	try {
 		raw = await readFile(filePath, "utf8");
@@ -21,7 +25,7 @@ export async function loadConfig(filePath: string, resolveEnv = false): Promise<
 		return { config: null as never, errors: [`Failed to read file: ${msg}`] };
 	}
 
-	if (resolveEnv) {
+	if (resolveEnv && !environment) {
 		raw = interpolateEnvVars(raw, true);
 	}
 
@@ -33,6 +37,9 @@ export async function loadConfig(filePath: string, resolveEnv = false): Promise<
 		return { config: null as never, errors: [`YAML parse error: ${msg}`] };
 	}
 
+	// Project-local environments interpolate parsed scalars, never YAML syntax:
+	// a secret containing quotes/newlines must not inject or corrupt declarations.
+	if (resolveEnv && environment) parsed = interpolateObjectEnv(parsed, environment);
 	const result = projectConfigSchema.safeParse(parsed);
 	if (!result.success) {
 		const errors = result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);

@@ -1,4 +1,5 @@
 import * as p from "@clack/prompts";
+import { assertLegacyYamlNotShadowed } from "@openagentpack/project-workspace";
 import {
 	type DestroyDefaultMemoryStoreResult,
 	type DestroyResourceResult,
@@ -11,6 +12,7 @@ import { log } from "../logger.ts";
 import { formatResourceLabel } from "../utils/address-utils.ts";
 
 export async function destroyCommand(options: { file: string; yes?: boolean; cascade?: boolean }) {
+	await assertLegacyYamlNotShadowed(options.file);
 	const ctx = await buildCliRuntime(options.file);
 	const planned = planDestroyProjectContext(ctx);
 	const resources = planned.resources;

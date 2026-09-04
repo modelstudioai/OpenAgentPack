@@ -100,6 +100,17 @@ export interface VaultDecl {
 
 export type CredentialType = "static_bearer" | "environment_variable";
 
+export interface CredentialNetworking {
+	/** Legacy policy type; Bailian requests use allowed_hosts instead. */
+	type?: "unrestricted" | "limited";
+	allowed_hosts?: string[];
+}
+
+export interface CredentialInjectionLocation {
+	header?: boolean;
+	body?: boolean;
+}
+
 export interface CredentialDecl {
 	name: string;
 	type: CredentialType;
@@ -111,7 +122,8 @@ export interface CredentialDecl {
 	// environment_variable
 	secret_name?: string;
 	secret_value?: string;
-	networking?: { type: "unrestricted" | "limited" };
+	networking?: CredentialNetworking;
+	injection_location?: CredentialInjectionLocation;
 }
 
 // --- Memory Store ---
@@ -143,6 +155,7 @@ export interface SkillDecl {
 
 export interface FileDecl {
 	source: string;
+	/** Local label only; declarative uploads preserve the source file's basename. */
 	name?: string;
 	purpose?: string;
 	provider?: ProviderName;
@@ -171,9 +184,9 @@ export interface AgentDecl {
 	mcp_servers?: McpServerDecl[];
 	skills?: AgentSkillDecl[];
 	vault?: string;
-	/** File declarations inherited by a Qoder Forward Template. */
-	files?: string[];
 	memory_stores?: string[];
+	/** String refs are inherited by Qoder Forward Templates; object refs mount Files into Sessions. */
+	files?: Array<string | AgentFileMountDecl>;
 	/** Desired display metadata for Qoder Forward's system-managed writable Store. */
 	default_memory_store?: DefaultMemoryStoreDecl;
 	/** Resources mounted into every managed session created for this agent. */
@@ -186,6 +199,13 @@ export interface AgentDecl {
 	managed_tool_config?: ManagedToolConfigDecl;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
 	delivery?: Record<ProviderName, AgentDeliveryDecl>;
+}
+
+export interface AgentFileMountDecl {
+	/** Logical key under the top-level files section. */
+	file: string;
+	/** Provider sandbox path. Bailian paths live under /mnt. */
+	mount_path: string;
 }
 
 export interface DefaultMemoryStoreDecl {

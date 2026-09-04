@@ -59,12 +59,16 @@ export function mapCredential(cred: CredentialDecl): unknown {
 			`credential '${cred.name}': Bailian only supports credential type 'environment_variable', but '${cred.type}' was declared.`,
 		);
 	}
+	if (cred.networking?.type === "limited" && cred.networking.allowed_hosts === undefined) {
+		throw new UserError(`credential '${cred.name}': Bailian limited networking requires networking.allowed_hosts.`);
+	}
 	const body: Record<string, unknown> = {
 		auth: {
 			type: "environment_variable",
 			secret_name: cred.secret_name,
 			secret_value: cred.secret_value,
-			networking: cred.networking ?? { type: "unrestricted" },
+			networking: { allowed_hosts: cred.networking?.allowed_hosts ?? ["*"] },
+			injection_location: cred.injection_location ?? { header: true, body: false },
 		},
 		display_name: cred.name,
 	};
@@ -95,7 +99,8 @@ export function credToDecl(raw: Record<string, unknown>, vaultName: string): Cre
 	}
 
 	// Default to environment_variable (Bailian's accepted credential type).
-	const networking = auth.networking as { type: "unrestricted" | "limited" } | undefined;
+	const networking = auth.networking as CredentialDecl["networking"];
+	const injectionLocation = auth.injection_location as CredentialDecl["injection_location"];
 	return {
 		name,
 		type: "environment_variable",
@@ -103,6 +108,7 @@ export function credToDecl(raw: Record<string, unknown>, vaultName: string): Cre
 		secret_name: (auth.secret_name as string) ?? name,
 		secret_value: placeholder,
 		networking: networking ?? { type: "unrestricted" },
+		...(injectionLocation ? { injection_location: injectionLocation } : {}),
 	};
 }
 

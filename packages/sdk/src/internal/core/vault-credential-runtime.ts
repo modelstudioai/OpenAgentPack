@@ -206,10 +206,26 @@ function resolveVaultProvider(
 function credentialMatches(remote: VaultCredentialInfo, desired: CredentialDecl): boolean {
 	if (remote.auth_type !== desired.type || !metadataMatches(remote.metadata, desired.metadata)) return false;
 	if (desired.type === "static_bearer") return remote.mcp_server_url === desired.mcp_server_url;
+	const desiredHosts = credentialHosts(desired.networking);
+	const remoteHosts = credentialHosts(remote.networking ?? { type: remote.networking_type });
+	const desiredLocation = desired.injection_location;
+	const remoteLocation = remote.injection_location;
+	// An omitted response cannot prove that an explicitly requested injection policy matches.
+	if (desiredLocation && !remoteLocation) return false;
 	return (
 		remote.secret_name === desired.secret_name &&
-		(remote.networking_type ?? "unrestricted") === (desired.networking?.type ?? "unrestricted")
+		desiredHosts !== undefined &&
+		remoteHosts !== undefined &&
+		desiredHosts.length === remoteHosts.length &&
+		desiredHosts.every((host) => remoteHosts.includes(host)) &&
+		(desiredLocation?.header ?? true) === (remoteLocation?.header ?? true) &&
+		(desiredLocation?.body ?? false) === (remoteLocation?.body ?? false)
 	);
+}
+
+function credentialHosts(networking: { type?: string; allowed_hosts?: string[] } | undefined): string[] | undefined {
+	if (networking?.allowed_hosts !== undefined) return [...new Set(networking.allowed_hosts)];
+	return networking?.type === "limited" ? undefined : ["*"];
 }
 
 function metadataMatches(

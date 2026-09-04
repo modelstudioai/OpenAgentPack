@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { betaSnapshotVersion, commonReleaseVersion, releasePackageVersions, releaseRefHash } from "./channel.ts";
 
 const root = resolve(import.meta.dirname, "../..");
-const releasePackages = ["sdk", "playground", "cli"] as const;
+const releasePackages = ["sdk", "project-versions", "project-workspace", "playground", "cli"] as const;
 
 export function snapshotVersion(baseVersion: string, sha: string, ref: string, date = new Date()): string {
 	if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(baseVersion)) {

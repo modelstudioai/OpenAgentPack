@@ -4,14 +4,14 @@ module.exports = {
 		{
 			name: "no-cli-to-server",
 			severity: "error",
-			comment: "The CLI host must consume shared behavior through @openagentpack/sdk, not by importing the API server.",
+			comment: "The CLI host must consume shared behavior through published engine packages, not the API server.",
 			from: { path: "^packages/cli/" },
 			to: { path: "^apps/server/" },
 		},
 		{
 			name: "no-server-to-cli",
 			severity: "error",
-			comment: "The API server must consume shared behavior through @openagentpack/sdk, not by importing CLI code.",
+			comment: "The API server must consume shared behavior through published engine packages, not CLI code.",
 			from: { path: "^apps/server/" },
 			to: { path: "^packages/cli/" },
 		},
@@ -21,6 +21,21 @@ module.exports = {
 			comment: "@openagentpack/sdk is the shared engine and must not depend on host packages or applications.",
 			from: { path: "^packages/sdk/" },
 			to: { path: "^(packages/cli|apps/server|apps/webui)/" },
+		},
+		{
+			name: "no-project-versions-to-hosts-or-apps",
+			severity: "error",
+			comment:
+				"@openagentpack/project-versions is a shared Node engine and must not depend on host packages or applications.",
+			from: { path: "^packages/project-versions/" },
+			to: { path: "^(packages/cli|packages/playground|apps/server|apps/webui)/" },
+		},
+		{
+			name: "no-project-workspace-to-hosts-or-apps",
+			severity: "error",
+			comment: "@openagentpack/project-workspace is a shared Node engine and must not depend on hosts or applications.",
+			from: { path: "^packages/project-workspace/" },
+			to: { path: "^(packages/cli|packages/playground|apps/server|apps/webui)/" },
 		},
 		{
 			name: "no-sdk-deep-imports",
@@ -41,6 +56,20 @@ module.exports = {
 				"Browser-facing webui code may import @openagentpack/sdk types only; runtime imports would bundle SDK server/runtime code.",
 			from: { path: "^apps/webui/src/" },
 			to: { path: "^packages/sdk/" },
+		},
+		{
+			name: "no-webui-project-versions-runtime-import",
+			severity: "error",
+			comment: "Browser-facing code must use Workbench APIs instead of importing the Node-only version engine.",
+			from: { path: "^apps/webui/src/" },
+			to: { path: "^packages/project-versions/" },
+		},
+		{
+			name: "no-webui-project-workspace-runtime-import",
+			severity: "error",
+			comment: "Browser-facing code must use Workbench APIs instead of importing the Node-only workspace engine.",
+			from: { path: "^apps/webui/src/" },
+			to: { path: "^packages/project-workspace/" },
 		},
 	],
 	options: {

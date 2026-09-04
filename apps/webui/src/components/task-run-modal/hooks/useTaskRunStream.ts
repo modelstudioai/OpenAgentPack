@@ -64,7 +64,7 @@ export function useTaskRunStream({ open, task, sendSending, taskRef, onTaskUpdat
 					onTaskUpdateRef.current(mapSessionDetail(detail));
 				})
 				.catch((error) => {
-					console.warn("Failed to fetch OpenAgentPack task", error);
+					console.warn("Failed to fetch Managed Agents task", error);
 				});
 		}
 

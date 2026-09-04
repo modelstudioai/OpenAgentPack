@@ -9,7 +9,7 @@ export function RunTimelineItemView({ item }: { item: RunTimelineItem }) {
 		return <ToolChainPanel events={item.events} isActive={item.isActive} />;
 	}
 	if (item.kind === "artifact") {
-		return <InlineArtifactCard segments={item.segments} />;
+		return <InlineArtifactCard segments={item.segments} createdAt={item.createdAt} />;
 	}
 	return <SessionEventItem event={item.event} messageKey={item.key} />;
 }

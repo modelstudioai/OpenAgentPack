@@ -4,6 +4,7 @@ import { createVaultCredential, planVaultCredentialCreate } from "../../src/inte
 import { computeResourceHash } from "../../src/internal/planner/hasher.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { CredentialDecl, ResolvedProjectConfig } from "../../src/internal/types/config.ts";
+import type { VaultCredentialInfo } from "../../src/internal/types/managed-api.ts";
 
 const credential: CredentialDecl = {
 	name: "api-token",
@@ -26,20 +27,7 @@ function candidateConfig(): ResolvedProjectConfig {
 	};
 }
 
-async function makeRuntime(
-	options: {
-		remoteCredentials?: Array<{
-			id: string;
-			display_name: string;
-			auth_type: string;
-			secret_name?: string;
-			mcp_server_url?: string;
-			networking_type?: string;
-			metadata?: Record<string, string>;
-		}>;
-		drifted?: boolean;
-	} = {},
-) {
+async function makeRuntime(options: { remoteCredentials?: VaultCredentialInfo[]; drifted?: boolean } = {}) {
 	const config = candidateConfig();
 	const priorConfig = candidateConfig();
 	priorConfig.vaults!.production!.credentials = [];
@@ -136,6 +124,64 @@ describe("scoped Vault Credential create", () => {
 			],
 		});
 
+		await expect(createVaultCredential(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(
+			/different remote credential/,
+		);
+		expect(getCreateCalls()).toBe(0);
+	});
+
+	test("adopts a matching host policy regardless of host order", async () => {
+		const { runtime, getCreateCalls } = await makeRuntime({
+			remoteCredentials: [
+				{
+					id: "credential_existing",
+					display_name: credential.name,
+					auth_type: credential.type,
+					secret_name: credential.secret_name,
+					metadata: credential.metadata,
+					networking: { type: "limited", allowed_hosts: ["*.example.org", "api.example.com"] },
+					injection_location: { header: true, body: false },
+				},
+			],
+		});
+		runtime.config.vaults!.production!.credentials = [
+			{
+				...credential,
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
+			},
+		];
+		const result = await createVaultCredential(runtime, "production", "api-token", { refresh: false });
+		expect(result.adopted).toBe(true);
+		expect(getCreateCalls()).toBe(0);
+	});
+
+	test.each([
+		{ networking: { allowed_hosts: ["*"] }, injection_location: { header: true, body: false } },
+		{ networking: { allowed_hosts: ["other.example.com"] }, injection_location: { header: true, body: false } },
+		{ networking: { allowed_hosts: ["api.example.com"] }, injection_location: { header: true, body: true } },
+		{ networking: { allowed_hosts: ["api.example.com"] }, injection_location: { header: false, body: true } },
+		{ networking: { allowed_hosts: ["api.example.com"] } },
+	])("rejects a same-name credential with different or unknown policy: %j", async (policy) => {
+		const { runtime, getCreateCalls } = await makeRuntime({
+			remoteCredentials: [
+				{
+					id: "credential_existing",
+					display_name: credential.name,
+					auth_type: credential.type,
+					secret_name: credential.secret_name,
+					metadata: credential.metadata,
+					...policy,
+				},
+			],
+		});
+		runtime.config.vaults!.production!.credentials = [
+			{
+				...credential,
+				networking: { allowed_hosts: ["api.example.com"] },
+				injection_location: { header: true, body: false },
+			},
+		];
 		await expect(createVaultCredential(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(
 			/different remote credential/,
 		);

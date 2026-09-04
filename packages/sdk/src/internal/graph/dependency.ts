@@ -144,7 +144,8 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				}
 
 				if (decl.files) {
-					for (const fileName of decl.files) {
+					for (const file of decl.files) {
+						const fileName = typeof file === "string" ? file : file.file;
 						const fileAddr: ResourceAddress = { type: "file", name: fileName, provider };
 						if (nodes.has(addressKey(fileAddr))) addEdge(agentAddr, fileAddr);
 					}

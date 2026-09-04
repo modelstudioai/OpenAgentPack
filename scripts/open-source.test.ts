@@ -40,7 +40,13 @@ function output(command: string[]): string {
 
 describe("open-source repository invariants", () => {
 	test("public packages share one version for on-demand Playground resolution", () => {
-		const packagePaths = ["packages/sdk/package.json", "packages/playground/package.json", "packages/cli/package.json"];
+		const packagePaths = [
+			"packages/sdk/package.json",
+			"packages/project-versions/package.json",
+			"packages/project-workspace/package.json",
+			"packages/playground/package.json",
+			"packages/cli/package.json",
+		];
 		const manifests = packagePaths.map(
 			(file) => JSON.parse(readFileSync(resolve(root, file), "utf8")) as { name: string; version: string },
 		);

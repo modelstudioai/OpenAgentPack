@@ -60,6 +60,7 @@ function makeState(): StateManager {
 		{ type: "vault", name: "other", remote_id: "vault_o1" },
 		{ type: "memory_store", name: "docs", remote_id: "ms_docs" },
 		{ type: "memory_store", name: "logs", remote_id: "ms_logs" },
+		{ type: "file", name: "input", remote_id: "file_input" },
 	] as const;
 
 	for (const r of resources) {
@@ -101,6 +102,39 @@ describe("buildSessionBindings", () => {
 		];
 		const bindings = buildSessionBindings("researcher", config, "qoder", makeState());
 		expect(bindings.resources).toEqual(config.agents!.researcher!.resources);
+	});
+
+	test("resolves declared File mounts and merges explicit Session files", () => {
+		const config = makeConfig({ files: { input: { source: "./input.txt" } } });
+		config.agents!.researcher!.files = [{ file: "input", mount_path: "input.txt" }];
+		const bindings = buildSessionBindings("researcher", config, "qoder", makeState(), {
+			files: [{ fileId: "file_upload", mountPath: "uploads/note.txt" }],
+		});
+
+		expect(bindings.files).toEqual([
+			{ file_id: "file_input", mount_path: "/data/input.txt" },
+			{ file_id: "file_upload", mount_path: "/data/uploads/note.txt" },
+		]);
+	});
+
+	test("rejects duplicate declared and explicit Session mount paths", () => {
+		const config = makeConfig({ files: { input: { source: "./input.txt" } } });
+		config.agents!.researcher!.files = [{ file: "input", mount_path: "/data/input.txt" }];
+
+		expect(() =>
+			buildSessionBindings("researcher", config, "qoder", makeState(), {
+				files: [{ fileId: "file_upload", mountPath: "input.txt" }],
+			}),
+		).toThrow(/already used by declared file 'input'/);
+	});
+
+	test("requires declared Files to have been applied", () => {
+		const config = makeConfig({ files: { missing: { source: "./missing.txt" } } });
+		config.agents!.researcher!.files = [{ file: "missing", mount_path: "missing.txt" }];
+
+		expect(() => buildSessionBindings("researcher", config, "qoder", makeState())).toThrow(
+			/Resource qoder\.file\.missing not found in state/,
+		);
 	});
 
 	test("rejects session resources before an unsupported provider can silently drop them", () => {

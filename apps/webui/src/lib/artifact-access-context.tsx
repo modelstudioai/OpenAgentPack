@@ -6,6 +6,7 @@ type ArtifactAccessContextValue = {
 	isUrlExpired: (url: string) => boolean;
 	tryOpenUrl: (url: string, fileName: string) => void;
 	promptRegenerate: (url: string, fileName: string) => void;
+	resolveDeliveredFile?: (fileId: string) => Promise<string>;
 };
 
 const ArtifactAccessContext = createContext<ArtifactAccessContextValue | null>(null);
@@ -17,12 +18,14 @@ export function useArtifactAccess(): ArtifactAccessContextValue | null {
 type ArtifactAccessProviderProps = {
 	children: ReactNode;
 	onRegenerate: (fileName: string) => void | Promise<void>;
+	onResolveDeliveredFile?: (fileId: string) => Promise<string>;
 	regenerateBusy?: boolean;
 };
 
 export function ArtifactAccessProvider({
 	children,
 	onRegenerate,
+	onResolveDeliveredFile,
 	regenerateBusy = false,
 }: ArtifactAccessProviderProps) {
 	const [pending, setPending] = useState<{ fileName: string } | null>(null);
@@ -47,8 +50,9 @@ export function ArtifactAccessProvider({
 			isUrlExpired: isArtifactUrlExpired,
 			tryOpenUrl,
 			promptRegenerate,
+			resolveDeliveredFile: onResolveDeliveredFile,
 		}),
-		[tryOpenUrl, promptRegenerate],
+		[tryOpenUrl, promptRegenerate, onResolveDeliveredFile],
 	);
 
 	const handleConfirm = () => {

@@ -52,8 +52,10 @@ export async function computeResourceHash(
 
 	if (address.type === "template") {
 		const refs = resolveTemplateReferenceIds(decl as TemplateRefDecl, config, address.provider, state);
-		return contentHash({ decl, refs });
+		return contentHash({ decl: withoutLocalSessionFileMounts(decl), refs });
 	}
+
+	if (address.type === "agent") return contentHash(withoutLocalSessionFileMounts(decl));
 
 	if (address.type === "channel") {
 		const refs = resolveChannelReferenceIds(
@@ -66,6 +68,13 @@ export async function computeResourceHash(
 	}
 
 	return contentHash(decl);
+}
+
+function withoutLocalSessionFileMounts(decl: unknown): unknown {
+	if (!decl || typeof decl !== "object" || Array.isArray(decl)) return decl;
+	const { files, ...remoteDeclaration } = decl as Record<string, unknown>;
+	const templateFiles = Array.isArray(files) ? files.filter((file): file is string => typeof file === "string") : [];
+	return templateFiles.length ? { ...remoteDeclaration, files: templateFiles } : remoteDeclaration;
 }
 
 function resolveQoderApiMode(
@@ -90,7 +99,7 @@ function resolveQoderApiMode(
 						? agent.vault === name
 						: type === "memory_store"
 							? agent.memory_stores?.includes(name)
-							: agent.files?.includes(name);
+							: agent.files?.some((file) => (typeof file === "string" ? file : file.file) === name);
 		if (referenced && agent.delivery?.qoder?.type === "forward") return "forward";
 	}
 	return "managed";
@@ -134,7 +143,7 @@ interface TemplateRefDecl {
 	vault?: string;
 	skills?: Array<string | { type: "official" | "custom"; skill_id: string; version?: string }>;
 	memory_stores?: string[];
-	files?: string[];
+	files?: Array<string | { file: string; mount_path: string }>;
 }
 
 function resolveTemplateReferenceIds(
@@ -170,9 +179,9 @@ function resolveTemplateReferenceIds(
 			(memoryStore) =>
 				state?.getResource({ type: "memory_store", name: memoryStore, provider })?.remote_id ?? memoryStore,
 		),
-		file_ids: (decl.files ?? []).map(
-			(file) => state?.getResource({ type: "file", name: file, provider })?.remote_id ?? file,
-		),
+		file_ids: (decl.files ?? [])
+			.filter((file): file is string => typeof file === "string")
+			.map((file) => state?.getResource({ type: "file", name: file, provider })?.remote_id ?? file),
 		identity_id:
 			decl.memory_stores?.length && config.defaults?.identity
 				? state?.getResource({ type: "identity", name: config.defaults.identity, provider })?.remote_id

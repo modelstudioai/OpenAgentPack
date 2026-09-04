@@ -83,8 +83,9 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 			diagnostics.error("config.agent.vault.unknown", `agent.${name}: references unknown vault '${agent.vault}'`);
 		}
 		for (const file of agent.files ?? []) {
-			if (!fileNames.has(file)) {
-				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${file}'`);
+			const fileName = typeof file === "string" ? file : file.file;
+			if (!fileNames.has(fileName)) {
+				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${fileName}'`);
 			}
 		}
 		for (const memory of agent.memory_stores ?? []) {
@@ -156,6 +157,20 @@ export function collectProviderCapabilities(
 			continue;
 		}
 		const caps = def.capabilities;
+
+		for (const [name, vault] of Object.entries(config.vaults ?? {})) {
+			if (vault.provider && vault.provider !== providerName) continue;
+			if (
+				providerName !== "bailian" &&
+				vault.credentials.some((credential) => credential.injection_location !== undefined)
+			) {
+				diagnostics.error(
+					`${providerName}.vault.injection_location.unsupported`,
+					`vault.${name}: provider '${providerName}' does not support credential injection_location; pin this vault to bailian.`,
+					{ type: "vault", name, provider: providerName },
+				);
+			}
+		}
 
 		for (const [name, environment] of Object.entries(config.environments ?? {})) {
 			if (environment.provider && environment.provider !== providerName) continue;
@@ -285,7 +300,7 @@ export function collectProviderCapabilities(
 					),
 					...(agent.vault ? [`vault:${agent.vault}`] : []),
 					...(agent.memory_stores ?? []).map((store) => `memory_store:${store}`),
-					...(agent.files ?? []).map((file) => `file:${file}`),
+					...(agent.files ?? []).map((file) => `file:${typeof file === "string" ? file : file.file}`),
 				];
 				for (const ref of refs) {
 					const modes = domains.get(ref) ?? new Set<"managed" | "forward">();
@@ -306,7 +321,10 @@ export function collectProviderCapabilities(
 
 		for (const [name, agent] of Object.entries(config.agents ?? {})) {
 			if (agent.provider && agent.provider !== providerName) continue;
-			if (agent.files?.length && (providerName !== "qoder" || agent.delivery?.qoder?.type !== "forward")) {
+			if (
+				agent.files?.some((file) => typeof file === "string") &&
+				(providerName !== "qoder" || agent.delivery?.qoder?.type !== "forward")
+			) {
 				diagnostics.error(
 					"config.agent.files.unsupported",
 					`agent.${name}: files are supported only by Qoder Forward Templates.`,
@@ -332,6 +350,30 @@ export function collectProviderCapabilities(
 					`agent.${name}: provider '${providerName}' cannot enforce interactive tool permission 'ask'.`,
 					address,
 				);
+			}
+			const normalizedFileMountPaths = new Set<string>();
+			for (const file of agent.files ?? []) {
+				if (typeof file === "string") continue;
+				let normalizedMountPath: string;
+				try {
+					normalizedMountPath = resolveSandboxMountPath(providerName, file.mount_path);
+				} catch (error) {
+					diagnostics.error(
+						`${providerName}.agent.file.mount_path.invalid`,
+						`agent.${name}: ${error instanceof Error ? error.message : String(error)}`,
+						address,
+					);
+					continue;
+				}
+				if (normalizedFileMountPaths.has(normalizedMountPath)) {
+					diagnostics.error(
+						`${providerName}.agent.file.mount_path.duplicate`,
+						`agent.${name}: file mount_path '${normalizedMountPath}' is duplicated after normalization.`,
+						address,
+					);
+				} else {
+					normalizedFileMountPaths.add(normalizedMountPath);
+				}
 			}
 			for (const resource of agent.resources ?? []) {
 				if (!def.features.session_resources.includes(resource.type)) {

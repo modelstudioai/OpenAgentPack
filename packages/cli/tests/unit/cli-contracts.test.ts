@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { playgroundBrowserTargetFromSummary } from "../../src/commands/playground";
 
 const REPO_ROOT = resolve(import.meta.dir, "../..");
 const tempDirs: string[] = [];
@@ -342,25 +343,61 @@ test("invalid provider in json mode does not emit a successful plan object", asy
 	expect(result.stderr).toContain("Allowed choices");
 });
 
-test("playground provider accepts registered providers and rejects unknown ones", async () => {
+test("playground uses the global agents.yaml file and exposes no provider override", async () => {
 	const help = await runAgents(["playground", "--help"]);
 	expect(help.exitCode).toBe(0);
-	for (const provider of ["ark", "bailian", "claude", "qoder"]) {
-		expect(help.stdout).toContain(provider);
-	}
+	expect(help.stdout).not.toContain("--provider");
+	expect(help.stdout).toContain("--file <path>");
+	expect(help.stdout).toContain("--agent <id>");
+	expect(help.stdout).toContain("--port");
+	expect(help.stdout).toContain("--no-open");
 
 	const unsupported = await runAgents(["playground", "--provider", "wat", "--no-open"]);
 	expect(unsupported.exitCode).toBe(1);
 	expect(unsupported.stdout).toBe("");
-	expect(unsupported.stderr).toContain("Allowed choices");
+	expect(unsupported.stderr).toContain("unknown option '--provider'");
 	expect(unsupported.stderr).not.toContain("Fetching @openagentpack/playground");
+});
 
-	// --help short-circuits before launch; confirms commander choices accept qoder/ark/claude.
-	for (const provider of ["qoder", "ark", "claude"] as const) {
-		const accepted = await runAgents(["playground", "--provider", provider, "--help"]);
-		expect(accepted.exitCode).toBe(0);
-		expect(accepted.stderr).not.toContain("Allowed choices");
-	}
+test("playground opens a single Agent directly and routes multi-Agent projects through explicit selection", () => {
+	expect(
+		playgroundBrowserTargetFromSummary("http://localhost:4848", {
+			status: "valid",
+			agents: [{ agent: { id: "team:assistant" } }],
+		}),
+	).toEqual({ url: "http://localhost:4848/agents/team%3Aassistant/preview" });
+	expect(
+		playgroundBrowserTargetFromSummary("http://localhost:4848", {
+			status: "valid",
+			agents: [{ agent: { id: "team:assistant" } }, { agent: { id: "reviewer" } }],
+		}),
+	).toEqual({
+		url: "http://localhost:4848",
+		warning: "This project declares multiple Agents. Opening the workbench; rerun with --agent <id> for Preview.",
+	});
+	expect(
+		playgroundBrowserTargetFromSummary(
+			"http://localhost:4848",
+			{
+				status: "valid",
+				agents: [{ agent: { id: "team:assistant" } }, { agent: { id: "reviewer" } }],
+			},
+			"reviewer",
+		),
+	).toEqual({ url: "http://localhost:4848/agents/reviewer/preview" });
+	expect(playgroundBrowserTargetFromSummary("http://localhost:4848", { status: "invalid", agents: [] })).toEqual({
+		url: "http://localhost:4848",
+	});
+});
+
+test("project workbench exposes directory launch options without an Agent selector", async () => {
+	const help = await runAgents(["project", "workbench", "--help"]);
+	expect(help.exitCode).toBe(0);
+	expect(help.stdout).toContain("--project <directory>");
+	expect(help.stdout).toContain("--port");
+	expect(help.stdout).toContain("--no-open");
+	expect(help.stdout).not.toContain("--agent");
+	expect(help.stdout).not.toContain("--file");
 });
 
 test("state import resource version does not invoke root version output", async () => {
@@ -474,6 +511,13 @@ test("destroy with empty state is handled through the core runtime", async () =>
 	expect(result.exitCode).toBe(0);
 	expect(result.stdout).toBe("");
 	expect(result.stderr).toContain("No resources in state");
+});
+
+test("apply help does not expose the removed CI mode", async () => {
+	const result = await runAgents(["apply", "--help"]);
+
+	expect(result.exitCode).toBe(0);
+	expect(result.stdout).not.toContain("--ci");
 });
 
 test("validate reports reference errors through the core runtime", async () => {
@@ -613,4 +657,36 @@ test("global --no-color disables colored output", async () => {
 
 	expect(result.exitCode).toBe(1);
 	expect(result.stderr).not.toContain("\x1b[");
+});
+
+test("init help exposes only the agents.yaml template mode", async () => {
+	const result = await runAgents(["init", "--help"]);
+
+	expect(result.exitCode).toBe(0);
+	expect(result.stdout).toContain("init [options]");
+	expect(result.stdout).toContain("--provider <provider>");
+	expect(result.stdout).toContain("--agent-name <name>");
+	expect(result.stdout).not.toContain("--git");
+});
+
+test("init retains the current-directory template behavior", async () => {
+	const directory = await makeTempDir();
+	const result = await runAgents(["init", "--provider", "bailian", "--agent-name", "assistant"], {}, directory);
+
+	expect(result.exitCode).toBe(0);
+	expect(await Bun.file(join(directory, "agents.yaml")).exists()).toBe(true);
+	expect(await Bun.file(join(directory, ".gitignore")).exists()).toBe(true);
+	expect(await readFile(join(directory, ".gitignore"), "utf8")).toContain(".openagentpack/versions/");
+	expect(await Bun.file(join(directory, ".aoneci/openagentpack.yml")).exists()).toBe(false);
+	expect(await Bun.file(join(directory, "agents.state.json")).exists()).toBe(false);
+	expect(await Bun.file(join(directory, ".git/HEAD")).exists()).toBe(false);
+});
+
+test("init rejects a target directory because repository scaffolding is not supported", async () => {
+	const parentDirectory = await makeTempDir();
+	const projectDirectory = join(parentDirectory, "generated-agent");
+	const result = await runAgents(["init", projectDirectory, "--provider", "bailian", "--agent-name", "assistant"]);
+
+	expect(result.exitCode).toBe(1);
+	expect(result.stderr).toContain("too many arguments");
 });

@@ -1,5 +1,5 @@
 import type { SessionEvent } from "@openagentpack/sdk";
-import { Brain, ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, Eye, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MarkdownRenderer } from "@/lib/markdown-renderer";
 import { buildToolChainRows, formatToolSummary, summarizeToolUses, type ToolChainRow } from "@/lib/view/run-timeline";
@@ -42,27 +42,40 @@ function ThinkingRow({ row }: { row: ToolChainRow }) {
 }
 
 function ActionRow({ row }: { row: ToolChainRow }) {
-	const [open, setOpen] = useState(false);
-	const text = row.target ? `${row.label} ${row.target}` : row.label;
+	const [open, setOpen] = useState(true);
 	const noteEvent = row.resultEvent ?? row.event;
 
 	if (!row.output) {
-		return <div className="run-tool-action">{text}</div>;
+		return (
+			<div className="run-tool-action">
+				<span className="run-tool-action-label">{row.label}</span>
+				{row.target ? <span className="run-tool-action-target">{row.target}</span> : null}
+			</div>
+		);
 	}
 
 	return (
 		<div className="run-tool-action-block">
-			<div className="run-tool-action">{text}</div>
 			<button type="button" className="run-tool-output-toggle" onClick={() => setOpen((v) => !v)}>
-				<span>查看输出</span>
+				<span className="run-tool-action-label">{row.label}</span>
+				{row.target ? <span className="run-tool-action-target">{row.target}</span> : null}
 				<ChevronDown size={14} className={`run-tool-chevron ${open ? "open" : ""}`} aria-hidden />
 			</button>
-			{open && (
-				<div className="run-tool-output-wrap">
-					<pre className="run-tool-output-body">{row.output}</pre>
+			{open ? (
+				<div className="run-tool-io">
+					{row.input ? (
+						<section className="run-tool-io-section">
+							<div className="run-tool-io-title">输入</div>
+							<pre className="run-tool-io-body">{row.input}</pre>
+						</section>
+					) : null}
+					<section className="run-tool-io-section">
+						<div className="run-tool-io-title">输出</div>
+						<pre className="run-tool-io-body">{row.output}</pre>
+					</section>
 					<EventSafetyNote event={noteEvent} />
 				</div>
-			)}
+			) : null}
 		</div>
 	);
 }
@@ -88,11 +101,8 @@ export default function ToolChainPanel({ events, isActive }: ToolChainPanelProps
 	const [expanded, setExpanded] = useState(isActive);
 
 	useEffect(() => {
-		if (isActive) setExpanded(true);
+		setExpanded(isActive);
 	}, [isActive]);
-
-	// 无可展示的思考/工具行时不渲染操作区块
-	if (rows.length === 0) return null;
 
 	const headerText = isActive
 		? summary
@@ -106,17 +116,21 @@ export default function ToolChainPanel({ events, isActive }: ToolChainPanelProps
 		<div className={`run-tool-chain ${isActive ? "active" : ""} ${expanded ? "expanded" : ""}`}>
 			<button type="button" className="run-tool-chain-head" onClick={() => setExpanded((v) => !v)}>
 				<span className="run-tool-chain-icon" aria-hidden>
-					{isActive ? <Loader2 size={16} className="spin" /> : <Brain size={16} />}
+					{isActive ? <Loader2 size={16} className="spin" /> : <Eye size={16} />}
 				</span>
-				<span className="run-tool-chain-title">{headerText}</span>
-				<ChevronDown size={16} className={`run-tool-chevron ${expanded ? "open" : ""}`} aria-hidden />
+				<span className="run-tool-chain-label">
+					<span className="run-tool-chain-title">{headerText}</span>
+					<ChevronDown size={16} className={`run-tool-chevron ${expanded ? "open" : ""}`} aria-hidden />
+				</span>
 			</button>
 
 			{expanded && (
 				<div className="run-tool-chain-body">
-					{rows.map((row) => (
-						<ToolChainRowItem key={row.key} row={row} />
-					))}
+					{rows.length === 0 ? (
+						<p className="run-tool-chain-empty">{isActive ? "等待工具输出…" : "暂无工具操作记录"}</p>
+					) : (
+						rows.map((row) => <ToolChainRowItem key={row.key} row={row} />)
+					)}
 				</div>
 			)}
 		</div>
