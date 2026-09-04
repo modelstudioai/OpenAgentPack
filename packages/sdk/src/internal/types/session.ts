@@ -65,6 +65,9 @@ export interface ProviderSessionInfo {
 
 export interface SessionFilter {
 	agent_id?: string;
+	statuses?: string[];
+	created_at_gte?: string;
+	created_at_lte?: string;
 	limit?: number;
 	// Opaque forward cursor echoed verbatim from a prior response's `next_page`.
 	page?: string;

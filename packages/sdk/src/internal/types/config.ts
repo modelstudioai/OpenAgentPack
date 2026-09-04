@@ -100,9 +100,21 @@ export interface VaultDecl {
 
 export type CredentialType = "static_bearer" | "environment_variable";
 
+export interface CredentialNetworking {
+	/** Legacy policy type; Bailian requests use allowed_hosts instead. */
+	type?: "unrestricted" | "limited";
+	allowed_hosts?: string[];
+}
+
+export interface CredentialInjectionLocation {
+	header?: boolean;
+	body?: boolean;
+}
+
 export interface CredentialDecl {
 	name: string;
 	type: CredentialType;
+	metadata?: Record<string, string>;
 	// static_bearer
 	mcp_server_url?: string;
 	access_token?: string;
@@ -110,7 +122,8 @@ export interface CredentialDecl {
 	// environment_variable
 	secret_name?: string;
 	secret_value?: string;
-	networking?: { type: "unrestricted" | "limited" };
+	networking?: CredentialNetworking;
+	injection_location?: CredentialInjectionLocation;
 }
 
 // --- Memory Store ---
@@ -172,14 +185,18 @@ export interface AgentDecl {
 	skills?: AgentSkillDecl[];
 	vault?: string;
 	memory_stores?: string[];
-	/** Declared Files mounted into every Session created for this Agent. */
-	files?: AgentFileMountDecl[];
+	/** String refs are inherited by Qoder Forward Templates; object refs mount Files into Sessions. */
+	files?: Array<string | AgentFileMountDecl>;
+	/** Desired display metadata for Qoder Forward's system-managed writable Store. */
+	default_memory_store?: DefaultMemoryStoreDecl;
 	/** Resources mounted into every managed session created for this agent. */
 	resources?: SessionResourceDecl[];
 	multiagent?: MultiagentDecl;
 	metadata?: Record<string, string>;
 	/** Qoder runtime environment variables. Forward delivery stores these as Template defaults. */
 	environment_variables?: Record<string, string>;
+	/** Provider-side tools the Agent Harness operates itself. Qoder Forward delivery only. */
+	managed_tool_config?: ManagedToolConfigDecl;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
 	delivery?: Record<ProviderName, AgentDeliveryDecl>;
 }
@@ -191,6 +208,18 @@ export interface AgentFileMountDecl {
 	mount_path: string;
 }
 
+export interface DefaultMemoryStoreDecl {
+	name: string;
+	description?: string;
+	/** Permanently delete the system-managed Store during destroy. Defaults to false. */
+	delete_on_destroy?: boolean;
+}
+
+export interface ManagedToolConfigDecl {
+	/** Replaces the provider's enabled managed-tool set; an empty array disables all of them. */
+	enabled_tools: string[];
+}
+
 export interface AgentDeliveryDecl {
 	type: "managed" | "forward";
 }
@@ -199,12 +228,14 @@ export interface AgentDeliveryDecl {
 
 export interface ChannelDecl {
 	provider?: ProviderName;
-	/** Logical Agent name. The provider adapter resolves its materialized remote resource. */
-	agent: string;
-	/** Logical Identity name. Falls back to defaults.identity. */
+	/** Logical Agent name. The provider adapter resolves its materialized remote resource. Required for `fixed` mode; ignored for `pairing` mode. */
+	agent?: string;
+	/** Logical Identity name. Falls back to defaults.identity. Required for `fixed` mode; ignored for `pairing` mode. */
 	identity?: string;
 	type: string;
 	name?: string;
+	/** Identity resolution mode. `fixed` binds the channel to one Identity/Template; `pairing` creates a transport-only channel used by Schedules/Sinks. Defaults to `fixed`. */
+	mode?: "fixed" | "pairing";
 	enabled?: boolean;
 	credentials?: Record<string, string>;
 	options?: Record<string, unknown>;
@@ -247,6 +278,7 @@ export interface MultiagentDecl {
 // --- Deployment ---
 
 export interface DeploymentDecl {
+	name?: string;
 	agent: string;
 	agent_version?: number;
 	environment?: string;

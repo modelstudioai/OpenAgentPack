@@ -73,9 +73,10 @@ External references are verified and recorded but never updated or deleted.
 channels:
   support-dingtalk:
     provider: qoder                 # optional; inherits defaults.provider
-    agent: support-agent
-    identity: chen                  # optional; inherits defaults.identity
+    agent: support-agent            # required for mode: fixed; ignored for mode: pairing
+    identity: chen                  # optional; inherits defaults.identity. ignored for mode: pairing
     type: dingtalk
+    mode: fixed                     # optional; defaults to fixed
     name: Support DingTalk          # optional; defaults to the YAML key
     enabled: true                   # optional; defaults to true
     credentials:
@@ -86,7 +87,34 @@ channels:
       include_thinking: false
 ```
 
-The declaration intentionally uses logical `agent` and `identity` references. Provider adapters resolve remote ids and map `type`, `credentials`, and `options` to provider wire fields. Qoder Channels require the referenced Agent to use Forward delivery. Credential-based Qoder support currently covers DingTalk, Feishu, and WeCom; personal WeChat remains QR-only.
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| `provider` | string | no | Provider name; inherits `defaults.provider`. |
+| `agent` | string | conditional | Logical Agent name. Required for `fixed` mode; ignored for `pairing` mode. |
+| `identity` | string | conditional | Logical Identity name; inherits `defaults.identity`. Required for `fixed` mode; ignored for `pairing` mode. |
+| `type` | string | yes | Provider-specific channel type. Qoder supports `dingtalk`, `feishu`, and `wecom`; `wechat` is QR-only. |
+| `mode` | `fixed` \| `pairing` | no | `fixed` (default) binds the channel to one Identity/Template. `pairing` creates a transport-only channel for Schedules/Sinks. |
+| `name` | string | no | Display name; defaults to the YAML key. |
+| `enabled` | boolean | no | Defaults to `true`. |
+| `credentials` | map | conditional | Provider-specific credentials. Required for credential-based channel types. |
+| `options` | map | no | Provider-specific response options, e.g. `include_tool_calls`, `include_thinking`. |
+
+The declaration intentionally uses logical `agent` and `identity` references. Provider adapters resolve remote ids and map `type`, `credentials`, and `options` to provider wire fields. Qoder Channels in `fixed` mode require the referenced Agent to use Forward delivery. `pairing` mode omits Identity/Template binding and is intended for Schedule sinks such as scheduled group broadcasts. Credential-based Qoder support currently covers DingTalk, Feishu, and WeCom; personal WeChat remains QR-only.
+
+### Managed tool config
+
+`managed_tool_config` declares the provider-operated tools an Agent Harness runs
+itself, rather than tools the model calls through the sandbox. Schedule
+management is the current use: enabling `create_forward_schedule`,
+`list_forward_schedules`, and `delete_forward_schedule` lets an end user create
+and cancel Schedules in natural language from a Web or IM Channel conversation.
+
+`enabled_tools` replaces the provider's whole enabled set, so an empty array
+turns every managed tool off. Omitting the field entirely sends nothing: because
+Qoder Forward Template updates are merge-style, an undeclared field leaves
+whatever the remote Template already had. Declare it whenever the tools matter —
+a Template recreated from scratch (after a destroy, a manual deletion, or lost
+state) otherwise comes back with no managed tools and no error.
 
 ## Provider configuration
 
@@ -194,7 +222,18 @@ vaults:
 | `type` | `"environment_variable"` | yes | |
 | `secret_name` | string | yes | Secret name. |
 | `secret_value` | string | yes | Secret value (string or number, coerced). |
-| `networking.type` | `"unrestricted"` \| `"limited"` | no | |
+| `networking.type` | `"unrestricted"` \| `"limited"` | no | Legacy policy type. Bailian requests use `allowed_hosts` instead. |
+| `networking.allowed_hosts` | string[] | no | Bailian credential injection host allow-list, e.g. `["api.example.com", "*.example.org"]`; `["*"]` allows all hosts. |
+| `injection_location.header` | boolean | no | Bailian: allow secret replacement in request headers. |
+| `injection_location.body` | boolean | no | Bailian: allow secret replacement in request bodies. |
+
+For Bailian, these fields are nested under `auth` in credential create/update requests.
+When omitted, creation uses `networking: { allowed_hosts: ["*"] }` and
+`injection_location: { header: true, body: false }`. Legacy `networking.type: unrestricted`
+maps to `["*"]`; `limited` must include `allowed_hosts` and is never widened implicitly.
+Explicit host lists and injection booleans are preserved, including through sync/export.
+Credential retry adoption compares host sets and injection policy as well as the existing
+identity and metadata fields; a different policy is not treated as an exact match.
 
 ## Memory store
 
@@ -258,11 +297,61 @@ agents:
     vault: <string>
     memory_stores: [ <string> ]
     files: [ { file: <string>, mount_path: <string> } ]
+    default_memory_store:             # Qoder Forward only; requires defaults.identity
+      name: <string>                  # 1-255 characters
+      description: <string>           # optional; up to 1024 characters
+      delete_on_destroy: <boolean>    # optional; defaults to false (retain)
     environment_variables: { <key>: <string> }  # Qoder only
+    managed_tool_config: { enabled_tools: [ <string> ] }  # Qoder Forward delivery only
     resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
     metadata: { <key>: <string> }
 ```
+
+### Qoder Forward default Memory Store
+
+Qoder creates one writable, system-managed Memory Store for an `(Identity, Template)` pair when its first Forward Session is created. `default_memory_store` lets OpenCMA manage the display metadata and destroy policy of that provider-created Store; it does not declare a second, ordinary entry under the top-level `memory_stores` collection.
+
+```yaml
+defaults:
+  provider: qoder
+  identity: support-user
+
+identities:
+  support-user:
+    external_id: support-user       # managed by OpenCMA
+
+agents:
+  support:
+    # ...
+    delivery:
+      qoder:
+        type: forward
+    default_memory_store:
+      name: "Support group memory"
+      description: "Confirmed support knowledge and operating rules"
+      delete_on_destroy: false
+```
+
+Apply behavior:
+
+- Requires Qoder Forward delivery and `defaults.identity`.
+- Locates the Store mounted as `system_managed: true` and `access: read_write`, then idempotently updates its `name` and optional `description`.
+- Does not create an initialization Session. Before the first real Session has created the Store, apply reports the reconciliation as pending. Run apply again after a Session exists.
+- `name` changes the provider Store's display name, so it can be meaningful instead of remaining the provider-generated default.
+
+Destroy behavior:
+
+| `delete_on_destroy` | Result |
+|---|---|
+| omitted or `false` | Retain the Store, its Memories, and all version history. This is the default. |
+| `true` | Permanently delete the Store, its Memories, and all version history after its system mount has been removed. |
+
+For permanent deletion, OpenCMA captures and persists the Store ID before archiving the Template and deleting the Identity. Qoder may remove the system mount asynchronously, so OpenCMA uses bounded retries for a `still mounted` conflict. If the conflict remains, it tries `archive → delete`, matching the lifecycle verified against the live Qoder service. A cleanup that still cannot finish is retained in state and reported as a partial destroy; a later `agents destroy` resumes it even when all ordinary resources are already gone.
+
+If the preflight cannot resolve the Identity, Template, or Store lookup, destroy aborts before deleting any project resource. Authentication, permission, and non-retryable validation errors fail immediately. `--cascade` does not override this field.
+
+`delete_on_destroy: true` requires an OpenCMA-managed Identity. An external `identity_id` is never deleted by OpenCMA, so it keeps the system Store mounted and fails configuration validation. Permanent deletion is irreversible; keep the default `false` unless data removal is explicitly required.
 
 | Field | Type | Required | Description |
 |-------|------|:--------:|-------------|
@@ -271,7 +360,7 @@ agents:
 | `environment` | string | no | Environment name. |
 | `tunnel` | string | no | Qoder BYOC tunnel name from `tunnels`; unsupported for other providers. |
 | `provider` | string | no | Pin the agent to one provider. |
-| `files` | `{ file, mount_path }[]` | no | Mount declared top-level Files into every new Session. `file` is the logical File name; the path is normalized under the provider mount root. |
+| `files` | `(string \| { file, mount_path })[]` | no | String references are inherited by Qoder Forward Templates; objects mount declared top-level Files into every new Session. `file` is the logical File name; the path is normalized under the provider mount root. |
 | `tools.builtin` | string[] | yes (in `tools`) | Lowercase tool names. |
 | `tools.default_permission` | `"allow"` \| `"ask"` | no | Permission inherited by enabled builtins; defaults to `allow`. |
 | `tools.permissions` | map<string,`"allow"`\|`"ask"`> | no | Case- and separator-insensitive overrides for enabled builtins. Unknown and duplicate normalized names are rejected. |
@@ -279,12 +368,25 @@ agents:
 | `mcp_servers[]` | `{ name, type?, url? }` | no | URL (`url`/`http`) or `official` MCP server. |
 | `skills[]` | string \| AgentSkillRef | no | Skill name or `{ type: "official"\|"custom", skill_id, version? }`. |
 | `vault` | string | no | Vault name. |
+| `files` | string[] | no | File declarations inherited by a Qoder Forward Template. These files are created through the Forward File API. |
 | `memory_stores` | string[] | no | Bound memory stores. |
+| `default_memory_store.name` | string | yes (with `default_memory_store`) | Display name for Qoder Forward's writable system-managed Store; 1–255 characters. |
+| `default_memory_store.description` | string | no | Display description for the system-managed Store; up to 1024 characters. |
+| `default_memory_store.delete_on_destroy` | boolean | no | Permanently delete the Store during destroy. Defaults to `false` (retain). |
 | `environment_variables` | map<string,string> | no | Qoder runtime variables. Managed Sessions use Qoder's `KEY=VALUE;...` wire format; Forward Templates store the map as defaults and Forward Sessions send it under `config.environment_variables`. |
+| `managed_tool_config.enabled_tools` | string[] | no | Provider-operated tools the Agent Harness exposes, e.g. `create_forward_schedule`, `list_forward_schedules`, `delete_forward_schedule`. Qoder Forward delivery only; declaring it on managed delivery is a validation error. |
 | `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
 | `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
+
+For Qoder Forward delivery, a locally declared Environment is created only through the Forward Environment API. An
+external `environment_id` may reference an Environment from either the Managed API or the Forward API; OpenCMA does
+not create or mutate such a reference and resolves its API domain when checking existence. Referenced custom Skills, Vaults and Credentials, Files, and explicit
+Memory Stores are created through their Forward APIs. A locally managed Environment, Skill, Vault, File, or Memory
+Store cannot be shared by Managed and Forward Agents under one logical declaration; declare separate resources for
+the two API domains. Explicit Forward Memory Stores require `defaults.identity` and are mounted read-only to that
+Identity and Template.
 
 ### Session resources
 

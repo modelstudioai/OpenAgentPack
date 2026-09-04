@@ -4,6 +4,7 @@ import type { IStateManager } from "../state/state-manager.ts";
 import type { ProjectConfig } from "../types/config.ts";
 import { emitRuntimeFeedback, type RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceState } from "../types/state.ts";
+import { addressKey } from "../types/state.ts";
 import { contentHash } from "../utils/hash.ts";
 import { getResourceDeclaration } from "./declaration.ts";
 import { diffChangedPaths } from "./plan-semantics.ts";
@@ -28,6 +29,7 @@ export async function refreshState(
 	providers: ReadonlyMap<string, DriftReadAdapter & Pick<ResourceCrudAdapter, "findResource">>,
 	options: {
 		targetProviders?: string[];
+		resourceKeys?: ReadonlySet<string>;
 		config?: ProjectConfig;
 		quiet?: boolean;
 		onFeedback?: RuntimeFeedbackSink;
@@ -39,6 +41,9 @@ export async function refreshState(
 	let dirty = false;
 
 	for (const res of resources) {
+		if (options.resourceKeys && !options.resourceKeys.has(addressKey(res.address))) {
+			continue;
+		}
 		// Skip resources from providers not in scope
 		if (options.targetProviders && !options.targetProviders.includes(res.address.provider)) {
 			continue;
@@ -121,7 +126,7 @@ export async function refreshState(
 			// Prefer the recorded remote_id so existence checks hit the detail
 			// endpoint (GET /{id}) instead of matching by name — names are not
 			// guaranteed unique, so name matching can adopt the wrong resource.
-			const remote = await provider.findResource(res.address.type, res.address.name, res.remote_id);
+			const remote = await provider.findResource(res.address.type, res.address.name, res.remote_id, res.api_mode);
 			if (!remote) {
 				if (!options.quiet) {
 					emitRuntimeFeedback(options.onFeedback, {

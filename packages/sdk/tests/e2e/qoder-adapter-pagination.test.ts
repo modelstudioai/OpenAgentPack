@@ -166,7 +166,9 @@ describe("QoderAdapter environment contract", () => {
 		const { calls, restore } = mockFetch([
 			{
 				status: 200,
-				body: { metadata: { keep: "old", remove: "stale", "agents.project": "test-project" } },
+				body: {
+					metadata: { keep: "old", remove: "stale", created_by: "forward", "agents.project": "test-project" },
+				},
 			},
 			{ status: 200, body: { id: "env_1", type: "environment" } },
 		]);
@@ -190,6 +192,7 @@ describe("QoderAdapter environment contract", () => {
 				"agents.resource": "dev",
 			},
 		});
+		expect(calls[1]?.body).not.toHaveProperty("metadata.created_by");
 	});
 
 	test("exports normalized setup scripts and omits response-only package defaults", async () => {

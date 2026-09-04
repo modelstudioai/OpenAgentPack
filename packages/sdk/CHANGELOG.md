@@ -1,5 +1,19 @@
 # @openagentpack/sdk
 
+## 0.5.0
+
+### Minor Changes
+
+- 8b0718d: Expose Bailian Managed Agents operation-level reads, cursor pagination, session events, file downloads, deployment actions, provider capability metadata, generic scoped create-only planning/apply, local Skill source inspection, scoped Vault Credential creation, and display names independent from logical YAML keys.
+
+## 0.4.0
+
+### Minor Changes
+
+- 407cc75: Add `mode: pairing` support for Qoder Channels.
+
+  `channels[].mode` now accepts `fixed` (default) or `pairing`. Pairing-mode channels create a transport-only IM connection without binding to an Identity or Template, which is required for Forward Schedule sinks such as scheduled group broadcasts. Fixed-mode channels retain the existing behavior and continue to require `agent` and `identity`.
+
 ## 0.3.2
 
 ### Patch Changes

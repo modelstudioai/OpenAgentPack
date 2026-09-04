@@ -1079,7 +1079,7 @@ describe("BailianAdapter e2e", () => {
 			updated_at: "2026-03-15T10:00:00Z",
 		};
 
-		test("createVault posts vault then each credential", async () => {
+		test("createVault posts vault then each supported credential", async () => {
 			const { calls, restore } = mockFetch([
 				{ status: 200, body: VAULT_RESPONSE },
 				{ status: 200, body: { id: "cred_1", type: "credential" } },
@@ -1092,9 +1092,11 @@ describe("BailianAdapter e2e", () => {
 				credentials: [
 					{
 						name: "token",
-						type: "static_bearer",
-						mcp_server_url: "https://example.com/mcp",
-						access_token: "tok-123",
+						type: "environment_variable",
+						secret_name: "MCP_TOKEN",
+						secret_value: "tok-123",
+						networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+						injection_location: { header: true, body: false },
 					},
 				],
 			});
@@ -1116,9 +1118,11 @@ describe("BailianAdapter e2e", () => {
 			const credBody = calls[1]!.body as Record<string, unknown>;
 			expect(credBody.display_name).toBe("token");
 			expect(credBody.auth).toEqual({
-				type: "static_bearer",
-				token: "tok-123",
-				mcp_server_url: "https://example.com/mcp",
+				type: "environment_variable",
+				secret_name: "MCP_TOKEN",
+				secret_value: "tok-123",
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
 			});
 
 			expect(result.id).toBe("vlt_011CZkZDLs7fYzm1hXNPeRjv");
@@ -1136,6 +1140,26 @@ describe("BailianAdapter e2e", () => {
 
 			expect(calls).toHaveLength(1);
 			expect(calls[0]!.url).toBe(`${BASE}/vaults`);
+		});
+
+		test("createVault rejects unsupported credentials before creating the parent vault", async () => {
+			const { calls, restore } = mockFetch([]);
+			cleanup = restore;
+
+			await expect(
+				makeAdapter().createVault("secrets", {
+					display_name: "Secrets",
+					credentials: [
+						{
+							name: "token",
+							type: "static_bearer",
+							mcp_server_url: "https://example.com/mcp",
+							access_token: "tok-123",
+						},
+					],
+				}),
+			).rejects.toThrow(/Bailian only supports credential type 'environment_variable'/);
+			expect(calls).toHaveLength(0);
 		});
 
 		test("deleteVault sends DELETE", async () => {
@@ -1226,27 +1250,19 @@ describe("BailianAdapter e2e", () => {
 		const staticCred = {
 			name: "token",
 			type: "static_bearer" as const,
+			metadata: { owner: "cli" },
 			mcp_server_url: "https://example.com/mcp",
 			access_token: "tok-123",
 		};
 
-		test("createCredential POSTs mapped auth body", async () => {
-			const { calls, restore } = mockFetch([{ status: 200, body: CRED_RESPONSE }]);
+		test("createCredential rejects unsupported static_bearer before sending a request", async () => {
+			const { calls, restore } = mockFetch([]);
 			cleanup = restore;
 
-			const result = await makeAdapter().createCredential(VAULT_ID, staticCred);
-
-			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials`);
-			expect(calls[0]!.method).toBe("POST");
-			expect(calls[0]!.body).toEqual({
-				auth: {
-					type: "static_bearer",
-					token: "tok-123",
-					mcp_server_url: "https://example.com/mcp",
-				},
-				display_name: "token",
-			});
-			expect(result.id).toBe("vcrd_1");
+			await expect(makeAdapter().createCredential(VAULT_ID, staticCred)).rejects.toThrow(
+				/Bailian only supports credential type 'environment_variable'/,
+			);
+			expect(calls).toHaveLength(0);
 		});
 
 		test("createCredential maps environment_variable auth body", async () => {
@@ -1267,7 +1283,8 @@ describe("BailianAdapter e2e", () => {
 					type: "environment_variable",
 					secret_name: "MCP_TOKEN",
 					secret_value: "tok-123",
-					networking: { type: "unrestricted" },
+					networking: { allowed_hosts: ["*"] },
+					injection_location: { header: true, body: false },
 				},
 				display_name: "mcp-token",
 			});
@@ -1287,6 +1304,35 @@ describe("BailianAdapter e2e", () => {
 			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials?limit=100`);
 			expect(calls[0]!.method).toBe("GET");
 			expect(result.map((r) => r.id)).toEqual(["vcrd_1", "vcrd_2"]);
+		});
+
+		test("listCredentials preserves networking and injection policy without exposing the secret", async () => {
+			const { restore } = mockFetch([
+				{
+					status: 200,
+					body: {
+						data: [
+							{
+								...CRED_RESPONSE,
+								auth: {
+									type: "environment_variable",
+									secret_name: "API_TOKEN",
+									secret_value: "never-expose-this",
+									networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+									injection_location: { header: true, body: false },
+								},
+							},
+						],
+					},
+				},
+			]);
+			cleanup = restore;
+			const result = await makeAdapter().listCredentials(VAULT_ID);
+			expect(result[0]).toMatchObject({
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
+			});
+			expect(JSON.stringify(result)).not.toContain("never-expose-this");
 		});
 
 		test("listCredentials paginates across every page", async () => {
@@ -1330,6 +1376,21 @@ describe("BailianAdapter e2e", () => {
 			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials/vcrd_1`);
 			expect(calls[0]!.method).toBe("POST");
 			expect((calls[0]!.body as any).display_name).toBe("new");
+		});
+
+		test("updateCredential sends the new auth policy while preserving an omitted secret", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: CRED_RESPONSE }]);
+			cleanup = restore;
+			const auth = {
+				type: "environment_variable" as const,
+				secret_name: "API_TOKEN",
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
+			};
+			await makeAdapter().updateCredential(VAULT_ID, "vcrd_1", { auth });
+			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials/vcrd_1`);
+			expect(calls[0]!.method).toBe("POST");
+			expect(calls[0]!.body).toEqual({ auth });
 		});
 
 		test("archiveCredential POSTs .../archive", async () => {

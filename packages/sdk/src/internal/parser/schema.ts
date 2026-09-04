@@ -49,6 +49,7 @@ const coerceString = z.union([z.string(), z.number()]).transform(String);
 const staticBearerCredentialSchema = z.object({
 	name: z.string(),
 	type: z.literal("static_bearer"),
+	metadata: z.record(z.string(), z.string()).optional(),
 	mcp_server_url: z.string(),
 	access_token: coerceString,
 	protocol: z.enum(["sse", "streamable_http"]).optional(),
@@ -57,9 +58,21 @@ const staticBearerCredentialSchema = z.object({
 const environmentVariableCredentialSchema = z.object({
 	name: z.string(),
 	type: z.literal("environment_variable"),
+	metadata: z.record(z.string(), z.string()).optional(),
 	secret_name: z.string(),
 	secret_value: coerceString,
-	networking: z.object({ type: z.enum(["unrestricted", "limited"]) }).optional(),
+	networking: z
+		.object({
+			type: z.enum(["unrestricted", "limited"]).optional(),
+			allowed_hosts: z.array(z.string()).optional(),
+		})
+		.optional(),
+	injection_location: z
+		.object({
+			header: z.boolean().optional(),
+			body: z.boolean().optional(),
+		})
+		.optional(),
 });
 
 const credentialSchema = z.discriminatedUnion("type", [
@@ -236,6 +249,10 @@ const agentFileMountSchema = z.object({
 	mount_path: z.string().min(1),
 });
 
+const managedToolConfigSchema = z.object({
+	enabled_tools: z.array(z.string().min(1)),
+});
+
 const sessionGithubRepoResourceSchema = z.object({
 	type: z.literal("github_repository"),
 	url: z.string().url(),
@@ -262,20 +279,29 @@ const agentSchema = z.object({
 	skills: z.array(z.union([z.string(), agentSkillRefSchema])).optional(),
 	vault: z.string().optional(),
 	memory_stores: z.array(z.string()).optional(),
-	files: z.array(agentFileMountSchema).optional(),
+	files: z.array(z.union([z.string().min(1), agentFileMountSchema])).optional(),
+	default_memory_store: z
+		.object({
+			name: z.string().trim().min(1).max(255),
+			description: z.string().max(1024).optional(),
+			delete_on_destroy: z.boolean().optional().default(false),
+		})
+		.optional(),
 	resources: z.array(sessionGithubRepoResourceSchema).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	environment_variables: z.record(z.string().min(1), z.string()).optional(),
+	managed_tool_config: managedToolConfigSchema.optional(),
 	delivery: z.record(z.string(), agentDeliverySchema).optional(),
 });
 
 const channelSchema = z.object({
 	provider: z.string().optional(),
-	agent: z.string().min(1),
+	agent: z.string().min(1).optional(),
 	identity: z.string().min(1).optional(),
 	type: z.string().min(1),
 	name: z.string().trim().min(1).optional(),
+	mode: z.enum(["fixed", "pairing"]).optional().default("fixed"),
 	enabled: z.boolean().optional(),
 	credentials: z.record(z.string(), coerceString).optional(),
 	options: z.record(z.string(), z.unknown()).optional(),
@@ -329,6 +355,7 @@ const scheduleSchema = z.object({
 });
 
 const deploymentSchema = z.object({
+	name: z.string().optional(),
 	agent: z.string(),
 	agent_version: z.number().int().optional(),
 	environment: z.string().optional(),

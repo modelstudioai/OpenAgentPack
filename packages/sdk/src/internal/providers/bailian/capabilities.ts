@@ -2,7 +2,7 @@ import type { ProviderCapabilities } from "../capabilities.ts";
 
 export const BAILIAN_CAPABILITIES: ProviderCapabilities = {
 	environment: { tier: "native", reason: "environments API" },
-	vault: { tier: "native", reason: "vaults + credentials API (static_bearer MCP credentials)" },
+	vault: { tier: "native", reason: "vaults + environment_variable credentials API" },
 	skill: { tier: "native", reason: "skills API with 2-step zip upload via Files API" },
 	agent: { tier: "native", reason: "agents API with versioned updates" },
 	template: { tier: "unsupported", reason: "no Forward Template equivalent on Bailian" },

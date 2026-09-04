@@ -11,6 +11,7 @@ import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
+import { resolveAgentMaterialization } from "./agent-materialization.ts";
 
 export interface ValidateProjectConfigOptions {
 	/** Providers to capability-check. Defaults to the config's target providers. */
@@ -81,17 +82,18 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 		if (agent.vault && !vaultNames.has(agent.vault)) {
 			diagnostics.error("config.agent.vault.unknown", `agent.${name}: references unknown vault '${agent.vault}'`);
 		}
+		for (const file of agent.files ?? []) {
+			const fileName = typeof file === "string" ? file : file.file;
+			if (!fileNames.has(fileName)) {
+				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${fileName}'`);
+			}
+		}
 		for (const memory of agent.memory_stores ?? []) {
 			if (!memoryNames.has(memory)) {
 				diagnostics.error(
 					"config.agent.memory_store.unknown",
 					`agent.${name}: references unknown memory_store '${memory}'`,
 				);
-			}
-		}
-		for (const file of agent.files ?? []) {
-			if (!fileNames.has(file.file)) {
-				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${file.file}'`);
 			}
 		}
 		if (agent.multiagent) {
@@ -119,7 +121,10 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 	}
 
 	for (const [name, channel] of Object.entries(config.channels ?? {})) {
-		if (!agentNames.has(channel.agent)) {
+		if (channel.mode === "pairing") continue;
+		if (!channel.agent) {
+			diagnostics.error("config.channel.agent.required", `channel.${name}: fixed-mode channels require agent`);
+		} else if (!agentNames.has(channel.agent)) {
 			diagnostics.error("config.channel.agent.unknown", `channel.${name}: references unknown agent '${channel.agent}'`);
 		}
 		const identity = channel.identity ?? config.defaults?.identity;
@@ -152,6 +157,20 @@ export function collectProviderCapabilities(
 			continue;
 		}
 		const caps = def.capabilities;
+
+		for (const [name, vault] of Object.entries(config.vaults ?? {})) {
+			if (vault.provider && vault.provider !== providerName) continue;
+			if (
+				providerName !== "bailian" &&
+				vault.credentials.some((credential) => credential.injection_location !== undefined)
+			) {
+				diagnostics.error(
+					`${providerName}.vault.injection_location.unsupported`,
+					`vault.${name}: provider '${providerName}' does not support credential injection_location; pin this vault to bailian.`,
+					{ type: "vault", name, provider: providerName },
+				);
+			}
+		}
 
 		for (const [name, environment] of Object.entries(config.environments ?? {})) {
 			if (environment.provider && environment.provider !== providerName) continue;
@@ -211,29 +230,31 @@ export function collectProviderCapabilities(
 			}
 
 			if (providerName === "qoder") {
-				const agent = config.agents?.[channel.agent];
-				if (agent?.provider && agent.provider !== providerName) {
-					diagnostics.error(
-						"config.channel.agent.provider_mismatch",
-						`channel.${name}: agent '${channel.agent}' is pinned to provider '${agent.provider}'.`,
-						{ type: "channel", name, provider: providerName },
-					);
-				}
-				const identityName = channel.identity ?? config.defaults?.identity;
-				const identity = identityName ? config.identities?.[identityName] : undefined;
-				if (identity?.provider && identity.provider !== providerName) {
-					diagnostics.error(
-						"config.channel.identity.provider_mismatch",
-						`channel.${name}: identity '${identityName}' is pinned to provider '${identity.provider}'.`,
-						{ type: "channel", name, provider: providerName },
-					);
-				}
-				if (agent && agent.delivery?.qoder?.type !== "forward") {
-					diagnostics.error(
-						"qoder.channel.forward_template.required",
-						`channel.${name}: Qoder Channels require agent '${channel.agent}' to use delivery.qoder.type: forward.`,
-						{ type: "channel", name, provider: providerName },
-					);
+				if (channel.mode !== "pairing" && channel.agent) {
+					const agent = config.agents?.[channel.agent];
+					if (agent?.provider && agent.provider !== providerName) {
+						diagnostics.error(
+							"config.channel.agent.provider_mismatch",
+							`channel.${name}: agent '${channel.agent}' is pinned to provider '${agent.provider}'.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
+					const identityName = channel.identity ?? config.defaults?.identity;
+					const identity = identityName ? config.identities?.[identityName] : undefined;
+					if (identity?.provider && identity.provider !== providerName) {
+						diagnostics.error(
+							"config.channel.identity.provider_mismatch",
+							`channel.${name}: identity '${identityName}' is pinned to provider '${identity.provider}'.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
+					if (agent && agent.delivery?.qoder?.type !== "forward") {
+						diagnostics.error(
+							"qoder.channel.forward_template.required",
+							`channel.${name}: Qoder Channels require agent '${channel.agent}' to use delivery.qoder.type: forward.`,
+							{ type: "channel", name, provider: providerName },
+						);
+					}
 				}
 				const requiredCredentials: Record<string, string[]> = {
 					dingtalk: ["client_id", "client_secret"],
@@ -265,6 +286,53 @@ export function collectProviderCapabilities(
 			}
 		}
 
+		if (providerName === "qoder") {
+			const domains = new Map<string, Set<"managed" | "forward">>();
+			for (const agent of Object.values(config.agents ?? {})) {
+				if (agent.provider && agent.provider !== providerName) continue;
+				const mode = agent.delivery?.qoder?.type === "forward" ? "forward" : "managed";
+				const refs = [
+					...(agent.environment && !config.environments?.[agent.environment]?.environment_id
+						? [`environment:${agent.environment}`]
+						: []),
+					...(agent.skills ?? []).flatMap((skill) =>
+						typeof skill === "string" ? [`skill:${skill}`] : skill.type === "custom" ? [`skill:${skill.skill_id}`] : [],
+					),
+					...(agent.vault ? [`vault:${agent.vault}`] : []),
+					...(agent.memory_stores ?? []).map((store) => `memory_store:${store}`),
+					...(agent.files ?? []).map((file) => `file:${typeof file === "string" ? file : file.file}`),
+				];
+				for (const ref of refs) {
+					const modes = domains.get(ref) ?? new Set<"managed" | "forward">();
+					modes.add(mode);
+					domains.set(ref, modes);
+				}
+			}
+			for (const [ref, modes] of domains) {
+				if (modes.size < 2) continue;
+				const [type, name] = ref.split(":") as ["environment" | "skill" | "vault" | "memory_store" | "file", string];
+				diagnostics.error(
+					`qoder.${type}.delivery_domain.conflict`,
+					`${type}.${name}: referenced by both Managed and Forward agents; declare separate resources because Qoder uses different API domains.`,
+					{ type, name, provider: providerName },
+				);
+			}
+		}
+
+		for (const [name, agent] of Object.entries(config.agents ?? {})) {
+			if (agent.provider && agent.provider !== providerName) continue;
+			if (
+				agent.files?.some((file) => typeof file === "string") &&
+				(providerName !== "qoder" || agent.delivery?.qoder?.type !== "forward")
+			) {
+				diagnostics.error(
+					"config.agent.files.unsupported",
+					`agent.${name}: files are supported only by Qoder Forward Templates.`,
+					{ type: resolveAgentMaterialization(providerName, agent).resourceType, name, provider: providerName },
+				);
+			}
+		}
+
 		for (const [name, agent] of Object.entries(config.agents ?? {})) {
 			if (agent.provider && agent.provider !== providerName) continue;
 			const delivery = agent.delivery?.[providerName]?.type ?? "managed";
@@ -285,6 +353,7 @@ export function collectProviderCapabilities(
 			}
 			const normalizedFileMountPaths = new Set<string>();
 			for (const file of agent.files ?? []) {
+				if (typeof file === "string") continue;
 				let normalizedMountPath: string;
 				try {
 					normalizedMountPath = resolveSandboxMountPath(providerName, file.mount_path);
@@ -335,6 +404,44 @@ export function collectProviderCapabilities(
 					address,
 				);
 			}
+			if (delivery !== "forward" && agent.managed_tool_config) {
+				diagnostics.error(
+					`${providerName}.agent.managed_tool_config.forward_required`,
+					`agent.${name}: managed_tool_config applies to Forward Templates; set delivery.${providerName}.type: forward or remove it.`,
+					address,
+				);
+			}
+			if (agent.default_memory_store) {
+				if (providerName !== "qoder" || delivery !== "forward") {
+					diagnostics.error(
+						`${providerName}.agent.default_memory_store.forward_required`,
+						`agent.${name}: default_memory_store is supported only by Qoder Forward delivery.`,
+						address,
+					);
+				} else if (!config.defaults?.identity) {
+					diagnostics.error(
+						"qoder.template.default_memory_store.identity.required",
+						`agent.${name}: default_memory_store requires defaults.identity to select the owning Forward Identity.`,
+						{ type: "template", name, provider: providerName },
+					);
+				} else {
+					const identity = config.identities?.[config.defaults.identity];
+					if (identity?.provider && identity.provider !== providerName) {
+						diagnostics.error(
+							"qoder.template.default_memory_store.identity.provider_mismatch",
+							`agent.${name}: defaults.identity '${config.defaults.identity}' is pinned to provider '${identity.provider}'.`,
+							{ type: "template", name, provider: providerName },
+						);
+					}
+					if (agent.default_memory_store.delete_on_destroy && identity?.identity_id) {
+						diagnostics.error(
+							"qoder.template.default_memory_store.delete.external_identity",
+							`agent.${name}: delete_on_destroy requires an OpenCMA-managed Identity because an external Identity keeps the default Memory Store mounted.`,
+							{ type: "template", name, provider: providerName },
+						);
+					}
+				}
+			}
 			if (delivery === "forward" && !isSupported(caps, "template")) {
 				diagnostics.error(
 					`${providerName}.agent.delivery.forward.unsupported`,
@@ -350,10 +457,10 @@ export function collectProviderCapabilities(
 						{ type: "template", name, provider: providerName },
 					);
 				}
-				if (agent.memory_stores?.length) {
+				if (agent.memory_stores?.length && !config.defaults?.identity) {
 					diagnostics.error(
-						"qoder.template.memory_store.unsupported",
-						`agent.${name}: memory_stores are not yet supported by Qoder Forward Template delivery.`,
+						"qoder.template.memory_store.identity.required",
+						`agent.${name}: Forward memory_stores require defaults.identity for the Identity/Template mount.`,
 						{ type: "template", name, provider: providerName },
 					);
 				}
@@ -489,6 +596,13 @@ export function collectProviderCapabilities(
 					diagnostics.error(
 						`${providerName}.agent.environment_variables.unsupported`,
 						`agent.${name}: environment_variables is supported only by Qoder; remove it or pin this agent to qoder.`,
+						{ type: "agent", name, provider: providerName },
+					);
+				}
+				if (agent.managed_tool_config && (!agent.provider || agent.provider === providerName)) {
+					diagnostics.error(
+						`${providerName}.agent.managed_tool_config.unsupported`,
+						`agent.${name}: managed_tool_config is supported only by Qoder; remove it or pin this agent to qoder.`,
 						{ type: "agent", name, provider: providerName },
 					);
 				}

@@ -11,6 +11,8 @@ export interface ProviderSessionEvent {
 	tool_input?: string;
 	status?: string;
 	stop_reason?: string;
+	/** Child-agent thread id when a Managed Agents multi-agent event carries one. */
+	session_thread_id?: string;
 	/**
 	 * A file the agent delivered to the provider's Files API (qoder DeliverArtifacts /
 	 * bailian download_file). Structured so the webui can show a download card without
@@ -29,6 +31,11 @@ export interface EventListOptions {
 	page_token?: string;
 	/** Legacy alias for page_token used by some provider adapters. */
 	page?: string;
+	types?: string[];
+	created_at_gt?: string;
+	created_at_gte?: string;
+	created_at_lt?: string;
+	created_at_lte?: string;
 }
 
 export interface EventStreamOptions {

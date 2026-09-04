@@ -11,6 +11,24 @@ export interface DependencyGraph {
 	edges: Map<string, Set<string>>;
 }
 
+/** Resolve explicit resource roots plus every declared transitive dependency. */
+export function collectDependencyClosure(graph: DependencyGraph, roots: readonly ResourceAddress[]): ResourceAddress[] {
+	const selected = new Map<string, ResourceAddress>();
+
+	function visit(address: ResourceAddress): void {
+		const key = addressKey(address);
+		if (selected.has(key)) return;
+		selected.set(key, graph.nodes.get(key) ?? address);
+		for (const dependencyKey of graph.edges.get(key) ?? []) {
+			const dependency = graph.nodes.get(dependencyKey);
+			if (dependency) visit(dependency);
+		}
+	}
+
+	for (const root of roots) visit(root);
+	return [...selected.values()];
+}
+
 export function buildDependencyGraph(config: ProjectConfig, targetProviders: string[]): DependencyGraph {
 	const nodes = new Map<string, ResourceAddress>();
 	const edges = new Map<string, Set<string>>();
@@ -88,6 +106,14 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				const agentAddr: ResourceAddress = { type: materialization.resourceType, name, provider };
 				addNode(agentAddr);
 
+				if ((decl.default_memory_store || decl.memory_stores?.length) && materialization.resourceType === "template") {
+					const identityName = config.defaults?.identity;
+					if (identityName) {
+						const identityAddr: ResourceAddress = { type: "identity", name: identityName, provider };
+						if (nodes.has(addressKey(identityAddr))) addEdge(agentAddr, identityAddr);
+					}
+				}
+
 				if (decl.environment && config.environments?.[decl.environment]) {
 					const envAddr: ResourceAddress = {
 						type: "environment",
@@ -117,6 +143,14 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 					}
 				}
 
+				if (decl.files) {
+					for (const file of decl.files) {
+						const fileName = typeof file === "string" ? file : file.file;
+						const fileAddr: ResourceAddress = { type: "file", name: fileName, provider };
+						if (nodes.has(addressKey(fileAddr))) addEdge(agentAddr, fileAddr);
+					}
+				}
+
 				if (decl.memory_stores) {
 					for (const msName of decl.memory_stores) {
 						const msAddr: ResourceAddress = {
@@ -126,15 +160,6 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 						};
 						if (nodes.has(addressKey(msAddr))) {
 							addEdge(agentAddr, msAddr);
-						}
-					}
-				}
-
-				if (decl.files) {
-					for (const file of decl.files) {
-						const fileAddr: ResourceAddress = { type: "file", name: file.file, provider };
-						if (nodes.has(addressKey(fileAddr))) {
-							addEdge(agentAddr, fileAddr);
 						}
 					}
 				}
@@ -198,6 +223,8 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 				if (decl.provider && decl.provider !== provider) continue;
 				const channelAddr: ResourceAddress = { type: "channel", name, provider };
 				addNode(channelAddr);
+
+				if (decl.mode === "pairing" || !decl.agent) continue;
 
 				const agentDecl = config.agents?.[decl.agent];
 				const agentType = agentDecl ? resolveAgentMaterialization(provider, agentDecl).resourceType : "agent";

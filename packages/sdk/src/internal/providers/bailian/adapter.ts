@@ -22,6 +22,30 @@ import type {
 } from "../../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../../types/dto.ts";
 import type { ProviderFileInfo } from "../../types/file.ts";
+import type {
+	AgentListOptions,
+	AgentPage,
+	AgentVersionListOptions,
+	CursorListOptions,
+	DeploymentRunInfo,
+	DeploymentRunPage,
+	EnvironmentListOptions,
+	EnvironmentPage,
+	FileListOptions,
+	FilePage,
+	SessionEventInput,
+	SessionEventSendResult,
+	SessionUpdateInput,
+	SkillDownloadInfo,
+	SkillListOptions,
+	SkillPage,
+	SkillVersionInfo,
+	SkillVersionListOptions,
+	SkillVersionPage,
+	VaultCredentialInfo,
+	VaultListOptions,
+	VaultPage,
+} from "../../types/managed-api.ts";
 import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../../types/session.ts";
 import type {
 	EventListOptions,
@@ -165,6 +189,7 @@ export class BailianAdapter implements ProviderAdapter {
 		}
 
 		return compactDeep({
+			name: raw.name,
 			description: raw.description,
 			model: normalizeBailianModel(raw.model),
 			instructions: raw.system,
@@ -200,6 +225,20 @@ export class BailianAdapter implements ProviderAdapter {
 
 	async deleteEnvironment(id: string): Promise<void> {
 		await this.client.delete(`/environments/${id}`);
+	}
+
+	async listEnvironmentResources(options?: EnvironmentListOptions): Promise<EnvironmentPage> {
+		const params = cursorParams(options);
+		if (options?.include_archived !== undefined) {
+			params.set("include_archived", String(options.include_archived));
+		}
+		const res = (await this.client.get(withQuery("/environments", params))) as Record<string, unknown>;
+		return cursorPage(res, toCloudEnvironment);
+	}
+
+	async getRemoteEnvironment(id: string): Promise<CloudEnvironment> {
+		const res = (await this.client.get(`/environments/${id}`)) as Record<string, unknown>;
+		return toCloudEnvironment(res);
 	}
 
 	// --- Agent ---
@@ -270,6 +309,28 @@ export class BailianAdapter implements ProviderAdapter {
 
 	async deleteAgent(id: string): Promise<void> {
 		await this.client.post(`/agents/${id}/archive`, {});
+	}
+
+	async listAgentResources(options?: AgentListOptions): Promise<AgentPage> {
+		const params = cursorParams(options);
+		if (options?.include_archived !== undefined) {
+			params.set("include_archived", String(options.include_archived));
+		}
+		const res = (await this.client.get(withQuery("/agents", params))) as Record<string, unknown>;
+		return cursorPage(res, toCloudAgent);
+	}
+
+	async getRemoteAgent(id: string, version?: number): Promise<CloudAgent> {
+		const params = new URLSearchParams();
+		if (version !== undefined) params.set("version", String(version));
+		const res = (await this.client.get(withQuery(`/agents/${id}`, params))) as Record<string, unknown>;
+		return toCloudAgent(res);
+	}
+
+	async listAgentVersions(id: string, options?: AgentVersionListOptions): Promise<AgentPage> {
+		const params = cursorParams(options);
+		const res = (await this.client.get(withQuery(`/agents/${id}/versions`, params))) as Record<string, unknown>;
+		return cursorPage(res, toCloudAgent);
 	}
 
 	// --- Skill (2-step: Files API → Skills API) ---
@@ -385,9 +446,37 @@ export class BailianAdapter implements ProviderAdapter {
 		return all.map(toBailianSkillInfo);
 	}
 
+	async listSkillResources(options?: SkillListOptions): Promise<SkillPage> {
+		const params = cursorParams(options);
+		if (options?.source === "official") params.set("source", "official");
+		if (options?.source === "custom") params.set("source", "customer");
+		const res = (await this.client.get(withQuery("/skills", params))) as Record<string, unknown>;
+		return cursorPage(res, toBailianSkillInfo);
+	}
+
 	async getSkillInfo(id: string): Promise<ProviderSkillInfo> {
 		const res = (await this.client.get(`/skills/${id}`)) as Record<string, unknown>;
 		return toBailianSkillInfo(res);
+	}
+
+	async listSkillVersions(id: string, options?: SkillVersionListOptions): Promise<SkillVersionPage> {
+		const params = cursorParams(options);
+		const res = (await this.client.get(withQuery(`/skills/${id}/versions`, params))) as Record<string, unknown>;
+		return cursorPage(res, toSkillVersionInfo);
+	}
+
+	async getSkillVersion(id: string, version: string): Promise<SkillVersionInfo> {
+		const res = (await this.client.get(`/skills/${id}/versions/${encodeURIComponent(version)}`)) as Record<
+			string,
+			unknown
+		>;
+		return toSkillVersionInfo(res);
+	}
+
+	async getSkillDownloadInfo(id: string, version: string): Promise<SkillDownloadInfo> {
+		return (await this.client.get(
+			`/skills/${id}/versions/${encodeURIComponent(version)}/content`,
+		)) as SkillDownloadInfo;
 	}
 
 	// Non-blocking create: file already uploaded → POST /skills with retry for residual OSS
@@ -473,6 +562,9 @@ export class BailianAdapter implements ProviderAdapter {
 	// exercise the full surface through real project code rather than raw fetch.
 
 	async createVault(name: string, decl: VaultDecl): Promise<RemoteResource> {
+		// Validate every nested credential before creating the parent Vault so an
+		// unsupported declaration cannot leave an empty remote Vault behind.
+		for (const credential of decl.credentials ?? []) mapCredential(credential);
 		const body = mapVault(name, decl, this.projectName);
 		const res = (await this.client.post("/vaults", body)) as Record<string, unknown>;
 		const vaultId = res.id as string;
@@ -487,6 +579,20 @@ export class BailianAdapter implements ProviderAdapter {
 	async listVaults(_filter?: { limit?: number }): Promise<CloudVault[]> {
 		const all = await this.client.getAllPaged("/vaults");
 		return all.map(toCloudVault);
+	}
+
+	async listVaultResources(options?: VaultListOptions): Promise<VaultPage> {
+		const params = cursorParams(options);
+		if (options?.include_archived !== undefined) {
+			params.set("include_archived", String(options.include_archived));
+		}
+		const res = (await this.client.get(withQuery("/vaults", params))) as Record<string, unknown>;
+		return cursorPage(res, toCloudVault);
+	}
+
+	async getRemoteVault(id: string): Promise<CloudVault> {
+		const res = (await this.client.get(`/vaults/${id}`)) as Record<string, unknown>;
+		return toCloudVault(res);
 	}
 
 	async getVault(id: string): Promise<Record<string, unknown>> {
@@ -520,9 +626,28 @@ export class BailianAdapter implements ProviderAdapter {
 		return toRemoteResource(res);
 	}
 
-	async listCredentials(vaultId: string): Promise<RemoteResource[]> {
+	async listCredentials(vaultId: string): Promise<VaultCredentialInfo[]> {
 		const all = await this.client.getAllPaged(`/vaults/${vaultId}/credentials`);
-		return all.map(toRemoteResource);
+		return all.map((raw) => {
+			const auth = (raw.auth ?? {}) as Record<string, unknown>;
+			const networking = auth.networking as Record<string, unknown> | undefined;
+			const metadata = raw.metadata as Record<string, unknown> | undefined;
+			return {
+				id: raw.id as string,
+				display_name: (raw.display_name as string) ?? (raw.id as string),
+				auth_type: (auth.type as string) ?? "",
+				secret_name: auth.secret_name as string | undefined,
+				mcp_server_url: auth.mcp_server_url as string | undefined,
+				networking_type: networking?.type as string | undefined,
+				networking: networking as CredentialDecl["networking"],
+				injection_location: auth.injection_location as CredentialDecl["injection_location"],
+				metadata: metadata
+					? Object.fromEntries(
+							Object.entries(metadata).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+						)
+					: undefined,
+			};
+		});
 	}
 
 	async getCredential(vaultId: string, credentialId: string): Promise<Record<string, unknown>> {
@@ -532,7 +657,17 @@ export class BailianAdapter implements ProviderAdapter {
 	async updateCredential(
 		vaultId: string,
 		credentialId: string,
-		patch: { display_name?: string; metadata?: Record<string, string> },
+		patch: {
+			display_name?: string;
+			metadata?: Record<string, string>;
+			auth?: {
+				type: "environment_variable";
+				secret_name?: string;
+				secret_value?: string;
+				networking?: { allowed_hosts: string[] };
+				injection_location?: CredentialDecl["injection_location"];
+			};
+		},
 	): Promise<RemoteResource> {
 		const res = (await this.client.post(`/vaults/${vaultId}/credentials/${credentialId}`, patch)) as Record<
 			string,
@@ -607,11 +742,7 @@ export class BailianAdapter implements ProviderAdapter {
 			throw new UserError(`Deployment '${ctx.name}' has no remote id; run \`agents apply\` first.`);
 		}
 		const res = (await this.client.post(`/deployments/${ctx.id}/run`, {})) as Record<string, unknown>;
-		return {
-			run_id: res.id as string | undefined,
-			session_id: (res.session_id as string | null) ?? null,
-			error: (res.error as { type: string; message: string } | null | undefined) ?? undefined,
-		};
+		return toDeploymentRunResult(res);
 	}
 
 	async getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
@@ -625,6 +756,7 @@ export class BailianAdapter implements ProviderAdapter {
 	async listDeployments(filter?: DeploymentListFilter): Promise<DeploymentListResult> {
 		const params = new URLSearchParams();
 		if (filter?.agent_id) params.set("agent_id", filter.agent_id);
+		if (filter?.keyword) params.set("keyword", filter.keyword);
 		if (filter?.status) params.set("status", filter.status);
 		if (filter?.include_archived) params.set("include_archived", "true");
 		if (filter?.limit) params.set("limit", String(filter.limit));
@@ -640,6 +772,38 @@ export class BailianAdapter implements ProviderAdapter {
 			has_more: nextPage != null,
 			next_page: nextPage,
 		};
+	}
+
+	async getDeploymentById(id: string): Promise<DeploymentInfo> {
+		const res = (await this.client.get(`/deployments/${id}`)) as Record<string, unknown>;
+		return toDeploymentInfo(res);
+	}
+
+	async runDeploymentById(id: string): Promise<DeploymentRunResult> {
+		const res = (await this.client.post(`/deployments/${id}/run`, {})) as Record<string, unknown>;
+		return toDeploymentRunResult(res);
+	}
+
+	async pauseDeploymentById(id: string): Promise<DeploymentInfo> {
+		const res = (await this.client.post(`/deployments/${id}/pause`, {})) as Record<string, unknown>;
+		return toDeploymentInfo(res);
+	}
+
+	async unpauseDeploymentById(id: string): Promise<DeploymentInfo> {
+		const res = (await this.client.post(`/deployments/${id}/unpause`, {})) as Record<string, unknown>;
+		return toDeploymentInfo(res);
+	}
+
+	async listDeploymentRuns(deploymentId: string, options?: CursorListOptions): Promise<DeploymentRunPage> {
+		const res = (await this.client.get(
+			withQuery(`/deployments/${deploymentId}/runs`, cursorParams(options)),
+		)) as Record<string, unknown>;
+		return cursorPage(res, toDeploymentRunInfo);
+	}
+
+	async getDeploymentRun(runId: string): Promise<DeploymentRunInfo> {
+		const res = (await this.client.get(`/deployment_runs/${runId}`)) as Record<string, unknown>;
+		return toDeploymentRunInfo(res);
 	}
 
 	async pauseDeployment(ctx: DeploymentContext): Promise<DeploymentInfo> {
@@ -722,6 +886,9 @@ export class BailianAdapter implements ProviderAdapter {
 	async listSessions(filter?: SessionFilter): Promise<SessionListResult> {
 		const params = new URLSearchParams();
 		if (filter?.agent_id) params.set("agent_id", filter.agent_id);
+		for (const status of filter?.statuses ?? []) params.append("statuses[]", status);
+		if (filter?.created_at_gte) params.set("created_at[gte]", filter.created_at_gte);
+		if (filter?.created_at_lte) params.set("created_at[lte]", filter.created_at_lte);
 		if (filter?.limit) params.set("limit", String(filter.limit));
 		if (filter?.page) params.set("page", filter.page);
 		const qs = params.toString();
@@ -740,6 +907,20 @@ export class BailianAdapter implements ProviderAdapter {
 		return toSessionInfo(res);
 	}
 
+	async updateSession(id: string, input: SessionUpdateInput): Promise<ProviderSessionInfo> {
+		const res = (await this.client.post(`/sessions/${id}`, input)) as Record<string, unknown>;
+		// The documented update response may be partial (id/status/title/metadata only).
+		// Normalize callers onto the full Session DTO by following with GET when the
+		// binding snapshot is absent.
+		if (!res.agent || !res.environment_id) return this.getSession(id);
+		return toSessionInfo(res);
+	}
+
+	async archiveSession(id: string): Promise<ProviderSessionInfo> {
+		const res = (await this.client.post(`/sessions/${id}/archive`, {})) as Record<string, unknown>;
+		return toSessionInfo(res);
+	}
+
 	async deleteSession(id: string): Promise<void> {
 		await this.client.delete(`/sessions/${id}`);
 	}
@@ -748,6 +929,14 @@ export class BailianAdapter implements ProviderAdapter {
 		const body = mapSendMessage(message);
 		const res = (await this.client.post(`/sessions/${sessionId}/events`, body)) as Record<string, unknown>;
 		return extractCreatedEventId(res);
+	}
+
+	async sendSessionEvents(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult> {
+		const res = (await this.client.post(`/sessions/${sessionId}/events`, { input: events })) as Record<string, unknown>;
+		return {
+			event_ids: extractCreatedEventIds(res),
+			attributes: res,
+		};
 	}
 
 	async *streamSessionEvents(sessionId: string, _options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
@@ -764,7 +953,7 @@ export class BailianAdapter implements ProviderAdapter {
 		// http 200 with the full unfiltered list rather than rejecting), so forwarding it
 		// buys nothing; it is never sent (mirrors claude). Shared page-cursor handling
 		// lives in listSessionEventsPaged.
-		return listSessionEventsPaged(this.client, sessionId, options, toSessionEvent);
+		return listSessionEventsPaged(this.client, sessionId, options, toSessionEvent, { forwardTypes: false });
 	}
 
 	// --- Files ---
@@ -798,6 +987,17 @@ export class BailianAdapter implements ProviderAdapter {
 	async listFiles(): Promise<ProviderFileInfo[]> {
 		const all = await this.client.getAllPaged("/files");
 		return all.map(toRestFileInfo);
+	}
+
+	async listFileResources(options?: FileListOptions): Promise<FilePage> {
+		const params = cursorParams(options);
+		if (options?.scope_id) params.set("scope_id", options.scope_id);
+		const res = (await this.client.get(withQuery("/files", params))) as Record<string, unknown>;
+		return cursorPage(res, toRestFileInfo);
+	}
+
+	async downloadFileContent(id: string): Promise<Uint8Array> {
+		return new Uint8Array(await this.client.getBuffer(`/files/${id}/content`));
 	}
 
 	async deleteFile(id: string): Promise<void> {
@@ -844,7 +1044,82 @@ export function toBailianSkillInfo(res: Record<string, unknown>): ProviderSkillI
 		latest_version: res.latest_version as string | undefined,
 		created_at: res.created_at as string | undefined,
 		updated_at: res.updated_at as string | undefined,
+		attributes: res,
 	};
+}
+
+function cursorParams(options?: CursorListOptions): URLSearchParams {
+	const params = new URLSearchParams();
+	if (options?.limit !== undefined) params.set("limit", String(options.limit));
+	if (options?.page) params.set("page", options.page);
+	return params;
+}
+
+function withQuery(path: string, params: URLSearchParams): string {
+	const query = params.toString();
+	return query ? `${path}?${query}` : path;
+}
+
+function cursorPage<T>(res: Record<string, unknown>, mapper: (raw: Record<string, unknown>) => T) {
+	const nextPage = (res.next_page as string | null | undefined) ?? undefined;
+	return {
+		data: ((res.data as Record<string, unknown>[] | undefined) ?? []).map(mapper),
+		has_more: (res.has_more as boolean | undefined) ?? nextPage !== undefined,
+		next_page: nextPage,
+	};
+}
+
+function toSkillVersionInfo(res: Record<string, unknown>): SkillVersionInfo {
+	return {
+		id: res.id as string | undefined,
+		skill_id: (res.skill_id as string) ?? "",
+		type: (res.type as string) ?? "skill_version",
+		name: res.name as string | undefined,
+		description: res.description as string | undefined,
+		version: (res.version as string) ?? "",
+		status: res.status as string | undefined,
+		created_at: res.created_at as string | undefined,
+		updated_at: res.updated_at as string | undefined,
+		additional_properties: res.additional_properties as Record<string, unknown> | undefined,
+		attributes: res,
+	};
+}
+
+function toDeploymentRunResult(res: Record<string, unknown>): DeploymentRunResult {
+	return {
+		run_id: res.id as string | undefined,
+		session_id: (res.session_id as string | null | undefined) ?? null,
+		error: (res.error as { type: string; message: string } | null | undefined) ?? undefined,
+	};
+}
+
+function toDeploymentRunInfo(res: Record<string, unknown>): DeploymentRunInfo {
+	return {
+		id: (res.id as string) ?? "",
+		deployment_id: res.deployment_id as string | undefined,
+		session_id: (res.session_id as string | null | undefined) ?? undefined,
+		status: res.status as string | undefined,
+		error: (res.error as DeploymentRunInfo["error"] | null | undefined) ?? undefined,
+		created_at: res.created_at as string | undefined,
+		updated_at: res.updated_at as string | undefined,
+		attributes: res,
+	};
+}
+
+function extractCreatedEventIds(res: Record<string, unknown>): string[] {
+	const ids = new Set<string>();
+	const topLevel = extractCreatedEventId(res);
+	if (topLevel) ids.add(topLevel);
+	for (const key of ["data", "events"]) {
+		const items = res[key];
+		if (!Array.isArray(items)) continue;
+		for (const item of items) {
+			if (!item || typeof item !== "object") continue;
+			const id = (item as Record<string, unknown>).id;
+			if (typeof id === "string") ids.add(id);
+		}
+	}
+	return Array.from(ids);
 }
 
 function normalizeBailianModel(value: unknown): unknown {

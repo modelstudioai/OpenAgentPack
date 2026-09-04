@@ -184,6 +184,7 @@ export function toCloudAgent(raw: Record<string, unknown>): CloudAgent {
 		created_at: raw.created_at as string | undefined,
 		updated_at: raw.updated_at as string | undefined,
 		archived_at: (raw.archived_at as string | null | undefined) ?? null,
+		attributes: raw,
 	};
 }
 
@@ -202,6 +203,7 @@ export function toCloudEnvironment(raw: Record<string, unknown>): CloudEnvironme
 		created_at: raw.created_at as string | undefined,
 		updated_at: raw.updated_at as string | undefined,
 		archived_at: (raw.archived_at as string | null | undefined) ?? null,
+		attributes: raw,
 	};
 }
 
@@ -215,6 +217,7 @@ export function toCloudVault(raw: Record<string, unknown>): CloudVault {
 		created_at: (raw.created_at as string | null | undefined) ?? null,
 		updated_at: (raw.updated_at as string | null | undefined) ?? null,
 		archived_at: (raw.archived_at as string | null | undefined) ?? null,
+		attributes: raw,
 	};
 }
 
@@ -233,6 +236,8 @@ export function toRestFileInfo(res: Record<string, unknown>): ProviderFileInfo {
 		downloadable: res.downloadable as boolean | undefined,
 		status: res.status as string | undefined,
 		purpose: res.purpose as string | undefined,
+		scope: res.scope as ProviderFileInfo["scope"],
+		attributes: res,
 	};
 }
 
@@ -255,5 +260,6 @@ export function toRestSkillInfo(res: Record<string, unknown>): ProviderSkillInfo
 		latest_version: res.latest_version as string | undefined,
 		created_at: res.created_at as string | undefined,
 		updated_at: res.updated_at as string | undefined,
+		attributes: res,
 	};
 }

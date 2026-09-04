@@ -1,5 +1,6 @@
 import { UserError } from "../errors.ts";
 import { type ExecutionResult, executePlan } from "../executor/executor.ts";
+import { buildDependencyGraph, collectDependencyClosure } from "../graph/dependency.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
 import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
 import { buildPlan } from "../planner/planner.ts";
@@ -8,17 +9,27 @@ import { readComparableIfSupported } from "../providers/drift-support.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceAddress, ResourceState, ResourceType } from "../types/state.ts";
+import { addressKey } from "../types/state.ts";
 import { contentHash as stableContentHash } from "../utils/hash.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
 import { readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 
 export interface ResourceRuntimeOptions extends DestructiveDecisionOptions {
 	provider?: string;
+	scope?: ResourcePlanScope;
+	mode?: ResourceSyncMode;
 	refresh?: boolean;
 	refreshOnly?: boolean;
 	quiet?: boolean;
 	onFeedback?: RuntimeFeedbackSink;
 	concurrency?: number;
+}
+
+export type ResourceSyncMode = "reconcile" | "create-only";
+
+export interface ResourcePlanScope {
+	roots: ResourceAddress[];
+	includeDependencies?: boolean;
 }
 
 export interface ResourceRefreshResult {
@@ -43,6 +54,8 @@ export interface ResourcePlanResult {
 	refreshResult?: ResourceRefreshResult;
 	targetProviders?: string[];
 	destructiveActions: PlannedAction[];
+	selectedAddresses?: ResourceAddress[];
+	mode?: ResourceSyncMode;
 }
 
 export type DestructivePolicy = "block" | "prompt" | "force";
@@ -72,6 +85,10 @@ export async function syncProjectResourcesWithStateBackend(
 		const planned = await planProjectContext(ctx, options);
 		if (options.refreshOnly) {
 			return { planned };
+		}
+		if (options.mode === "create-only") {
+			const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+			if (errorDiagnostic) throw new UserError(errorDiagnostic.message);
 		}
 		return {
 			planned,
@@ -166,21 +183,34 @@ export async function planProjectContext(
 	ctx: ProjectRuntimeContext,
 	options: ResourceRuntimeOptions = {},
 ): Promise<ResourcePlanResult> {
-	const targetProviders = resolveTargetProviders(options.provider);
+	if (options.mode === "create-only" && !options.scope) {
+		throw new UserError("Resource create-only mode requires an explicit resource scope.");
+	}
+	let targetProviders = resolveTargetProviders(options.provider);
+	if (!targetProviders && options.scope) {
+		targetProviders = [...new Set(options.scope.roots.map((root) => root.provider))];
+	}
+	const selectedAddresses = options.scope ? resolvePlanScope(ctx, targetProviders ?? [], options.scope) : undefined;
+	const resourceKeys = selectedAddresses ? new Set(selectedAddresses.map(addressKey)) : undefined;
 	const refreshResult =
 		options.refresh !== false && ctx.state.listResources().length > 0
 			? await refreshState(ctx.state, ctx.providers, {
 					targetProviders,
+					resourceKeys,
 					config: ctx.config,
 					quiet: options.quiet ?? true,
 					onFeedback: options.onFeedback,
 				})
 			: undefined;
 
-	const plan = await buildPlan(ctx.config, ctx.state.getStateFile(), {
+	let plan = await buildPlan(ctx.config, ctx.state.getStateFile(), {
 		providers: targetProviders,
 		configPath: ctx.configPath,
+		resourceAddresses: selectedAddresses,
 	});
+	if (options.mode === "create-only" && options.scope) {
+		plan = enforceCreateOnlyPlan(plan, options.scope, toResourceRefreshResult(refreshResult));
+	}
 
 	return {
 		executionContext: ctx,
@@ -188,7 +218,80 @@ export async function planProjectContext(
 		refreshResult: toResourceRefreshResult(refreshResult),
 		targetProviders,
 		destructiveActions: selectDestructive(plan.actions),
+		selectedAddresses,
+		mode: options.mode,
 	};
+}
+
+function enforceCreateOnlyPlan(
+	plan: ExecutionPlan,
+	scope: ResourcePlanScope,
+	refreshResult: ResourceRefreshResult | undefined,
+): ExecutionPlan {
+	const reasons: string[] = [];
+	const rootKeys = new Set(scope.roots.map(addressKey));
+	const refreshError = refreshResult?.errors[0];
+	if (refreshError) {
+		reasons.push(
+			`Cannot verify scoped dependencies because refresh failed for ${addressKey(refreshError.resource.address)}: ${refreshError.error}`,
+		);
+	}
+
+	for (const root of scope.roots) {
+		const rootKey = addressKey(root);
+		const rootAction = plan.actions.find((action) => addressKey(action.address) === rootKey);
+		if (!rootAction) {
+			reasons.push(`Scoped plan did not contain target resource ${rootKey}.`);
+		} else if (rootAction.action !== "create") {
+			reasons.push(`Target resource ${rootKey} must be new, but the scoped plan requires '${rootAction.action}'.`);
+		}
+	}
+
+	const dependencyChanges = plan.actions.filter(
+		(action) => !rootKeys.has(addressKey(action.address)) && action.action !== "no-op",
+	);
+	if (dependencyChanges.length > 0) {
+		const labels = dependencyChanges.map((action) => `${addressKey(action.address)} (${action.action})`).join(", ");
+		reasons.push(`Create-only requires every scoped dependency to be up-to-date. Reconcile first: ${labels}.`);
+	}
+
+	if (reasons.length === 0) return plan;
+	return {
+		...plan,
+		diagnostics: [
+			...plan.diagnostics,
+			{
+				severity: "error",
+				code: "resource.create_only.blocked",
+				message: reasons.join(" "),
+				resource: scope.roots[0],
+			},
+		],
+	};
+}
+
+function resolvePlanScope(
+	ctx: ProjectRuntimeContext,
+	targetProviders: string[],
+	scope: ResourcePlanScope,
+): ResourceAddress[] {
+	if (scope.roots.length === 0) {
+		throw new UserError("Resource plan scope requires at least one root address.");
+	}
+	for (const root of scope.roots) {
+		if (!targetProviders.includes(root.provider)) {
+			throw new UserError(
+				`Scoped resource ${addressKey(root)} is outside the selected provider set: ${targetProviders.join(", ")}.`,
+			);
+		}
+	}
+	const graph = buildDependencyGraph(ctx.config, targetProviders);
+	for (const root of scope.roots) {
+		if (!graph.nodes.has(addressKey(root))) {
+			throw new UserError(`Scoped resource ${addressKey(root)} is not declared in the project config.`);
+		}
+	}
+	return scope.includeDependencies === false ? [...scope.roots] : collectDependencyClosure(graph, scope.roots);
 }
 
 export async function executePlannedProject(
@@ -198,6 +301,11 @@ export async function executePlannedProject(
 		concurrency?: number;
 	} = {},
 ): Promise<ResourceExecutionResult> {
+	if (planned.mode === "create-only") {
+		const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+		if (errorDiagnostic) throw new UserError(errorDiagnostic.message);
+	}
+
 	const decision = await decideDestructive(planned.destructiveActions, {
 		policy: options.policy,
 		confirm: options.confirm,
@@ -219,6 +327,7 @@ export async function executePlannedProject(
 			providers: ctx.providers,
 			state: ctx.state,
 			onFeedback: options.onFeedback,
+			createOnly: planned.mode === "create-only",
 		},
 		{ concurrency: options.concurrency },
 	);

@@ -1,6 +1,8 @@
 import type {
 	AgentDecl,
 	ChannelDecl,
+	CredentialDecl,
+	DefaultMemoryStoreDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
 	IdentityDecl,
@@ -10,6 +12,30 @@ import type {
 } from "../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../types/dto.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
+import type {
+	AgentListOptions,
+	AgentPage,
+	AgentVersionListOptions,
+	CursorListOptions,
+	DeploymentRunInfo,
+	DeploymentRunPage,
+	EnvironmentListOptions,
+	EnvironmentPage,
+	FileListOptions,
+	FilePage,
+	SessionEventInput,
+	SessionEventSendResult,
+	SessionUpdateInput,
+	SkillDownloadInfo,
+	SkillListOptions,
+	SkillPage,
+	SkillVersionInfo,
+	SkillVersionListOptions,
+	SkillVersionPage,
+	VaultCredentialInfo,
+	VaultListOptions,
+	VaultPage,
+} from "../types/managed-api.ts";
 import type {
 	BatchCreateMemoryInput,
 	BatchCreateMemoryResult,
@@ -42,6 +68,8 @@ export interface RemoteResource {
 	type: string;
 	version?: number;
 }
+
+export type ProviderResourceMode = "managed" | "forward" | "auto";
 
 export interface ModelInfo {
 	id: string;
@@ -84,6 +112,11 @@ export interface ResolvedTemplateRefs extends ResolvedAgentRefs {
 	/** Qoder BYOC private-network route used by Forward Templates. */
 	tunnel_id?: string;
 	vault_ids: string[];
+	file_ids?: string[];
+	identity_id?: string;
+	memory_store_ids?: string[];
+	/** Forward Store ids owned by this project and therefore safe to detach during reconciliation. */
+	owned_memory_store_ids?: string[];
 }
 
 export interface ResolvedDeploymentRefs {
@@ -97,8 +130,13 @@ export interface ResolvedDeploymentRefs {
 }
 
 export interface ResolvedChannelRefs {
-	identity_id: string;
-	agent_id: string;
+	identity_id?: string;
+	agent_id?: string;
+}
+
+export interface DefaultMemoryStoreReconcileResult {
+	status: "updated" | "unchanged" | "pending";
+	memory_store_id?: string;
 }
 
 export interface DeploymentContext {
@@ -125,6 +163,8 @@ export interface DeploymentInfo {
 
 export interface DeploymentListFilter {
 	agent_id?: string;
+	/** Bailian server-side fuzzy match against deployment id or name. */
+	keyword?: string;
 	status?: "active" | "paused";
 	include_archived?: boolean;
 	limit?: number;
@@ -155,18 +195,31 @@ export interface ProviderAdapter {
 	 * ambiguity of name matching when names are not unique. Without `id`, falls
 	 * back to listing and matching by `name` (used by conflict adoption).
 	 */
-	findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null>;
+	findResource(
+		type: ResourceType,
+		name: string,
+		id?: string | null,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource | null>;
 	// Raw cloud agent list (full remote objects, not local config). Optional: only
 	// providers that can enumerate their remote agents implement it. `prefix` filters
 	// by display-name prefix (e.g. "Agents/") server-side where supported.
 	listAgents?(filter?: { prefix?: string; limit?: number }): Promise<CloudAgent[]>;
+	/** Cursor-preserving API listing used by command surfaces. */
+	listAgentResources?(options?: AgentListOptions): Promise<AgentPage>;
+	getRemoteAgent?(id: string, version?: number): Promise<CloudAgent>;
+	listAgentVersions?(id: string, options?: AgentVersionListOptions): Promise<AgentPage>;
 	// Raw cloud environment list (full remote objects). Optional: only providers that can
 	// enumerate their remote environments implement it. Environments are a shared base
 	// resource (sandbox), not tied to any playbook/agent.
 	listEnvironments?(filter?: { limit?: number }): Promise<CloudEnvironment[]>;
+	listEnvironmentResources?(options?: EnvironmentListOptions): Promise<EnvironmentPage>;
+	getRemoteEnvironment?(id: string): Promise<CloudEnvironment>;
 	// Raw cloud vault list (full remote objects). Optional: only providers that can enumerate
 	// their remote vaults implement it. Vaults are a shared credential store, not tied to a playbook.
 	listVaults?(filter?: { limit?: number }): Promise<CloudVault[]>;
+	listVaultResources?(options?: VaultListOptions): Promise<VaultPage>;
+	getRemoteVault?(id: string): Promise<CloudVault>;
 	getDriftSupport?(type: ResourceType): DriftSupport;
 	readComparableResource?(
 		type: ResourceType,
@@ -182,16 +235,29 @@ export interface ProviderAdapter {
 	 */
 	exportResources?(type: ResourceType): Promise<ExportedResource[]>;
 
-	createEnvironment(name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	deleteEnvironment(id: string, cascade?: boolean): Promise<void>;
+	createEnvironment(name: string, decl: EnvironmentDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateEnvironment(
+		id: string,
+		name: string,
+		decl: EnvironmentDecl,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
-	createVault(name: string, decl: VaultDecl): Promise<RemoteResource>;
-	deleteVault(id: string): Promise<void>;
+	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
+	createCredential?(vaultId: string, credential: CredentialDecl): Promise<RemoteResource>;
+	listCredentials?(vaultId: string): Promise<VaultCredentialInfo[]>;
 
-	createSkill(name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource>;
-	updateSkill(id: string, name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource>;
-	deleteSkill(id: string): Promise<void>;
+	createSkill(name: string, decl: SkillDecl, files: SkillFile[], mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateSkill(
+		id: string,
+		name: string,
+		decl: SkillDecl,
+		files: SkillFile[],
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteSkill(id: string, mode?: ProviderResourceMode): Promise<void>;
 
 	createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	updateAgent(id: string, name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
@@ -200,7 +266,14 @@ export interface ProviderAdapter {
 	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	/** Remove the template from desired state. Qoder implements this as a soft archive. */
-	archiveTemplate?(id: string): Promise<void>;
+	archiveTemplate?(id: string, ownedMemoryStoreIds?: string[]): Promise<void>;
+	reconcileDefaultMemoryStore?(
+		identityId: string,
+		templateId: string,
+		desired: DefaultMemoryStoreDecl,
+	): Promise<DefaultMemoryStoreReconcileResult>;
+	findDefaultMemoryStoreId?(identityId: string, templateId: string): Promise<string | null>;
+	deleteDefaultMemoryStore?(id: string): Promise<void>;
 
 	createIdentity?(name: string, decl: IdentityDecl): Promise<RemoteResource>;
 	updateIdentity?(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource>;
@@ -210,17 +283,26 @@ export interface ProviderAdapter {
 	updateChannel?(id: string, name: string, decl: ChannelDecl, refs: ResolvedChannelRefs): Promise<RemoteResource>;
 	deleteChannel?(id: string): Promise<void>;
 
-	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
-	deleteMemoryStore?(id: string): Promise<void>;
+	createMemoryStore?(name: string, decl: MemoryStoreDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteMemoryStore?(id: string, mode?: ProviderResourceMode): Promise<void>;
 	listMemoryStores?(options?: MemoryStoreListOptions): Promise<MemoryPage<MemoryStoreInfo>>;
 	getMemoryStore?(id: string): Promise<MemoryStoreInfo>;
-	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo>;
+	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput, mode?: ProviderResourceMode): Promise<MemoryStoreInfo>;
 	archiveMemoryStore?(id: string): Promise<MemoryStoreInfo>;
-	createMemory?(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo>;
+	createMemory?(storeId: string, input: CreateMemoryInput, mode?: ProviderResourceMode): Promise<MemoryInfo>;
 	batchCreateMemories?(storeId: string, input: BatchCreateMemoryInput): Promise<BatchCreateMemoryResult>;
-	listMemories?(storeId: string, options?: MemoryListOptions): Promise<MemoryPage<MemoryListItem>>;
+	listMemories?(
+		storeId: string,
+		options?: MemoryListOptions,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryPage<MemoryListItem>>;
 	getMemory?(storeId: string, memoryId: string): Promise<MemoryInfo>;
-	updateMemory?(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo>;
+	updateMemory?(
+		storeId: string,
+		memoryId: string,
+		input: UpdateMemoryInput,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryInfo>;
 	deleteMemory?(storeId: string, memoryId: string, expectedContentSha256?: string): Promise<void>;
 	listMemoryVersions?(storeId: string, options?: MemoryVersionListOptions): Promise<MemoryPage<MemoryVersionInfo>>;
 	getMemoryVersion?(storeId: string, versionId: string): Promise<MemoryVersionInfo>;
@@ -244,17 +326,27 @@ export interface ProviderAdapter {
 	runDeployment(ctx: DeploymentContext): Promise<DeploymentRunResult>;
 	getDeployment(ctx: DeploymentContext): Promise<DeploymentInfo>;
 	listDeployments?(filter?: DeploymentListFilter): Promise<DeploymentListResult>;
+	getDeploymentById?(id: string): Promise<DeploymentInfo>;
+	runDeploymentById?(id: string): Promise<DeploymentRunResult>;
+	pauseDeploymentById?(id: string): Promise<DeploymentInfo>;
+	unpauseDeploymentById?(id: string): Promise<DeploymentInfo>;
+	listDeploymentRuns?(deploymentId: string, options?: CursorListOptions): Promise<DeploymentRunPage>;
+	getDeploymentRun?(runId: string): Promise<DeploymentRunInfo>;
 	pauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 	unpauseDeployment?(ctx: DeploymentContext): Promise<DeploymentInfo>;
 
-	uploadFile(filePath: string, options?: { name?: string; purpose?: string }): Promise<ProviderFileInfo>;
+	uploadFile(
+		filePath: string,
+		options?: { name?: string; purpose?: string },
+		mode?: ProviderResourceMode,
+	): Promise<ProviderFileInfo>;
 	/** Upload from in-memory content (no filesystem), for server contexts that receive bytes directly (e.g. webui browser uploads). */
 	uploadFileContent(
 		content: Uint8Array,
 		filename: string,
 		options?: { mimeType?: string; purpose?: string },
 	): Promise<ProviderFileInfo>;
-	deleteFile(id: string): Promise<void>;
+	deleteFile(id: string, mode?: ProviderResourceMode): Promise<void>;
 	/** Fetch a single file's metadata (incl. scan `status`); used to gate session binding on availability. */
 	getFileInfo?(id: string): Promise<ProviderFileInfo>;
 	/**
@@ -265,6 +357,8 @@ export interface ProviderAdapter {
 	getFileDownloadUrl?(id: string): Promise<{ url: string; expires_at?: string }>;
 	/** List workspace user-uploaded files (newest first). Optional — only providers with a list API implement it. */
 	listFiles?(): Promise<ProviderFileInfo[]>;
+	listFileResources?(options?: FileListOptions): Promise<FilePage>;
+	downloadFileContent?(id: string): Promise<Uint8Array>;
 
 	/**
 	 * List skills (newest first). `source` selects the catalog: "custom" (workspace-uploaded, the
@@ -272,8 +366,12 @@ export interface ProviderAdapter {
 	 * list API implement it.
 	 */
 	listSkills?(source?: "custom" | "official"): Promise<ProviderSkillInfo[]>;
+	listSkillResources?(options?: SkillListOptions): Promise<SkillPage>;
 	/** Fetch a single skill's metadata (incl. scan `status`); used to poll create → active. */
 	getSkillInfo?(id: string): Promise<ProviderSkillInfo>;
+	listSkillVersions?(id: string, options?: SkillVersionListOptions): Promise<SkillVersionPage>;
+	getSkillVersion?(id: string, version: string): Promise<SkillVersionInfo>;
+	getSkillDownloadInfo?(id: string, version: string): Promise<SkillDownloadInfo>;
 	/**
 	 * Create a skill from an already-uploaded zip's file_id and return immediately with the
 	 * initial (usually `checking`) status. NON-blocking — unlike `createSkill`, it does NOT wait
@@ -284,9 +382,12 @@ export interface ProviderAdapter {
 	createSession(bindings: SessionBindings): Promise<ProviderSessionInfo>;
 	listSessions(filter?: SessionFilter): Promise<SessionListResult>;
 	getSession(id: string): Promise<ProviderSessionInfo>;
+	updateSession?(id: string, input: SessionUpdateInput): Promise<ProviderSessionInfo>;
+	archiveSession?(id: string): Promise<ProviderSessionInfo>;
 	deleteSession(id: string): Promise<void>;
 
 	sendSessionMessage(sessionId: string, message: string): Promise<string | undefined>;
+	sendSessionEvents?(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult>;
 	streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent>;
 	listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList>;
 

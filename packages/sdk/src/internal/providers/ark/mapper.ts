@@ -226,7 +226,7 @@ export function mapAgent(
 	const modelValue = typeof arkModel === "string" ? { id: arkModel } : { id: arkModel.id };
 
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		model: modelValue,
 		system: decl.instructions,
 	};

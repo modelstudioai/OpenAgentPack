@@ -922,7 +922,9 @@ function agentReferencesDirectoryResource(
 	if (type === "vault") return agent.vault === id;
 	if (type === "memory_store") return Array.isArray(agent.memory_stores) && agent.memory_stores.includes(id);
 	if (type === "file") {
-		return Array.isArray(agent.files) && agent.files.some((file) => isRecord(file) && file.file === id);
+		return (
+			Array.isArray(agent.files) && agent.files.some((file) => file === id || (isRecord(file) && file.file === id))
+		);
 	}
 	return false;
 }
@@ -1049,7 +1051,10 @@ function autoAssociateFile(
 	if (!agent || !agentSource) return;
 	if (agent.files !== undefined && !Array.isArray(agent.files)) return;
 	const references = Array.isArray(agent.files) ? agent.files : [];
-	if (references.some((reference) => isRecord(reference) && reference.file === resource.id)) return;
+	if (
+		references.some((reference) => reference === resource.id || (isRecord(reference) && reference.file === resource.id))
+	)
+		return;
 	const mountPath = defaultFileMountPath(resource);
 	const nextReferences = [...references, { file: resource.id, mount_path: mountPath }];
 	agent.files = nextReferences;

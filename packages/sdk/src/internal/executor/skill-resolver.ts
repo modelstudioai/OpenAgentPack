@@ -1,9 +1,8 @@
-import { readFileSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
+import { inspectSkillSource } from "../core/skill-source.ts";
 import { resolveFetch } from "../transport.ts";
 import type { SkillDecl } from "../types/config.ts";
 import type { SkillFile } from "../types/skill-file.ts";
-import { collectFiles } from "../utils/collect-files.ts";
 import { extractSkillZipFiles } from "../utils/normalize-skill-zip.ts";
 import type { ExecContext } from "./context.ts";
 
@@ -18,20 +17,5 @@ export async function resolveSkillFiles(decl: SkillDecl, ctx: ExecContext): Prom
 
 	if (!ctx.configPath) return [];
 
-	const sourcePath = resolve(dirname(ctx.configPath), decl.source);
-	const stat = statSync(sourcePath, { throwIfNoEntry: false });
-
-	if (stat?.isDirectory()) {
-		return collectFiles(sourcePath, "");
-	}
-
-	if (stat?.isFile()) {
-		if (sourcePath.endsWith(".zip")) {
-			return extractSkillZipFiles(readFileSync(sourcePath));
-		}
-		const content = readFileSync(sourcePath);
-		return [{ relativePath: "SKILL.md", content }];
-	}
-
-	return [];
+	return (await inspectSkillSource(decl.source, { basePath: dirname(ctx.configPath) })).files;
 }

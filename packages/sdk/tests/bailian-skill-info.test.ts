@@ -3,7 +3,7 @@ import { toBailianSkillInfo } from "../src/internal/providers/bailian/adapter.ts
 
 describe("toBailianSkillInfo", () => {
 	it("maps snake_case OpenAPI skill to ProviderSkillInfo", () => {
-		const info = toBailianSkillInfo({
+		const attributes = {
 			id: "skill_1",
 			name: "Agents__demo",
 			description: "d",
@@ -12,7 +12,8 @@ describe("toBailianSkillInfo", () => {
 			latest_version: "1",
 			created_at: "2026-06-27T00:00:00Z",
 			updated_at: "2026-06-27T00:00:00Z",
-		});
+		};
+		const info = toBailianSkillInfo(attributes);
 		expect(info).toEqual({
 			id: "skill_1",
 			name: "Agents__demo",
@@ -22,6 +23,7 @@ describe("toBailianSkillInfo", () => {
 			latest_version: "1",
 			created_at: "2026-06-27T00:00:00Z",
 			updated_at: "2026-06-27T00:00:00Z",
+			attributes,
 		});
 	});
 

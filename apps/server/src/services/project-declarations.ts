@@ -507,7 +507,7 @@ function findDeclarationReferences(
 		if (type === "vault" && agent.vault === id) add("agent", agentId, `agents.${agentId}.vault`);
 		if (type === "memory_store" && agent.memory_stores?.includes(id))
 			add("agent", agentId, `agents.${agentId}.memory_stores`);
-		if (type === "file" && agent.files?.some((file) => file.file === id))
+		if (type === "file" && agent.files?.some((file) => (typeof file === "string" ? file : file.file) === id))
 			add("agent", agentId, `agents.${agentId}.files`);
 		if (type === "agent" && agentId !== id && agent.multiagent?.agents.includes(id))
 			add("agent", agentId, `agents.${agentId}.multiagent.agents`);

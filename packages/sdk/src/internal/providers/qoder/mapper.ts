@@ -69,6 +69,15 @@ export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName:
 	};
 }
 
+/** Forward Environment config has its own schema and does not accept Managed networking fields. */
+export function mapForwardEnvironment(name: string, decl: EnvironmentDecl, projectName: string): unknown {
+	const body = mapEnvironment(name, decl, projectName) as Record<string, unknown>;
+	const config = { ...(body.config as Record<string, unknown>) };
+	delete config.networking;
+	body.config = config;
+	return body;
+}
+
 // Qoder's create-vault endpoint accepts only display_name + metadata; credentials are
 // added one-by-one via POST /vaults/{id}/credentials (see adapter.createVault).
 export function mapVault(name: string, decl: VaultDecl, projectName: string): unknown {
@@ -230,6 +239,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 	}
 
 	return compactDeep({
+		name: raw.name as string | undefined,
 		description: raw.description as string | undefined,
 		model: raw.model,
 		instructions: raw.system as string | undefined,
@@ -256,7 +266,7 @@ export function mapDeployment(
 	uploadedFiles?: Map<string, string>,
 ): unknown {
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		agent:
 			refs.agent_version !== undefined
 				? { id: refs.agent_id, type: "agent", version: refs.agent_version }
@@ -401,7 +411,7 @@ export function mapAgent(
 	}
 
 	const body: Record<string, unknown> = {
-		name,
+		name: decl.name ?? name,
 		model,
 		system: decl.instructions,
 	};
@@ -489,10 +499,14 @@ export function mapForwardTemplate(
 		environment_id: refs.environment_id,
 		vault_ids: refs.vault_ids,
 	};
+	body.files = Object.fromEntries((refs.file_ids ?? []).map((id) => [id, { enabled: true }]));
 	if (refs.tunnel_id) body.tunnel_id = refs.tunnel_id;
 	if (projectName) body.metadata = injectMetadata(decl.metadata, projectName, name);
 	else body.metadata = decl.metadata ?? {};
 	if (decl.environment_variables) body.environment_variables = decl.environment_variables;
+	// Sent on create and on update: Forward updates are merge-style, so omitting
+	// the field would silently keep whatever the Template already had.
+	if (decl.managed_tool_config) body.managed_tool_config = decl.managed_tool_config;
 
 	if (decl.tools) {
 		body.tools = [

@@ -180,6 +180,7 @@ function resolveSessionFiles(
 	const resolved: Array<{ file_id: string; mount_path: string }> = [];
 	const mountOwners = new Map<string, string>();
 	for (const file of agent.files ?? []) {
+		if (typeof file === "string") continue;
 		const mountPath = resolveSandboxMountPath(provider, file.mount_path);
 		assertUniqueMountPath(mountOwners, mountPath, `declared file '${file.file}'`, agentName);
 		resolved.push({

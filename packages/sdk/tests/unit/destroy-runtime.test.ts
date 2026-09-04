@@ -107,6 +107,246 @@ async function ctx(resources: ResourceState[], provider: ProviderAdapter): Promi
 }
 
 describe("destroy runtime", () => {
+	test("retains the default memory store unless deletion is explicitly enabled", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx(
+			[resource("template", "assistant", "tmpl_1"), resource("identity", "user", "idn_1")],
+			adapter(calls, {
+				archiveTemplate: async (id) => calls.push(`template:${id}`),
+				deleteIdentity: async (id) => calls.push(`identity:${id}`),
+				findDefaultMemoryStoreId: async () => {
+					calls.push("find-default");
+					return "memstore_1";
+				},
+				deleteDefaultMemoryStore: async (id) => calls.push(`default-memory:${id}`),
+			}),
+		);
+		runtime.config.defaults = { provider: "qoder", identity: "user" };
+		runtime.config.agents = {
+			assistant: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Support memory" },
+			},
+		};
+
+		const plan = planDestroyProjectContext(runtime);
+		expect(plan.defaultMemoryStores).toEqual([
+			expect.objectContaining({ agentName: "assistant", deleteOnDestroy: false }),
+		]);
+		const result = await destroyPlannedProjectResources(plan);
+
+		expect(calls).toEqual(["template:tmpl_1", "identity:idn_1"]);
+		expect(result.defaultMemoryStoreResults).toEqual([
+			expect.objectContaining({ agentName: "assistant", status: "retained" }),
+		]);
+		expect(result.partial).toBe(false);
+	});
+
+	test("does not block destroy for a default Store whose Template and Identity were never recorded", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx([resource("environment", "oncall-env", "env_1")], adapter(calls));
+		runtime.config.defaults = { provider: "qoder", identity: "oncall" };
+		runtime.config.identities = {
+			oncall: { external_id: "oncall" },
+		};
+		runtime.config.agents = {
+			"oncall-agent": {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Oncall memory", delete_on_destroy: true },
+			},
+		};
+
+		const plan = planDestroyProjectContext(runtime);
+		expect(plan.defaultMemoryStores).toEqual([]);
+
+		const result = await destroyPlannedProjectResources(plan);
+
+		expect(calls).toEqual(["environment:env_1:plain"]);
+		expect(result.destroyed).toBe(1);
+		expect(result.partial).toBe(false);
+	});
+
+	test("aborts destroy when the default Store preflight cannot capture its ID", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx(
+			[resource("template", "assistant", "tmpl_1"), resource("identity", "user", "idn_1")],
+			adapter(calls, {
+				archiveTemplate: async (id) => calls.push(`template:${id}`),
+				deleteIdentity: async (id) => calls.push(`identity:${id}`),
+				findDefaultMemoryStoreId: async () => {
+					calls.push("find-default");
+					throw new ApiError(503, "temporarily unavailable", "Forward API");
+				},
+				deleteDefaultMemoryStore: async (id) => calls.push(`default-memory:${id}`),
+			}),
+		);
+		runtime.config.defaults = { provider: "qoder", identity: "user" };
+		runtime.config.agents = {
+			assistant: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Support memory", delete_on_destroy: true },
+			},
+		};
+
+		const result = await destroyPlannedProjectResources(planDestroyProjectContext(runtime), {
+			defaultMemoryStoreRetryDelaysMs: [],
+		});
+
+		expect(calls).toEqual(["find-default"]);
+		expect(result.destroyed).toBe(0);
+		expect(result.results.every((item) => item.status === "blocked")).toBe(true);
+		expect(result.defaultMemoryStoreResults[0]).toMatchObject({
+			status: "failed",
+			error: expect.stringContaining("temporarily unavailable"),
+		});
+	});
+
+	test("captures the default Store before destroy and permanently deletes it afterwards", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx(
+			[resource("template", "assistant", "tmpl_1"), resource("identity", "user", "idn_1")],
+			adapter(calls, {
+				archiveTemplate: async (id) => calls.push(`template:${id}`),
+				deleteIdentity: async (id) => calls.push(`identity:${id}`),
+				findDefaultMemoryStoreId: async (identityId, templateId) => {
+					calls.push(`find-default:${identityId}:${templateId}`);
+					return "memstore_1";
+				},
+				deleteDefaultMemoryStore: async (id) => calls.push(`default-memory:${id}`),
+			}),
+		);
+		runtime.config.defaults = { provider: "qoder", identity: "user" };
+		runtime.config.agents = {
+			assistant: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Support memory", delete_on_destroy: true },
+			},
+		};
+
+		const result = await destroyPlannedProjectResources(planDestroyProjectContext(runtime), {
+			defaultMemoryStoreRetryDelaysMs: [],
+		});
+
+		expect(calls).toEqual([
+			"find-default:idn_1:tmpl_1",
+			"template:tmpl_1",
+			"identity:idn_1",
+			"default-memory:memstore_1",
+		]);
+		expect(result.defaultMemoryStoreResults).toEqual([
+			expect.objectContaining({ status: "deleted", memoryStoreId: "memstore_1" }),
+		]);
+		expect(result.partial).toBe(false);
+	});
+
+	test("archives and retries a default Store when deletion is temporarily blocked by a stale mount", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx(
+			[resource("template", "assistant", "tmpl_1"), resource("identity", "user", "idn_1")],
+			adapter(calls, {
+				archiveTemplate: async () => {},
+				deleteIdentity: async () => {},
+				findDefaultMemoryStoreId: async () => "memstore_1",
+				deleteDefaultMemoryStore: async (id) => {
+					calls.push(`delete-default:${id}`);
+					throw new ApiError(409, "still mounted", "Forward API");
+				},
+				archiveMemoryStore: async (id) => {
+					calls.push(`archive-default:${id}`);
+					return { id, type: "memory_store", name: "Support memory", status: "archived" };
+				},
+				deleteMemoryStore: async (id) => calls.push(`delete-archived:${id}`),
+			}),
+		);
+		runtime.config.defaults = { provider: "qoder", identity: "user" };
+		runtime.config.agents = {
+			assistant: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Support memory", delete_on_destroy: true },
+			},
+		};
+
+		const result = await destroyPlannedProjectResources(planDestroyProjectContext(runtime), {
+			defaultMemoryStoreRetryDelaysMs: [],
+		});
+
+		expect(calls).toEqual(["delete-default:memstore_1", "archive-default:memstore_1", "delete-archived:memstore_1"]);
+		expect(result.partial).toBe(false);
+		expect(result.defaultMemoryStoreResults[0]).toMatchObject({
+			status: "deleted",
+			memoryStoreId: "memstore_1",
+		});
+	});
+
+	test("persists a failed default Store cleanup and resumes it after ordinary resources are gone", async () => {
+		const runtime = await ctx(
+			[resource("template", "assistant", "tmpl_1"), resource("identity", "user", "idn_1")],
+			adapter([], {
+				archiveTemplate: async () => {},
+				deleteIdentity: async () => {},
+				findDefaultMemoryStoreId: async () => "memstore_1",
+				deleteDefaultMemoryStore: async () => {
+					throw new ApiError(409, "still mounted", "Forward API");
+				},
+				archiveMemoryStore: async () => {
+					throw new ApiError(409, "still mounted", "Forward API");
+				},
+			}),
+		);
+		runtime.config.defaults = { provider: "qoder", identity: "user" };
+		runtime.config.agents = {
+			assistant: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				delivery: { qoder: { type: "forward" } },
+				default_memory_store: { name: "Support memory", delete_on_destroy: true },
+			},
+		};
+
+		const first = await destroyPlannedProjectResources(planDestroyProjectContext(runtime), {
+			defaultMemoryStoreRetryDelaysMs: [],
+		});
+		expect(first.partial).toBe(true);
+		expect(runtime.state.getStateFile().pending_default_memory_store_cleanups).toEqual([
+			expect.objectContaining({ agent_name: "assistant", remote_id: "memstore_1" }),
+		]);
+
+		let archivedDeleteAttempts = 0;
+		runtime.providers.set(
+			"qoder",
+			adapter([], {
+				deleteDefaultMemoryStore: async () => {
+					throw new ApiError(409, "Memory store is already archived.", "Forward API");
+				},
+				deleteMemoryStore: async () => {
+					if (archivedDeleteAttempts++ === 0) {
+						throw new ApiError(409, "Memory store is already archived.", "Qoder API");
+					}
+				},
+			}),
+		);
+		const resumedPlan = planDestroyProjectContext(runtime);
+		expect(resumedPlan.resources).toHaveLength(0);
+		expect(resumedPlan.defaultMemoryStores[0]).toMatchObject({ memoryStoreId: "memstore_1" });
+		const resumed = await destroyPlannedProjectResources(resumedPlan, {
+			defaultMemoryStoreRetryDelaysMs: [0],
+		});
+
+		expect(resumed.partial).toBe(false);
+		expect(resumed.defaultMemoryStoreResults[0]?.status).toBe("deleted");
+		expect(runtime.state.getStateFile().pending_default_memory_store_cleanups).toEqual([]);
+	});
+
 	test("plans resources in dependency-safe destroy order", async () => {
 		const runtime: ProjectRuntimeContext = {
 			projectName: "test",

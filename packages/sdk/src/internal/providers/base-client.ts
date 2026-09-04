@@ -34,10 +34,10 @@ export abstract class BaseApiClient {
 		throw new ApiError(res.status, body, this.errorPrefix);
 	}
 
-	async post(path: string, body: unknown): Promise<unknown> {
+	async post(path: string, body: unknown, options?: { headers?: Record<string, string> }): Promise<unknown> {
 		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "POST",
-			headers: this.headers(),
+			headers: { ...this.headers(), ...options?.headers },
 			body: JSON.stringify(body),
 		});
 		await this.throwIfError(res);

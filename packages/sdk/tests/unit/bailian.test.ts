@@ -117,6 +117,18 @@ describe("Bailian mapAgent", () => {
 		expect(body.instructions).toBeUndefined();
 	});
 
+	test("uses the declared display name while metadata keeps the logical YAML key", () => {
+		const body = mapAgent(
+			"assistant-2",
+			{ ...minimalDecl, name: "Assistant" },
+			emptyRefs,
+			undefined,
+			"my-project",
+		) as Record<string, unknown>;
+		expect(body.name).toBe("Assistant");
+		expect((body.metadata as Record<string, unknown>)["agents.resource"]).toBe("assistant-2");
+	});
+
 	test("wraps model string as { id } object", () => {
 		const body = mapAgent("helper", minimalDecl, emptyRefs) as Record<string, unknown>;
 		expect(body.model).toEqual({ id: "qwen3.7-max" });

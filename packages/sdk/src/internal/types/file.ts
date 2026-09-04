@@ -7,4 +7,6 @@ export interface ProviderFileInfo {
 	downloadable?: boolean;
 	status?: string;
 	purpose?: string;
+	scope?: { type?: string; id?: string };
+	attributes?: Record<string, unknown>;
 }

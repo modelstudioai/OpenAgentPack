@@ -9,4 +9,6 @@ export interface ExecContext {
 	readonly providers: Map<string, ProviderAdapter>;
 	readonly state: IStateManager;
 	readonly onFeedback?: RuntimeFeedbackSink;
+	/** Enforce scoped create semantics all the way through remote conflict handling. */
+	readonly createOnly?: boolean;
 }

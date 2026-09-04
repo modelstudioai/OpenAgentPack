@@ -89,6 +89,32 @@ test("preserves Agent environment variables from YAML", async () => {
 	});
 });
 
+test("defaults default memory deletion to retain and accepts explicit deletion", () => {
+	const base = {
+		version: "1",
+		providers: { qoder: {} },
+		agents: {
+			assistant: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				default_memory_store: { name: "Support memory" },
+			},
+		},
+	};
+	const retained = projectConfigSchema.parse(base);
+	expect(retained.agents?.assistant?.default_memory_store?.delete_on_destroy).toBe(false);
+	const deleted = projectConfigSchema.parse({
+		...base,
+		agents: {
+			assistant: {
+				...base.agents.assistant,
+				default_memory_store: { name: "Support memory", delete_on_destroy: true },
+			},
+		},
+	});
+	expect(deleted.agents?.assistant?.default_memory_store?.delete_on_destroy).toBe(true);
+});
+
 test("preserves declared Agent File mounts", () => {
 	const result = projectConfigSchema.safeParse({
 		version: "1",

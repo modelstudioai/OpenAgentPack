@@ -10,6 +10,8 @@ export interface ResourceState {
 	 * referenced by this project. It must never be deleted remotely.
 	 */
 	externally_managed?: boolean;
+	/** Provider API domain that owns the remote resource (currently relevant to Qoder). */
+	api_mode?: "managed" | "forward" | "auto";
 	version?: number;
 	/**
 	 * Backward-compatible alias for desired_hash. Kept while older state files
@@ -35,6 +37,16 @@ export interface ResourceReadinessBaseline {
 
 export interface StateFile {
 	resources: ResourceState[];
+	pending_default_memory_store_cleanups?: PendingDefaultMemoryStoreCleanup[];
+}
+
+export interface PendingDefaultMemoryStoreCleanup {
+	agent_name: string;
+	provider: string;
+	remote_id: string;
+	identity_id?: string;
+	template_id?: string;
+	last_error?: string;
 }
 
 export function addressKey(addr: ResourceAddress): string {

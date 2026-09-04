@@ -78,6 +78,27 @@ describe("StateManager backward compat", () => {
 		expect(r[0]!.remote_id).toBe("env_x");
 		expect(r[0]!.version).toBeUndefined();
 	});
+
+	test("round-trips pending default Memory Store cleanup state", async () => {
+		const path = tmpPath();
+		const sm = StateManager.initialize(path);
+		sm.getStateFile().pending_default_memory_store_cleanups = [
+			{
+				agent_name: "assistant",
+				provider: "qoder",
+				remote_id: "memstore_1",
+				identity_id: "idn_1",
+				template_id: "tmpl_1",
+				last_error: "still mounted",
+			},
+		];
+		await sm.save();
+
+		const loaded = await StateManager.load(path);
+		expect(loaded.getStateFile().pending_default_memory_store_cleanups).toEqual(
+			sm.getStateFile().pending_default_memory_store_cleanups,
+		);
+	});
 });
 
 describe("State only contains load-bearing fields", () => {

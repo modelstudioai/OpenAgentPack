@@ -1,4 +1,5 @@
 import { UserError } from "../errors.ts";
+import { buildDependencyGraph, collectDependencyClosure } from "../graph/dependency.ts";
 import type { RemoteResource } from "../providers/interface.ts";
 import type { ResourceCrudAdapter } from "../providers/resource-workflow.ts";
 import { buildSessionBindings, resolveSessionProvider } from "../session/session-manager.ts";
@@ -34,7 +35,7 @@ import {
 	planProjectContext,
 	type ResourceExecutionResult,
 	type ResourcePlanResult,
-	replaceResourcePlan,
+	type ResourceSyncMode,
 	selectDestructive,
 } from "./resource-runtime.ts";
 
@@ -66,7 +67,10 @@ export interface AgentResourcePlanOptions {
 	onFeedback?: RuntimeFeedbackSink;
 	/** Strict Agent runtime closure; excludes downstream resources such as deployments. */
 	scope?: "runtime";
+	mode?: AgentResourceSyncMode;
 }
+
+export type AgentResourceSyncMode = ResourceSyncMode;
 
 export interface AgentResourceSyncOptions extends AgentResourcePlanOptions {
 	policy?: DestructivePolicy;
@@ -257,17 +261,17 @@ export async function planAgentResources(
 	options: AgentResourcePlanOptions = {},
 ): Promise<AgentResourcePlan> {
 	const agent = getAgent(ctx, agentId);
+	const addresses = collectAgentAddresses(ctx.config, agent.agentName, agent.provider);
 	const planned = await planProjectContext(ctx, {
 		provider: agent.provider,
+		scope: { roots: options.scope === "runtime" ? addresses : [addresses[0]!] },
+		mode: options.mode,
 		refresh: options.refresh,
 		quiet: options.quiet ?? true,
 		onFeedback: options.onFeedback,
 	});
-	const actions =
-		options.scope === "runtime"
-			? filterAgentRuntimeActions(ctx, agent, planned.plan)
-			: filterAgentActions(ctx, agent, planned.plan);
-	const diagnostics = filterAgentDiagnostics(ctx, agent, planned.plan);
+	const actions = planned.plan.actions;
+	const diagnostics = planned.plan.diagnostics;
 	return {
 		agentId,
 		provider: agent.provider,
@@ -277,6 +281,14 @@ export async function planAgentResources(
 		destructiveActions: selectDestructive(actions),
 		planned,
 	};
+}
+
+export async function planAgentResourcesWithStateBackend(
+	input: BackendRuntimeInput,
+	agentId: string,
+	options: AgentResourcePlanOptions = {},
+): Promise<AgentResourcePlan> {
+	return readProjectRuntime(input, (ctx) => planAgentResources(ctx, agentId, options));
 }
 
 export async function syncAgentResources(
@@ -301,6 +313,7 @@ async function runAgentSync(
 		quiet: options.quiet,
 		onFeedback: options.onFeedback,
 		scope: options.scope,
+		mode: options.mode,
 	});
 	const actions = fullPlan.actions;
 	const destructiveActions = fullPlan.destructiveActions;
@@ -356,11 +369,7 @@ async function runAgentSync(
 	}
 
 	try {
-		const scopedPlan = {
-			diagnostics: fullPlan.diagnostics,
-			actions: scopePlanActions(fullPlan.planned.plan, actions),
-		};
-		const execution = await executePlannedProject(replaceResourcePlan(fullPlan.planned, scopedPlan), {
+		const execution = await executePlannedProject(fullPlan.planned, {
 			onFeedback: options.onFeedback,
 			policy: "force",
 		});
@@ -405,14 +414,6 @@ export async function syncAgentResourcesWithStateBackend(
 	options: AgentResourceSyncOptions = {},
 ): Promise<AgentSyncRun> {
 	return writeProjectRuntime(input, (ctx) => syncAgentResources(ctx, agentId, options));
-}
-
-export async function planAgentResourcesWithStateBackend(
-	input: BackendRuntimeInput,
-	agentId: string,
-	options: AgentResourcePlanOptions = {},
-): Promise<AgentResourcePlan> {
-	return readProjectRuntime(input, (ctx) => planAgentResources(ctx, agentId, options));
 }
 
 export function toAgentSyncResults(execution: ResourceExecutionResult): AgentSyncResult[] {
@@ -499,42 +500,6 @@ export function getAgentReadinessFromPlan(
 	};
 }
 
-function filterAgentActions(ctx: ProjectRuntimeContext, agent: AgentDefinition, plan: ExecutionPlan): PlannedAction[] {
-	const relevantKeys = agentAddressKeys(ctx, agent);
-	return plan.actions.filter(
-		(action) =>
-			relevantKeys.has(addressKey(action.address)) ||
-			action.dependencies.some((dependency) => relevantKeys.has(addressKey(dependency))),
-	);
-}
-
-function filterAgentRuntimeActions(
-	ctx: ProjectRuntimeContext,
-	agent: AgentDefinition,
-	plan: ExecutionPlan,
-): PlannedAction[] {
-	const relevantKeys = agentAddressKeys(ctx, agent);
-	return plan.actions.filter(
-		(action) => action.address.type !== "deployment" && relevantKeys.has(addressKey(action.address)),
-	);
-}
-
-function filterAgentDiagnostics(ctx: ProjectRuntimeContext, agent: AgentDefinition, plan: ExecutionPlan): Diagnostic[] {
-	const relevantKeys = agentAddressKeys(ctx, agent);
-	return plan.diagnostics.filter(
-		(diagnostic) => !diagnostic.resource || relevantKeys.has(addressKey(diagnostic.resource)),
-	);
-}
-
-function agentAddressKeys(ctx: ProjectRuntimeContext, agent: AgentDefinition): Set<string> {
-	return new Set(collectAgentAddresses(ctx.config, agent.agentName, agent.provider).map(addressKey));
-}
-
-function scopePlanActions(fullPlan: ExecutionPlan, agentActions: PlannedAction[]): PlannedAction[] {
-	const allowedKeys = new Set(agentActions.map(actionKey));
-	return fullPlan.actions.filter((action) => allowedKeys.has(actionKey(action)));
-}
-
 function actionKey(action: PlannedAction): string {
 	const address = action.address;
 	return `${action.action}:${address.provider}:${address.type}:${address.name}`;
@@ -546,56 +511,43 @@ function isNonBlockingAgentDrift(action: PlannedAction): boolean {
 }
 
 export function collectAgentAddresses(config: ProjectConfig, agentName: string, provider?: string): ResourceAddress[] {
-	const addresses: ResourceAddress[] = [];
-	collectAgentAddressesInto(config, agentName, provider, addresses, new Set());
-	return addresses;
-}
-
-function collectAgentAddressesInto(
-	config: ProjectConfig,
-	agentName: string,
-	provider: string | undefined,
-	addresses: ResourceAddress[],
-	visited: Set<string>,
-): void {
 	const agent = config.agents?.[agentName];
 	if (!agent) {
 		throw new UserError(`Agent '${agentName}' not found in config.`);
 	}
 	const resolvedProvider = provider ?? resolveSessionProvider(agentName, config, undefined);
-	const visitKey = `${resolvedProvider}:${agentName}`;
-	if (visited.has(visitKey)) return;
-	visited.add(visitKey);
 	const materialization = resolveAgentMaterialization(resolvedProvider, agent);
-	addresses.push({ type: materialization.resourceType, name: agentName, provider: resolvedProvider });
-	if (materialization.resourceType === "template" && config.defaults?.identity) {
-		addresses.push({ type: "identity", name: config.defaults.identity, provider: resolvedProvider });
-	}
-
-	if (agent.environment) {
-		addresses.push({
-			type: "environment",
-			name: agent.environment,
-			provider: resolvedProvider,
-		});
-	}
-	if (agent.vault) {
-		addresses.push({ type: "vault", name: agent.vault, provider: resolvedProvider });
-	}
-	for (const name of agent.memory_stores ?? []) {
-		addresses.push({ type: "memory_store", name, provider: resolvedProvider });
-	}
-	for (const file of agent.files ?? []) {
-		addresses.push({ type: "file", name: file.file, provider: resolvedProvider });
-	}
-	for (const skill of agent.skills ?? []) {
-		if (typeof skill === "string") {
-			addresses.push({ type: "skill", name: skill, provider: resolvedProvider });
+	const rootAddress: ResourceAddress = {
+		type: materialization.resourceType,
+		name: agentName,
+		provider: resolvedProvider,
+	};
+	const graph = buildDependencyGraph(config, [resolvedProvider]);
+	const roots = [rootAddress];
+	const visited = new Set<string>();
+	// Workbench readiness also needs Session identities and declared sub-Agent runtimes.
+	function collectRuntimeRoots(name: string): void {
+		if (visited.has(name)) return;
+		visited.add(name);
+		const declaration = config.agents?.[name];
+		if (!declaration) return;
+		const type = resolveAgentMaterialization(resolvedProvider, declaration).resourceType;
+		if (type === "template" && config.defaults?.identity) {
+			roots.push({ type: "identity", name: config.defaults.identity, provider: resolvedProvider });
+		}
+		for (const subAgentName of declaration.multiagent?.agents ?? []) {
+			const subAgent = config.agents?.[subAgentName];
+			if (!subAgent) continue;
+			roots.push({
+				type: resolveAgentMaterialization(resolvedProvider, subAgent).resourceType,
+				name: subAgentName,
+				provider: resolvedProvider,
+			});
+			collectRuntimeRoots(subAgentName);
 		}
 	}
-	for (const subAgent of agent.multiagent?.agents ?? []) {
-		collectAgentAddressesInto(config, subAgent, resolvedProvider, addresses, visited);
-	}
+	collectRuntimeRoots(agentName);
+	return collectDependencyClosure(graph, roots);
 }
 
 export function computeAgentPlanFingerprint(

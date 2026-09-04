@@ -27,6 +27,7 @@ import type {
 	DeploymentInfo,
 	DeploymentRunResult,
 	DriftSupport,
+	ProviderResourceMode,
 	RemoteResource,
 	ResolvedAgentRefs,
 	ResolvedChannelRefs,
@@ -43,18 +44,34 @@ import type {
 export interface ResourceCrudAdapter {
 	readonly name: string;
 
-	findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null>;
+	findResource(
+		type: ResourceType,
+		name: string,
+		id?: string | null,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource | null>;
 
-	createEnvironment(name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	updateEnvironment(id: string, name: string, decl: EnvironmentDecl): Promise<RemoteResource>;
-	deleteEnvironment(id: string, cascade?: boolean): Promise<void>;
+	createEnvironment(name: string, decl: EnvironmentDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateEnvironment(
+		id: string,
+		name: string,
+		decl: EnvironmentDecl,
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
-	createVault(name: string, decl: VaultDecl): Promise<RemoteResource>;
-	deleteVault(id: string): Promise<void>;
+	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
 
-	createSkill(name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource>;
-	updateSkill(id: string, name: string, decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource>;
-	deleteSkill(id: string): Promise<void>;
+	createSkill(name: string, decl: SkillDecl, files: SkillFile[], mode?: ProviderResourceMode): Promise<RemoteResource>;
+	updateSkill(
+		id: string,
+		name: string,
+		decl: SkillDecl,
+		files: SkillFile[],
+		mode?: ProviderResourceMode,
+	): Promise<RemoteResource>;
+	deleteSkill(id: string, mode?: ProviderResourceMode): Promise<void>;
 
 	createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
 	updateAgent(id: string, name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource>;
@@ -62,7 +79,7 @@ export interface ResourceCrudAdapter {
 
 	createTemplate?(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
 	updateTemplate?(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource>;
-	archiveTemplate?(id: string): Promise<void>;
+	archiveTemplate?(id: string, ownedMemoryStoreIds?: string[]): Promise<void>;
 
 	createIdentity?(name: string, decl: IdentityDecl): Promise<RemoteResource>;
 	updateIdentity?(id: string, name: string, decl: IdentityDecl): Promise<RemoteResource>;
@@ -75,12 +92,21 @@ export interface ResourceCrudAdapter {
 	// Optional: only providers whose capability matrix marks `memory_store` supported
 	// implement these. The registry validates the matrix↔method match; unsupported
 	// providers omit them entirely (no throw-stubs).
-	createMemoryStore?(name: string, decl: MemoryStoreDecl): Promise<RemoteResource>;
-	deleteMemoryStore?(id: string): Promise<void>;
-	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo>;
-	createMemory?(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo>;
-	listMemories?(storeId: string, options?: MemoryListOptions): Promise<MemoryPage<MemoryListItem>>;
-	updateMemory?(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo>;
+	createMemoryStore?(name: string, decl: MemoryStoreDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	deleteMemoryStore?(id: string, mode?: ProviderResourceMode): Promise<void>;
+	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput, mode?: ProviderResourceMode): Promise<MemoryStoreInfo>;
+	createMemory?(storeId: string, input: CreateMemoryInput, mode?: ProviderResourceMode): Promise<MemoryInfo>;
+	listMemories?(
+		storeId: string,
+		options?: MemoryListOptions,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryPage<MemoryListItem>>;
+	updateMemory?(
+		storeId: string,
+		memoryId: string,
+		input: UpdateMemoryInput,
+		mode?: ProviderResourceMode,
+	): Promise<MemoryInfo>;
 
 	createDeployment(
 		name: string,
@@ -98,8 +124,12 @@ export interface ResourceCrudAdapter {
 	): Promise<RemoteResource>;
 	deleteDeployment(id: string): Promise<void>;
 
-	uploadFile(filePath: string, options?: { name?: string; purpose?: string }): Promise<ProviderFileInfo>;
-	deleteFile(id: string): Promise<void>;
+	uploadFile(
+		filePath: string,
+		options?: { name?: string; purpose?: string },
+		mode?: ProviderResourceMode,
+	): Promise<ProviderFileInfo>;
+	deleteFile(id: string, mode?: ProviderResourceMode): Promise<void>;
 }
 
 /**

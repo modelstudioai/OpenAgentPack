@@ -9,12 +9,14 @@ test("bailian credToDecl reverse-maps an environment_variable credential with a 
 	const raw = {
 		id: "vcrd_1",
 		display_name: "mcp-token",
+		metadata: { "agents.project": "p", team: "platform" },
 		auth: { type: "environment_variable", secret_name: "API_KEY", networking: { type: "unrestricted" } },
 	};
 
 	expect(bailianCred(raw, "secrets")).toEqual({
 		name: "mcp-token",
 		type: "environment_variable",
+		metadata: { team: "platform" },
 		secret_name: "API_KEY",
 		secret_value: "${VAULT_SECRETS_MCP_TOKEN}",
 		networking: { type: "unrestricted" },

@@ -17,6 +17,7 @@ import { buildReadinessBaseline, classifyReadinessImpact, diffReadinessBaseline 
 export interface PlanOptions {
 	providers?: string[];
 	configPath?: string;
+	resourceAddresses?: readonly ResourceAddress[];
 }
 
 export async function buildPlan(
@@ -24,18 +25,23 @@ export async function buildPlan(
 	state: StateFile,
 	options: PlanOptions = {},
 ): Promise<ExecutionPlan> {
+	const scopedConfig = options.resourceAddresses ? selectProjectConfig(config, options.resourceAddresses) : config;
+	const resourceKeys = options.resourceAddresses ? new Set(options.resourceAddresses.map(addressKey)) : undefined;
+	const scopedState = resourceKeys
+		? { ...state, resources: state.resources.filter((resource) => resourceKeys.has(addressKey(resource.address))) }
+		: state;
 	const diagnostics = new DiagnosticCollector();
 	const actions: PlannedAction[] = [];
 
-	const targetProviders = options.providers ?? resolveTargetProviders(config);
-	collectReferenceDiagnostics(config, diagnostics);
-	collectProviderCapabilities(config, targetProviders, diagnostics);
+	const targetProviders = options.providers ?? resolveTargetProviders(scopedConfig);
+	collectReferenceDiagnostics(scopedConfig, diagnostics);
+	collectProviderCapabilities(scopedConfig, targetProviders, diagnostics);
 
-	const graph = buildDependencyGraph(config, targetProviders);
+	const graph = buildDependencyGraph(scopedConfig, targetProviders);
 	const sorted = topologicalSort(graph);
 
 	const stateIndex = new Map<string, (typeof state.resources)[number]>();
-	for (const res of state.resources) {
+	for (const res of scopedState.resources) {
 		stateIndex.set(addressKey(res.address), res);
 	}
 
@@ -43,7 +49,7 @@ export async function buildPlan(
 	// deleted as they are consumed), so deployment hashing can always resolve the
 	// remote ids of managed reference inputs.
 	const remoteIdLookup = new Map<string, (typeof state.resources)[number]>();
-	for (const res of state.resources) {
+	for (const res of scopedState.resources) {
 		remoteIdLookup.set(addressKey(res.address), res);
 	}
 	const hashStateLookup = { getResource: (addr: ResourceAddress) => remoteIdLookup.get(addressKey(addr)) };
@@ -234,8 +240,59 @@ export async function buildPlan(
 		});
 	}
 
-	coalesceChannelRenames(actions, config, state);
+	coalesceChannelRenames(actions, scopedConfig, scopedState);
 	return { actions, diagnostics: diagnostics.getAll() };
+}
+
+function selectProjectConfig(config: ProjectConfig, addresses: readonly ResourceAddress[]): ProjectConfig {
+	const providers = new Set(addresses.map((address) => address.provider));
+	const namesByType = new Map<ResourceAddress["type"], Set<string>>();
+	for (const address of addresses) {
+		const names = namesByType.get(address.type) ?? new Set<string>();
+		names.add(address.name);
+		namesByType.set(address.type, names);
+	}
+
+	const pick = <Declaration>(
+		record: Record<string, Declaration> | undefined,
+		names: ReadonlySet<string> | undefined,
+	): Record<string, Declaration> | undefined => {
+		if (!record || !names?.size) return undefined;
+		const selected = Object.fromEntries(Object.entries(record).filter(([name]) => names.has(name)));
+		return Object.keys(selected).length > 0 ? selected : undefined;
+	};
+	const agentNames = new Set([...(namesByType.get("agent") ?? []), ...(namesByType.get("template") ?? [])]);
+	const selectedAgents = pick(config.agents, agentNames);
+	const tunnelNames = new Set<string>();
+	for (const agent of Object.values(selectedAgents ?? {})) {
+		if (agent.tunnel) tunnelNames.add(agent.tunnel);
+	}
+	for (const deployment of Object.values(pick(config.deployments, namesByType.get("deployment")) ?? {})) {
+		if (deployment.tunnel) tunnelNames.add(deployment.tunnel);
+	}
+	const identityNames = namesByType.get("identity");
+	const selectedProviders = Object.fromEntries(
+		Object.entries(config.providers).filter(([providerName]) => providers.has(providerName)),
+	);
+	const defaultProvider = providers.size === 1 ? [...providers][0] : config.defaults?.provider;
+	const defaultIdentity =
+		config.defaults?.identity && identityNames?.has(config.defaults.identity) ? config.defaults.identity : undefined;
+
+	return {
+		...config,
+		providers: selectedProviders,
+		defaults: defaultProvider || defaultIdentity ? { provider: defaultProvider, identity: defaultIdentity } : undefined,
+		environments: pick(config.environments, namesByType.get("environment")),
+		tunnels: pick(config.tunnels, tunnelNames),
+		vaults: pick(config.vaults, namesByType.get("vault")),
+		memory_stores: pick(config.memory_stores, namesByType.get("memory_store")),
+		skills: pick(config.skills, namesByType.get("skill")),
+		files: pick(config.files, namesByType.get("file")),
+		identities: pick(config.identities, identityNames),
+		agents: selectedAgents,
+		channels: pick(config.channels, namesByType.get("channel")),
+		deployments: pick(config.deployments, namesByType.get("deployment")),
+	};
 }
 
 /**
