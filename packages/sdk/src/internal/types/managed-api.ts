@@ -1,3 +1,4 @@
+import type { CredentialInjectionLocation, CredentialNetworking } from "./config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "./dto.ts";
 import type { ProviderFileInfo } from "./file.ts";
 import type { ProviderSkillInfo } from "./skill-info.ts";
@@ -40,6 +41,8 @@ export interface VaultCredentialInfo {
 	secret_name?: string;
 	mcp_server_url?: string;
 	networking_type?: string;
+	networking?: CredentialNetworking;
+	injection_location?: CredentialInjectionLocation;
 	metadata?: Record<string, string>;
 }
 

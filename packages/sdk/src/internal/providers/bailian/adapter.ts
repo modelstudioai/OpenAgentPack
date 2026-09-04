@@ -639,6 +639,8 @@ export class BailianAdapter implements ProviderAdapter {
 				secret_name: auth.secret_name as string | undefined,
 				mcp_server_url: auth.mcp_server_url as string | undefined,
 				networking_type: networking?.type as string | undefined,
+				networking: networking as CredentialDecl["networking"],
+				injection_location: auth.injection_location as CredentialDecl["injection_location"],
 				metadata: metadata
 					? Object.fromEntries(
 							Object.entries(metadata).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -655,7 +657,17 @@ export class BailianAdapter implements ProviderAdapter {
 	async updateCredential(
 		vaultId: string,
 		credentialId: string,
-		patch: { display_name?: string; metadata?: Record<string, string> },
+		patch: {
+			display_name?: string;
+			metadata?: Record<string, string>;
+			auth?: {
+				type: "environment_variable";
+				secret_name?: string;
+				secret_value?: string;
+				networking?: { allowed_hosts: string[] };
+				injection_location?: CredentialDecl["injection_location"];
+			};
+		},
 	): Promise<RemoteResource> {
 		const res = (await this.client.post(`/vaults/${vaultId}/credentials/${credentialId}`, patch)) as Record<
 			string,

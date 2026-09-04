@@ -25,6 +25,8 @@ export {
 
 export type {
 	CredentialDecl,
+	CredentialInjectionLocation,
+	CredentialNetworking,
 	DeploymentDecl,
 	EnvironmentDecl,
 	ProjectConfig,

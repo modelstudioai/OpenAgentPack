@@ -222,7 +222,18 @@ vaults:
 | `type` | `"environment_variable"` | yes | |
 | `secret_name` | string | yes | Secret name. |
 | `secret_value` | string | yes | Secret value (string or number, coerced). |
-| `networking.type` | `"unrestricted"` \| `"limited"` | no | |
+| `networking.type` | `"unrestricted"` \| `"limited"` | no | Legacy policy type. Bailian requests use `allowed_hosts` instead. |
+| `networking.allowed_hosts` | string[] | no | Bailian credential injection host allow-list, e.g. `["api.example.com", "*.example.org"]`; `["*"]` allows all hosts. |
+| `injection_location.header` | boolean | no | Bailian: allow secret replacement in request headers. |
+| `injection_location.body` | boolean | no | Bailian: allow secret replacement in request bodies. |
+
+For Bailian, these fields are nested under `auth` in credential create/update requests.
+When omitted, creation uses `networking: { allowed_hosts: ["*"] }` and
+`injection_location: { header: true, body: false }`. Legacy `networking.type: unrestricted`
+maps to `["*"]`; `limited` must include `allowed_hosts` and is never widened implicitly.
+Explicit host lists and injection booleans are preserved, including through sync/export.
+Credential retry adoption compares host sets and injection policy as well as the existing
+identity and metadata fields; a different policy is not treated as an exact match.
 
 ## Memory store
 

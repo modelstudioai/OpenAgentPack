@@ -157,6 +157,20 @@ export function collectProviderCapabilities(
 		}
 		const caps = def.capabilities;
 
+		for (const [name, vault] of Object.entries(config.vaults ?? {})) {
+			if (vault.provider && vault.provider !== providerName) continue;
+			if (
+				providerName !== "bailian" &&
+				vault.credentials.some((credential) => credential.injection_location !== undefined)
+			) {
+				diagnostics.error(
+					`${providerName}.vault.injection_location.unsupported`,
+					`vault.${name}: provider '${providerName}' does not support credential injection_location; pin this vault to bailian.`,
+					{ type: "vault", name, provider: providerName },
+				);
+			}
+		}
+
 		for (const [name, environment] of Object.entries(config.environments ?? {})) {
 			if (environment.provider && environment.provider !== providerName) continue;
 			if (environment.environment_id) continue;

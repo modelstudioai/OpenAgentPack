@@ -100,6 +100,17 @@ export interface VaultDecl {
 
 export type CredentialType = "static_bearer" | "environment_variable";
 
+export interface CredentialNetworking {
+	/** Legacy policy type; Bailian requests use allowed_hosts instead. */
+	type?: "unrestricted" | "limited";
+	allowed_hosts?: string[];
+}
+
+export interface CredentialInjectionLocation {
+	header?: boolean;
+	body?: boolean;
+}
+
 export interface CredentialDecl {
 	name: string;
 	type: CredentialType;
@@ -111,7 +122,8 @@ export interface CredentialDecl {
 	// environment_variable
 	secret_name?: string;
 	secret_value?: string;
-	networking?: { type: "unrestricted" | "limited" };
+	networking?: CredentialNetworking;
+	injection_location?: CredentialInjectionLocation;
 }
 
 // --- Memory Store ---

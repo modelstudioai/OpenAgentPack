@@ -61,7 +61,18 @@ const environmentVariableCredentialSchema = z.object({
 	metadata: z.record(z.string(), z.string()).optional(),
 	secret_name: z.string(),
 	secret_value: coerceString,
-	networking: z.object({ type: z.enum(["unrestricted", "limited"]) }).optional(),
+	networking: z
+		.object({
+			type: z.enum(["unrestricted", "limited"]).optional(),
+			allowed_hosts: z.array(z.string()).optional(),
+		})
+		.optional(),
+	injection_location: z
+		.object({
+			header: z.boolean().optional(),
+			body: z.boolean().optional(),
+		})
+		.optional(),
 });
 
 const credentialSchema = z.discriminatedUnion("type", [

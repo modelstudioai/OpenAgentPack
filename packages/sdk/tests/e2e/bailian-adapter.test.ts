@@ -1095,6 +1095,8 @@ describe("BailianAdapter e2e", () => {
 						type: "environment_variable",
 						secret_name: "MCP_TOKEN",
 						secret_value: "tok-123",
+						networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+						injection_location: { header: true, body: false },
 					},
 				],
 			});
@@ -1119,7 +1121,8 @@ describe("BailianAdapter e2e", () => {
 				type: "environment_variable",
 				secret_name: "MCP_TOKEN",
 				secret_value: "tok-123",
-				networking: { type: "unrestricted" },
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
 			});
 
 			expect(result.id).toBe("vlt_011CZkZDLs7fYzm1hXNPeRjv");
@@ -1280,7 +1283,8 @@ describe("BailianAdapter e2e", () => {
 					type: "environment_variable",
 					secret_name: "MCP_TOKEN",
 					secret_value: "tok-123",
-					networking: { type: "unrestricted" },
+					networking: { allowed_hosts: ["*"] },
+					injection_location: { header: true, body: false },
 				},
 				display_name: "mcp-token",
 			});
@@ -1300,6 +1304,35 @@ describe("BailianAdapter e2e", () => {
 			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials?limit=100`);
 			expect(calls[0]!.method).toBe("GET");
 			expect(result.map((r) => r.id)).toEqual(["vcrd_1", "vcrd_2"]);
+		});
+
+		test("listCredentials preserves networking and injection policy without exposing the secret", async () => {
+			const { restore } = mockFetch([
+				{
+					status: 200,
+					body: {
+						data: [
+							{
+								...CRED_RESPONSE,
+								auth: {
+									type: "environment_variable",
+									secret_name: "API_TOKEN",
+									secret_value: "never-expose-this",
+									networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+									injection_location: { header: true, body: false },
+								},
+							},
+						],
+					},
+				},
+			]);
+			cleanup = restore;
+			const result = await makeAdapter().listCredentials(VAULT_ID);
+			expect(result[0]).toMatchObject({
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
+			});
+			expect(JSON.stringify(result)).not.toContain("never-expose-this");
 		});
 
 		test("listCredentials paginates across every page", async () => {
@@ -1343,6 +1376,21 @@ describe("BailianAdapter e2e", () => {
 			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials/vcrd_1`);
 			expect(calls[0]!.method).toBe("POST");
 			expect((calls[0]!.body as any).display_name).toBe("new");
+		});
+
+		test("updateCredential sends the new auth policy while preserving an omitted secret", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: CRED_RESPONSE }]);
+			cleanup = restore;
+			const auth = {
+				type: "environment_variable" as const,
+				secret_name: "API_TOKEN",
+				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
+				injection_location: { header: true, body: false },
+			};
+			await makeAdapter().updateCredential(VAULT_ID, "vcrd_1", { auth });
+			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials/vcrd_1`);
+			expect(calls[0]!.method).toBe("POST");
+			expect(calls[0]!.body).toEqual({ auth });
 		});
 
 		test("archiveCredential POSTs .../archive", async () => {
