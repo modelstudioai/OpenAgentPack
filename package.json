@@ -18,7 +18,7 @@
 	],
 	"scripts": {
 		"prepare": "bash scripts/setup-githooks.sh",
-		"audit": "bun audit",
+		"audit": "bun scripts/audit.ts",
 		"lint": "biome check . --diagnostic-level=warn --error-on-warnings",
 		"lint:fix": "biome check --write .",
 		"lint:changed": "bash scripts/lint-changed.sh",
