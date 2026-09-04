@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 // schemas/sessions.ts calls `.openapi()` on the @openagentpack/sdk core schemas at module-eval time. That
 // method is added to zod's prototype as a side effect of importing @hono/zod-openapi, so the core
 // schemas must be built on the SAME zod instance @hono/zod-openapi patched. IMPORTANT: do NOT
@@ -10,12 +10,15 @@ import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { z as zWithOpenApi } from "@hono/zod-openapi";
 import { getPlaybookAppId, PLAYBOOK_APP_METADATA_KEY, PLAYBOOK_METADATA_KEY } from "@openagentpack/playbooks";
 import * as actualCore from "@openagentpack/sdk";
+import * as runtimeFactory from "@/services/runtime-factory";
+import * as sessionRunner from "@/services/sessions/runner";
 
 if (typeof (zWithOpenApi.string() as { openapi?: unknown }).openapi !== "function") {
 	throw new Error("@hono/zod-openapi did not patch zod with .openapi");
 }
 
 const calls = {
+	withAgentRuntime: [] as unknown[],
 	listSessionsForAgent: [] as unknown[],
 	getSessionDetail: [] as unknown[],
 	listSessionEventsPage: [] as unknown[],
@@ -47,7 +50,7 @@ const state = {
 	listCloudAgents: async () => [sampleCloudAgent()],
 };
 
-mock.module("@/services/sessions/runner", () => ({
+const sessionStubs = {
 	listSessionsForAgent: async (...args: unknown[]) => {
 		calls.listSessionsForAgent.push(args);
 		return state.listSessionsForAgent(...args);
@@ -76,53 +79,41 @@ mock.module("@/services/sessions/runner", () => ({
 		calls.updatePlaybookAgentModel.push(args);
 		return state.updatePlaybookAgentModel(...args);
 	},
-	reconstructSessionBuffer: async () => false,
-}));
+};
 
-mock.module("@/services/runtime-factory", () => ({
-	loadServerRuntimeConfig: async () => ({
-		projectName: "project",
-		config: {},
-		stateBackend: {},
-		stateScope: { projectId: "project" },
-	}),
-	loadAgentRuntimeInput: async (agentId: string) => ({
-		projectName: "project",
-		config: {},
-		stateBackend: {},
-		stateScope: { projectId: "project" },
-		agentId,
-	}),
-	withAgentRuntime: async (agentId: string, fn: (ctx: unknown, compiled: unknown) => unknown) => {
-		globalThis.__withAgentRuntimeCalls ??= [];
-		globalThis.__withAgentRuntimeCalls.push([agentId]);
-		return fn(
-			{ configPath: "/tmp/agents.yaml" },
-			{ agentId, agent: { id: agentId, version: "1" }, agentConfigHash: "h" },
-		);
-	},
-}));
+const spies: Array<{ mockRestore(): void }> = [];
 
-// Stub the single SDK function the agents route calls. Using spyOn (not mock.module) keeps
-// @openagentpack/sdk on one zod instance so schemas/sessions.ts can attach OpenAPI names (see top note).
-spyOn(actualCore, "listAgentsWithReadiness").mockImplementation(async (...args: unknown[]) => {
-	calls.listAgentsWithReadiness.push(args);
-	return state.listAgentsWithReadiness(...args);
-});
+function installMocks() {
+	for (const name of Object.keys(sessionStubs)) {
+		spies.push(spyOn(sessionRunner, name).mockImplementation(sessionStubs[name]));
+	}
+	spies.push(
+		spyOn(runtimeFactory, "withAgentRuntime").mockImplementation(async (agentId, fn) => {
+			calls.withAgentRuntime.push([agentId]);
+			return fn(
+				{ configPath: "/tmp/agents.yaml" },
+				{ agentId, agent: { id: agentId, version: "1" }, agentConfigHash: "h" },
+			);
+		}),
+		spyOn(actualCore, "listAgentsWithReadiness").mockImplementation(async (...args: unknown[]) => {
+			calls.listAgentsWithReadiness.push(args);
+			return state.listAgentsWithReadiness(...args);
+		}),
+		spyOn(actualCore, "listCloudAgents").mockImplementation(async (...args: unknown[]) => {
+			calls.listCloudAgents.push(args);
+			return state.listCloudAgents(...args);
+		}),
+	);
+}
 
-spyOn(actualCore, "listCloudAgents").mockImplementation(async (...args: unknown[]) => {
-	calls.listCloudAgents.push(args);
-	return state.listCloudAgents(...args);
-});
-
-// Import Hono routes (they use the mocked @/services/* and @openagentpack/sdk modules above)
+// Load real modules before installing per-test spies. Replacing a whole module
+// hides exports used by other suites that share Bun's module cache.
 const { agentsRoute: agentsApp } = await import("../src/routes/agents");
 const { sessionsRoute: sessionsApp } = await import("../src/routes/sessions");
 
 describe("API routes", () => {
 	beforeEach(() => {
 		for (const key of Object.keys(calls)) calls[key].length = 0;
-		globalThis.__withAgentRuntimeCalls = [];
 		state.listSessionsForAgent = async () => ({ sessions: [sampleSession()], nextPageToken: undefined });
 		state.getSessionDetail = async () => ({ session: sampleSession(), events: [sampleProviderEvent()] });
 		state.listSessionEventsPage = async () => ({ events: [sampleProviderEvent()], eventsNextPageToken: undefined });
@@ -144,6 +135,11 @@ describe("API routes", () => {
 		];
 		state.ensureAgentReady = async () => ({ agentId: "bailian-cli", status: "completed", results: [] });
 		state.listCloudAgents = async () => [sampleCloudAgent()];
+		installMocks();
+	});
+
+	afterEach(() => {
+		for (const spy of spies.splice(0)) spy.mockRestore();
 	});
 
 	test("GET /api/sessions returns the snake_case session list", async () => {
@@ -291,7 +287,7 @@ describe("API routes", () => {
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(globalThis.__withAgentRuntimeCalls).toEqual([["bailian-cli"]]);
+		expect(calls.withAgentRuntime).toEqual([["bailian-cli"]]);
 		expect(calls.listAgentsWithReadiness[0][1]).toEqual({ refresh: false });
 		expect(body.agents[0].agent.id).toBe("bailian-cli");
 		expect(body.agents[0].readiness.agentId).toBe("bailian-cli");
@@ -303,7 +299,7 @@ describe("API routes", () => {
 
 		expect(response.status).toBe(200);
 		// Resolved against the bootstrap agent runtime once (not a per-request agentId).
-		expect(globalThis.__withAgentRuntimeCalls).toHaveLength(1);
+		expect(calls.withAgentRuntime).toHaveLength(1);
 		expect(calls.listCloudAgents[0][1]).toEqual({ prefix: "Agents/", limit: 100 });
 		expect(body.agents[0].id).toBe("agt_cloud_1");
 		expect(body.agents[0].name).toBe("Agents/researcher");
