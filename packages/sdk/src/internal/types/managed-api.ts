@@ -1,4 +1,4 @@
-import type { CredentialInjectionLocation, CredentialNetworking } from "./config.ts";
+import type { CredentialNetworking } from "./config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "./dto.ts";
 import type { ProviderFileInfo } from "./file.ts";
 import type { ProviderSkillInfo } from "./skill-info.ts";
@@ -34,6 +34,12 @@ export interface VaultListOptions extends CursorListOptions {
 
 export type VaultPage = CursorPage<CloudVault>;
 
+/** Read-only remote policy; injection locations cannot be configured in declarations. */
+export interface CredentialInjectionLocation {
+	readonly header?: boolean;
+	readonly body?: boolean;
+}
+
 export interface VaultCredentialInfo {
 	id: string;
 	display_name: string;
@@ -42,7 +48,7 @@ export interface VaultCredentialInfo {
 	mcp_server_url?: string;
 	networking_type?: string;
 	networking?: CredentialNetworking;
-	injection_location?: CredentialInjectionLocation;
+	readonly injection_location?: CredentialInjectionLocation;
 	metadata?: Record<string, string>;
 }
 

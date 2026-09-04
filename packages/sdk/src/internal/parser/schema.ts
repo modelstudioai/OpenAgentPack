@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { canonicalToolName } from "../utils/tool-permissions.ts";
-import { validateCredentialPolicy } from "../validation/vault-credential.ts";
+import { FIXED_CREDENTIAL_INJECTION_MESSAGE, validateCredentialPolicy } from "../validation/vault-credential.ts";
 
 const networkingSchema = z.object({
 	type: z.enum(["unrestricted", "limited"]),
@@ -46,6 +46,7 @@ const tunnelSchema = z.object({
 });
 
 const coerceString = z.union([z.string(), z.number()]).transform(String);
+const fixedCredentialInjectionSchema = z.never({ error: FIXED_CREDENTIAL_INJECTION_MESSAGE }).optional();
 
 const staticBearerCredentialSchema = z.object({
 	name: z.string(),
@@ -54,6 +55,7 @@ const staticBearerCredentialSchema = z.object({
 	mcp_server_url: z.string(),
 	access_token: coerceString,
 	protocol: z.enum(["sse", "streamable_http"]).optional(),
+	injection_location: fixedCredentialInjectionSchema,
 });
 
 const environmentVariableCredentialSchema = z.object({
@@ -68,12 +70,7 @@ const environmentVariableCredentialSchema = z.object({
 			allowed_hosts: z.array(z.string()).optional(),
 		})
 		.optional(),
-	injection_location: z
-		.object({
-			header: z.boolean().optional(),
-			body: z.boolean().optional(),
-		})
-		.optional(),
+	injection_location: fixedCredentialInjectionSchema,
 });
 
 const credentialSchema = z.discriminatedUnion("type", [
@@ -394,7 +391,7 @@ export const projectConfigSchema = z
 			defaultProvider && defaultProvider !== "all" ? [defaultProvider] : Object.keys(config.providers);
 		for (const [vaultName, vault] of Object.entries(config.vaults ?? {})) {
 			const providers = vault.provider ? [vault.provider] : targetProviders;
-			// Only a positively identified Bailian target may omit type or use injection policy fields.
+			// Only a positively identified Bailian target may omit type or configure allowed_hosts.
 			for (const provider of providers.length > 0 ? providers : ["unknown"]) {
 				for (const [index, credential] of vault.credentials.entries()) {
 					for (const issue of validateCredentialPolicy(provider, credential)) {

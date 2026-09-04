@@ -10,7 +10,6 @@ const credential: CredentialDecl = {
 	secret_name: "API_TOKEN",
 	secret_value: "test-secret",
 	networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
-	injection_location: { header: true, body: false },
 };
 
 function parseCredential(input: CredentialDecl) {
@@ -22,7 +21,7 @@ function parseCredential(input: CredentialDecl) {
 }
 
 describe("Bailian credential injection policy", () => {
-	test("preserves both new fields through config parsing and the request mapper", () => {
+	test("preserves hosts and always sends the fixed injection policy", () => {
 		const parsed = parseCredential(credential);
 		expect(parsed).toEqual(credential);
 		expect(mapCredential(parsed)).toEqual({
@@ -37,7 +36,7 @@ describe("Bailian credential injection policy", () => {
 		});
 	});
 
-	test("preserves response policies through sync, parsing, and a new request", () => {
+	test("sync preserves hosts but never exports the remote injection policy into declarations", () => {
 		const synced = credToDecl(
 			{
 				display_name: "api-token",
@@ -51,16 +50,17 @@ describe("Bailian credential injection policy", () => {
 			"secrets",
 		);
 		expect(synced.secret_value).not.toBe(credential.secret_value);
+		expect(synced).not.toHaveProperty("injection_location");
 		const request = mapCredential(parseCredential(synced)) as { auth: Record<string, unknown> };
 		expect(request.auth.networking).toEqual(credential.networking);
-		expect(request.auth.injection_location).toEqual({ header: false, body: true });
+		expect(request.auth.injection_location).toEqual({ header: true, body: false });
 	});
 
 	test.each([
 		undefined,
 		{ type: "unrestricted" as const },
 	])("maps legacy unrestricted networking to the wildcard: %j", (networking) => {
-		const request = mapCredential({ ...credential, networking, injection_location: undefined });
+		const request = mapCredential({ ...credential, networking });
 		expect(request).toMatchObject({
 			auth: { networking: { allowed_hosts: ["*"] }, injection_location: { header: true, body: false } },
 		});
@@ -79,20 +79,48 @@ describe("Bailian credential injection policy", () => {
 		expect(() =>
 			parseCredential({ ...credential, networking: { allowed_hosts: [123] } } as unknown as CredentialDecl),
 		).toThrow();
-		expect(() =>
-			parseCredential({ ...credential, injection_location: { header: "true" } } as unknown as CredentialDecl),
-		).toThrow();
 	});
 
-	test.each(["claude", "qoder", "ark"])("does not silently discard injection_location for %s", (provider) => {
-		const diagnostics = validateProjectConfig({
+	test.each(["bailian", "claude", "qoder", "ark"])("rejects configured injection_location for %s", (provider) => {
+		const config = {
 			version: "1",
 			providers: { [provider]: {} },
-			vaults: { secrets: { display_name: "Secrets", credentials: [credential] } },
-		});
+			vaults: {
+				secrets: {
+					display_name: "Secrets",
+					credentials: [
+						{
+							...credential,
+							networking: { type: "unrestricted" as const },
+							injection_location: { header: true, body: false },
+						},
+					],
+				},
+			},
+		};
+		const parsed = projectConfigSchema.safeParse(config);
+		expect(parsed.success).toBe(false);
+		if (!parsed.success) {
+			expect(parsed.error.issues.map((issue) => issue.path.join("."))).toContain(
+				"vaults.secrets.credentials.0.injection_location",
+			);
+			expect(JSON.stringify(parsed.error.issues)).not.toContain(credential.secret_value!);
+		}
+		const diagnostics = validateProjectConfig(config);
 		expect(
 			diagnostics.some((diagnostic) => diagnostic.code === `${provider}.vault.injection_location.unsupported`),
 		).toBe(true);
+	});
+
+	test.each([
+		{ header: false, body: true },
+		{},
+		null,
+		"invalid",
+	])("rejects explicit injection policy values without leaking them: %j", (injectionLocation) => {
+		const input = { ...credential, injection_location: injectionLocation };
+		expect(() => parseCredential(input)).toThrow(/injection_location.*cannot be configured/);
+		expect(() => mapCredential(input)).toThrow(/injection_location.*cannot be configured/);
 	});
 
 	test("allows a Bailian-pinned vault in a multi-provider project", () => {
@@ -106,7 +134,7 @@ describe("Bailian credential injection policy", () => {
 
 	test.each(["claude", "qoder", "ark"])("keeps legacy networking validation for %s", (provider) => {
 		for (const networking of [undefined, { type: "unrestricted" as const }, { type: "limited" as const }]) {
-			const legacy = { ...credential, networking, injection_location: undefined };
+			const legacy = { ...credential, networking };
 			const config = {
 				version: "1",
 				providers: { [provider]: {} },
@@ -121,7 +149,7 @@ describe("Bailian credential injection policy", () => {
 			vaults: {
 				secrets: {
 					display_name: "Secrets",
-					credentials: [{ ...credential, networking: {}, injection_location: undefined }],
+					credentials: [{ ...credential, networking: {} }],
 				},
 			},
 		};

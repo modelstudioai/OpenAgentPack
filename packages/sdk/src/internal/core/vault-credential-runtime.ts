@@ -4,7 +4,7 @@ import type { ProviderAdapter } from "../providers/interface.ts";
 import type { CredentialDecl, ResolvedProjectConfig } from "../types/config.ts";
 import type { VaultCredentialInfo } from "../types/managed-api.ts";
 import type { ResourceAddress, ResourceState } from "../types/state.ts";
-import { validateCredentialPolicy } from "../validation/vault-credential.ts";
+import { BAILIAN_CREDENTIAL_INJECTION_LOCATION, validateCredentialPolicy } from "../validation/vault-credential.ts";
 import type { BackendRuntimeInput, ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider, readProjectRuntime, writeProjectRuntime } from "./project-runtime.ts";
 import { planProjectContext } from "./resource-runtime.ts";
@@ -217,18 +217,16 @@ function credentialMatches(provider: string, remote: VaultCredentialInfo, desire
 	}
 	const desiredHosts = credentialHosts(desired.networking);
 	const remoteHosts = credentialHosts(remote.networking ?? { type: remote.networking_type });
-	const desiredLocation = desired.injection_location;
 	const remoteLocation = remote.injection_location;
-	// An omitted response cannot prove that an explicitly requested injection policy matches.
-	if (desiredLocation && !remoteLocation) return false;
+	// Only an explicit remote policy can prove this credential uses the fixed injection locations.
 	return (
 		remote.secret_name === desired.secret_name &&
 		desiredHosts !== undefined &&
 		remoteHosts !== undefined &&
 		desiredHosts.length === remoteHosts.length &&
 		desiredHosts.every((host) => remoteHosts.includes(host)) &&
-		(desiredLocation?.header ?? true) === (remoteLocation?.header ?? true) &&
-		(desiredLocation?.body ?? false) === (remoteLocation?.body ?? false)
+		remoteLocation?.header === BAILIAN_CREDENTIAL_INJECTION_LOCATION.header &&
+		remoteLocation?.body === BAILIAN_CREDENTIAL_INJECTION_LOCATION.body
 	);
 }
 

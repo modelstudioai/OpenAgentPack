@@ -25,7 +25,6 @@ export {
 
 export type {
 	CredentialDecl,
-	CredentialInjectionLocation,
 	CredentialNetworking,
 	DeploymentDecl,
 	EnvironmentDecl,
@@ -154,6 +153,7 @@ export type {
 	VaultListOptions,
 	VaultPage,
 	VaultCredentialInfo,
+	CredentialInjectionLocation,
 } from "./internal/types/managed-api.ts";
 
 export {

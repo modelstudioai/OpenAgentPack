@@ -1096,7 +1096,6 @@ describe("BailianAdapter e2e", () => {
 						secret_name: "MCP_TOKEN",
 						secret_value: "tok-123",
 						networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
-						injection_location: { header: true, body: false },
 					},
 				],
 			});
@@ -1375,22 +1374,45 @@ describe("BailianAdapter e2e", () => {
 
 			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials/vcrd_1`);
 			expect(calls[0]!.method).toBe("POST");
-			expect((calls[0]!.body as any).display_name).toBe("new");
+			expect(calls[0]!.body).toEqual({ display_name: "new" });
 		});
 
-		test("updateCredential sends the new auth policy while preserving an omitted secret", async () => {
+		test("updateCredential sends fixed injection policy while preserving an omitted secret", async () => {
 			const { calls, restore } = mockFetch([{ status: 200, body: CRED_RESPONSE }]);
 			cleanup = restore;
 			const auth = {
 				type: "environment_variable" as const,
 				secret_name: "API_TOKEN",
 				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
-				injection_location: { header: true, body: false },
 			};
 			await makeAdapter().updateCredential(VAULT_ID, "vcrd_1", { auth });
 			expect(calls[0]!.url).toBe(`${BASE}/vaults/${VAULT_ID}/credentials/vcrd_1`);
 			expect(calls[0]!.method).toBe("POST");
-			expect(calls[0]!.body).toEqual({ auth });
+			expect(calls[0]!.body).toEqual({ auth: { ...auth, injection_location: { header: true, body: false } } });
+		});
+
+		test.each([
+			{ header: true, body: false },
+			{ header: false, body: true },
+		])("rejects explicit injection policy before vault, credential, or auth update requests: %j", async (injectionLocation) => {
+			const { calls, restore } = mockFetch([]);
+			cleanup = restore;
+			const customized = {
+				name: "token",
+				type: "environment_variable" as const,
+				secret_name: "TOKEN",
+				secret_value: "never-expose-this",
+				injection_location: injectionLocation,
+			};
+			const adapter = makeAdapter();
+			await expect(
+				adapter.createVault("secrets", { display_name: "Secrets", credentials: [customized] }),
+			).rejects.toThrow(/cannot be configured/);
+			await expect(adapter.createCredential(VAULT_ID, customized)).rejects.toThrow(/cannot be configured/);
+			await expect(adapter.updateCredential(VAULT_ID, "vcrd_1", { auth: customized })).rejects.toThrow(
+				/cannot be configured/,
+			);
+			expect(calls).toHaveLength(0);
 		});
 
 		test("archiveCredential POSTs .../archive", async () => {

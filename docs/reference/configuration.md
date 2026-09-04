@@ -224,21 +224,23 @@ vaults:
 | `secret_value` | string | yes | Secret value (string or number, coerced). |
 | `networking.type` | `"unrestricted"` \| `"limited"` | conditional | Required when `networking` is present for non-Bailian providers. Bailian requests use `allowed_hosts` instead. |
 | `networking.allowed_hosts` | string[] | no | Bailian credential injection host allow-list, e.g. `["api.example.com", "*.example.org"]`; `["*"]` allows all hosts. |
-| `injection_location.header` | boolean | no | Bailian: allow secret replacement in request headers. |
-| `injection_location.body` | boolean | no | Bailian: allow secret replacement in request bodies. |
 
 For Bailian, these fields are nested under `auth` in credential create/update requests.
-When omitted, creation uses `networking: { allowed_hosts: ["*"] }` and
-`injection_location: { header: true, body: false }`. Legacy `networking.type: unrestricted`
+When hosts are omitted, creation uses `networking: { allowed_hosts: ["*"] }`.
+Credential creation and auth updates always use the fixed
+`injection_location: { header: true, body: false }`. This is not a configurable field:
+declarations containing `injection_location` are rejected, and sync/export omits it.
+Metadata-only updates leave auth unchanged. Legacy `networking.type: unrestricted`
 maps to `["*"]`; `limited` must include `allowed_hosts` and is never widened implicitly.
-Explicit host lists and injection booleans are preserved, including through sync/export.
+Explicit host lists are preserved, including through sync/export.
 Bailian credential retry adoption compares host sets and injection policy as well as the existing
-identity and metadata fields; a different policy is not treated as an exact match.
+identity and metadata fields; a missing, incomplete, or different remote injection policy
+is not treated as an exact match. Queries still expose the remote policy for inspection.
 
-Credential `networking.allowed_hosts` and `injection_location` are rejected for
+Credential `networking.allowed_hosts` is rejected for
 non-Bailian providers, whose legacy networking and retry-matching behavior is unchanged.
 In multi-provider projects, pin such vaults with `provider: bailian` (or select
-Bailian via `defaults.provider`) to avoid applying these fields to other providers.
+Bailian via `defaults.provider`) to avoid applying this field to other providers.
 
 ## Memory store
 

@@ -74,7 +74,6 @@ export interface VaultCredentialStructure {
 	type: "environment_variable";
 	secret_name: string;
 	networking?: { type?: "unrestricted" | "limited"; allowed_hosts?: string[] };
-	injection_location?: { header?: boolean; body?: boolean };
 }
 
 export interface VaultProfile {

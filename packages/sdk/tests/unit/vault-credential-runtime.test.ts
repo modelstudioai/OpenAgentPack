@@ -93,10 +93,7 @@ describe("scoped Vault Credential create", () => {
 	});
 
 	test.each(["claude", "qoder", "ark"])("rejects Bailian-only fields before remote calls for %s", async (provider) => {
-		for (const policy of [
-			{ networking: { type: "limited" as const, allowed_hosts: ["api.example.com"] } },
-			{ injection_location: { header: true, body: false } },
-		]) {
+		for (const policy of [{ networking: { type: "limited" as const, allowed_hosts: ["api.example.com"] } }]) {
 			const { runtime, getCreateCalls, getListCalls } = await makeRuntime({ provider });
 			runtime.config.vaults!.production!.credentials = [{ ...credential, ...policy }];
 			await expect(createVaultCredential(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(
@@ -105,6 +102,21 @@ describe("scoped Vault Credential create", () => {
 			expect(getListCalls()).toBe(0);
 			expect(getCreateCalls()).toBe(0);
 		}
+	});
+
+	test.each([
+		"bailian",
+		"claude",
+		"qoder",
+		"ark",
+	])("rejects configured injection before remote calls for %s", async (provider) => {
+		const { runtime, getCreateCalls, getListCalls } = await makeRuntime({ provider });
+		const customized = { ...credential, injection_location: { header: false, body: true } };
+		runtime.config.vaults!.production!.credentials = [customized];
+		await expect(planVaultCredentialCreate(runtime, "production", "api-token")).rejects.toThrow(/cannot be configured/);
+		await expect(createVaultCredential(runtime, "production", "api-token")).rejects.toThrow(/cannot be configured/);
+		expect(getListCalls()).toBe(0);
+		expect(getCreateCalls()).toBe(0);
 	});
 
 	test("offline preview does not list remote credentials", async () => {
@@ -138,6 +150,7 @@ describe("scoped Vault Credential create", () => {
 					auth_type: "environment_variable",
 					secret_name: "API_TOKEN",
 					networking_type: "unrestricted",
+					injection_location: { header: true, body: false },
 					metadata: { owner: "cli" },
 				},
 			],
@@ -186,7 +199,6 @@ describe("scoped Vault Credential create", () => {
 			{
 				...credential,
 				networking: { allowed_hosts: ["api.example.com", "*.example.org"] },
-				injection_location: { header: true, body: false },
 			},
 		];
 		const result = await createVaultCredential(runtime, "production", "api-token", { refresh: false });
@@ -200,6 +212,8 @@ describe("scoped Vault Credential create", () => {
 		{ networking: { allowed_hosts: ["api.example.com"] }, injection_location: { header: true, body: true } },
 		{ networking: { allowed_hosts: ["api.example.com"] }, injection_location: { header: false, body: true } },
 		{ networking: { allowed_hosts: ["api.example.com"] } },
+		{ networking: { allowed_hosts: ["api.example.com"] }, injection_location: {} },
+		{ networking: { allowed_hosts: ["api.example.com"] }, injection_location: { header: true } },
 	])("rejects a same-name credential with different or unknown policy: %j", async (policy) => {
 		const { runtime, getCreateCalls } = await makeRuntime({
 			remoteCredentials: [
@@ -217,7 +231,6 @@ describe("scoped Vault Credential create", () => {
 			{
 				...credential,
 				networking: { allowed_hosts: ["api.example.com"] },
-				injection_location: { header: true, body: false },
 			},
 		];
 		await expect(createVaultCredential(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(

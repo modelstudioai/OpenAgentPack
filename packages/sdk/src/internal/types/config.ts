@@ -107,11 +107,6 @@ export interface CredentialNetworking {
 	allowed_hosts?: string[];
 }
 
-export interface CredentialInjectionLocation {
-	header?: boolean;
-	body?: boolean;
-}
-
 export interface CredentialDecl {
 	name: string;
 	type: CredentialType;
@@ -124,8 +119,6 @@ export interface CredentialDecl {
 	secret_name?: string;
 	secret_value?: string;
 	networking?: CredentialNetworking;
-	/** Bailian only. */
-	injection_location?: CredentialInjectionLocation;
 }
 
 // --- Memory Store ---

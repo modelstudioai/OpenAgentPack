@@ -12,6 +12,7 @@ import type { ManagedSessionBindings } from "../../types/session.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
 import { resolveBuiltinTools } from "../../utils/tool-permissions.ts";
+import { BAILIAN_CREDENTIAL_INJECTION_LOCATION, validateCredentialPolicy } from "../../validation/vault-credential.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
 
@@ -52,6 +53,8 @@ export function mapVault(name: string, decl: VaultDecl, projectName?: string): u
 }
 
 export function mapCredential(cred: CredentialDecl): unknown {
+	const policyIssue = validateCredentialPolicy("bailian", cred)[0];
+	if (policyIssue) throw new UserError(policyIssue.message);
 	// Bailian's credentials API currently only accepts `environment_variable`
 	// authType; `static_bearer` is rejected with CREDENTIAL_AUTH_TYPE_ERROR.
 	if (cred.type !== "environment_variable") {
@@ -68,7 +71,7 @@ export function mapCredential(cred: CredentialDecl): unknown {
 			secret_name: cred.secret_name,
 			secret_value: cred.secret_value,
 			networking: { allowed_hosts: cred.networking?.allowed_hosts ?? ["*"] },
-			injection_location: cred.injection_location ?? { header: true, body: false },
+			injection_location: { ...BAILIAN_CREDENTIAL_INJECTION_LOCATION },
 		},
 		display_name: cred.name,
 	};
@@ -100,7 +103,6 @@ export function credToDecl(raw: Record<string, unknown>, vaultName: string): Cre
 
 	// Default to environment_variable (Bailian's accepted credential type).
 	const networking = auth.networking as CredentialDecl["networking"];
-	const injectionLocation = auth.injection_location as CredentialDecl["injection_location"];
 	return {
 		name,
 		type: "environment_variable",
@@ -108,7 +110,6 @@ export function credToDecl(raw: Record<string, unknown>, vaultName: string): Cre
 		secret_name: (auth.secret_name as string) ?? name,
 		secret_value: placeholder,
 		networking: networking ?? { type: "unrestricted" },
-		...(injectionLocation ? { injection_location: injectionLocation } : {}),
 	};
 }
 
