@@ -4,7 +4,6 @@ import {
 	cp,
 	lstat,
 	mkdir,
-	open,
 	readdir,
 	readFile,
 	realpath,
@@ -149,7 +148,6 @@ export interface InitializedDirectoryProject {
 	project_root: string;
 	converted_from_yaml: boolean;
 	state_migrated: boolean;
-	environment_file_created: boolean;
 	baseline_version: string | null;
 }
 
@@ -433,7 +431,7 @@ export async function executeProjectPublish(input: {
 }
 
 export async function initializeDirectoryProject(
-	input: { projectRoot?: string; environment?: Readonly<Record<string, string>> } = {},
+	input: { projectRoot?: string } = {},
 ): Promise<InitializedDirectoryProject> {
 	const projectRoot = resolve(input.projectRoot ?? ".");
 	await mkdir(projectRoot, { recursive: true });
@@ -455,12 +453,10 @@ export async function initializeDirectoryProject(
 		} else {
 			await scaffoldProject(projectRoot);
 		}
-		const environmentFileCreated = await initializeProjectEnvironment(projectRoot, input.environment);
 		return {
 			project_root: projectRoot,
 			converted_from_yaml: converted,
 			state_migrated: stateMigrated,
-			environment_file_created: environmentFileCreated,
 			baseline_version: null,
 		};
 	});
@@ -1031,49 +1027,6 @@ async function scaffoldProject(projectRoot: string): Promise<void> {
 		`${JSON.stringify({ name: "Assistant", model: "qwen3.7-max" }, null, 2)}\n`,
 	);
 	await writeTextAtomic(resolve(agentDirectory, "instructions.md"), "You are a helpful assistant.\n");
-}
-
-async function initializeProjectEnvironment(
-	projectRoot: string,
-	environment: Readonly<Record<string, string>> | undefined,
-): Promise<boolean> {
-	const entries = Object.entries(environment ?? {});
-	if (entries.length === 0) return false;
-	for (const [key, value] of entries) {
-		if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new UserError(`Invalid environment variable name '${key}'.`);
-		if (value.includes("\0")) throw new UserError(`Environment variable '${key}' contains a null byte.`);
-	}
-	await ensureEnvironmentIgnored(projectRoot);
-	const environmentPath = resolve(projectRoot, ".env");
-	const handle = await open(environmentPath, "wx", 0o600).catch((error: unknown) => {
-		if (isFsError(error, "EEXIST")) return null;
-		throw error;
-	});
-	if (!handle) return false;
-	try {
-		const content = [
-			"# Local provider credentials for this directory project.",
-			"# Keep this file private; it is excluded from project versions and Git.",
-			...entries.map(([key, value]) => `${key}=${JSON.stringify(value)}`),
-			"",
-		].join("\n");
-		await handle.writeFile(content, "utf8");
-		await handle.sync();
-	} catch (error) {
-		await handle.close();
-		await rm(environmentPath, { force: true });
-		throw error;
-	}
-	await handle.close();
-	return true;
-}
-
-async function ensureEnvironmentIgnored(projectRoot: string): Promise<void> {
-	const gitignorePath = resolve(projectRoot, ".gitignore");
-	const existing = (await pathExists(gitignorePath)) ? await readFile(gitignorePath, "utf8") : "";
-	if (existing.split(/\r?\n/).some((line) => line.trim() === ".env")) return;
-	const separator = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
-	await writeTextAtomic(gitignorePath, `${existing}${separator}.env\n`);
 }
 
 async function convertYamlProject(projectRoot: string, yamlPath: string): Promise<void> {

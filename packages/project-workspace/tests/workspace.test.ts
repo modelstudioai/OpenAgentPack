@@ -29,19 +29,11 @@ async function temporaryProject(): Promise<string> {
 describe("directory project build", () => {
 	test("initializes a baseline and creates a revision-bound build", async () => {
 		const root = await temporaryProject();
-		const initialized = await initializeDirectoryProject({
-			projectRoot: root,
-			environment: {
-				DASHSCOPE_API_KEY: "sk-test-project",
-				BAILIAN_BASE_URL: "https://workspace.example.com/api/v1/agentstudio",
-			},
-		});
+		const initialized = await initializeDirectoryProject({ projectRoot: root });
 		expect(initialized.baseline_version).toHaveLength(64);
-		expect(initialized.environment_file_created).toBe(true);
 		expect(JSON.parse(await readFile(resolve(root, "project.json"), "utf8"))).toEqual({ version: "1" });
-		expect(await readFile(resolve(root, ".env"), "utf8")).toContain('DASHSCOPE_API_KEY="sk-test-project"');
-		if (process.platform !== "win32") expect((await stat(resolve(root, ".env"))).mode & 0o777).toBe(0o600);
-		expect(await readFile(resolve(root, ".gitignore"), "utf8")).toContain(".env\n");
+		await expect(stat(resolve(root, ".env"))).rejects.toMatchObject({ code: "ENOENT" });
+		await expect(stat(resolve(root, ".gitignore"))).rejects.toMatchObject({ code: "ENOENT" });
 
 		const preview = await previewProjectBuild(root);
 		expect(preview.can_build).toBe(true);
@@ -49,7 +41,6 @@ describe("directory project build", () => {
 		expect(preview.canonical_yaml).toContain(`api_key: \${DASHSCOPE_API_KEY}`);
 		expect(preview.canonical_yaml).toContain(`base_url: \${BAILIAN_BASE_URL}`);
 		expect(preview.source_files.map((file) => file.path)).not.toContain(".env");
-		expect(preview.source_files.some((file) => Buffer.from(file.content).includes("sk-test-project"))).toBe(false);
 		const built = await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
 		expect(built.manifest.project_revision).toBe(preview.project_revision);
 		expect((await getProjectBuildStatus(root)).stale).toBe(false);
@@ -58,20 +49,13 @@ describe("directory project build", () => {
 		expect((await getProjectBuildStatus(root)).stale).toBe(true);
 	});
 
-	test("preserves an existing environment file during initialization", async () => {
+	test("does not modify an existing user-managed environment file during initialization", async () => {
 		const root = await temporaryProject();
 		await writeFile(resolve(root, ".env"), "DASHSCOPE_API_KEY=existing\n", { mode: 0o640 });
-		const initialized = await initializeDirectoryProject({
-			projectRoot: root,
-			environment: {
-				DASHSCOPE_API_KEY: "replacement",
-				BAILIAN_BASE_URL: "https://workspace.example.com/api/v1/agentstudio",
-			},
-		});
-		expect(initialized.environment_file_created).toBe(false);
+		await initializeDirectoryProject({ projectRoot: root });
 		expect(await readFile(resolve(root, ".env"), "utf8")).toBe("DASHSCOPE_API_KEY=existing\n");
 		if (process.platform !== "win32") expect((await stat(resolve(root, ".env"))).mode & 0o777).toBe(0o640);
-		expect(await readFile(resolve(root, ".gitignore"), "utf8")).toContain(".env\n");
+		await expect(stat(resolve(root, ".gitignore"))).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	test("excludes nested environment files from source revisions and version snapshots", async () => {
