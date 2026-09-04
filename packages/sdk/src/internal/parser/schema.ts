@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { canonicalToolName } from "../utils/tool-permissions.ts";
+import { validateCredentialPolicy } from "../validation/vault-credential.ts";
 
 const networkingSchema = z.object({
 	type: z.enum(["unrestricted", "limited"]),
@@ -366,25 +367,46 @@ const deploymentSchema = z.object({
 	environment_variables: z.string().optional(),
 });
 
-export const projectConfigSchema = z.object({
-	version: z.string(),
-	providers: z.record(z.string(), z.unknown()),
-	defaults: z
-		.object({
-			provider: z.string().optional(),
-			identity: z.string().min(1).optional(),
-		})
-		.optional(),
-	environments: z.record(z.string(), environmentSchema).optional(),
-	tunnels: z.record(z.string(), tunnelSchema).optional(),
-	vaults: z.record(z.string(), vaultSchema).optional(),
-	memory_stores: z.record(z.string(), memoryStoreSchema).optional(),
-	skills: z.record(z.string(), skillSchema).optional(),
-	files: z.record(z.string(), fileSchema).optional(),
-	identities: z.record(z.string(), identitySchema).optional(),
-	agents: z.record(z.string(), agentSchema).optional(),
-	channels: z.record(z.string(), channelSchema).optional(),
-	deployments: z.record(z.string(), deploymentSchema).optional(),
-});
+export const projectConfigSchema = z
+	.object({
+		version: z.string(),
+		providers: z.record(z.string(), z.unknown()),
+		defaults: z
+			.object({
+				provider: z.string().optional(),
+				identity: z.string().min(1).optional(),
+			})
+			.optional(),
+		environments: z.record(z.string(), environmentSchema).optional(),
+		tunnels: z.record(z.string(), tunnelSchema).optional(),
+		vaults: z.record(z.string(), vaultSchema).optional(),
+		memory_stores: z.record(z.string(), memoryStoreSchema).optional(),
+		skills: z.record(z.string(), skillSchema).optional(),
+		files: z.record(z.string(), fileSchema).optional(),
+		identities: z.record(z.string(), identitySchema).optional(),
+		agents: z.record(z.string(), agentSchema).optional(),
+		channels: z.record(z.string(), channelSchema).optional(),
+		deployments: z.record(z.string(), deploymentSchema).optional(),
+	})
+	.superRefine((config, context) => {
+		const defaultProvider = config.defaults?.provider;
+		const targetProviders =
+			defaultProvider && defaultProvider !== "all" ? [defaultProvider] : Object.keys(config.providers);
+		for (const [vaultName, vault] of Object.entries(config.vaults ?? {})) {
+			const providers = vault.provider ? [vault.provider] : targetProviders;
+			// Only a positively identified Bailian target may omit type or use injection policy fields.
+			for (const provider of providers.length > 0 ? providers : ["unknown"]) {
+				for (const [index, credential] of vault.credentials.entries()) {
+					for (const issue of validateCredentialPolicy(provider, credential)) {
+						context.addIssue({
+							code: "custom",
+							path: ["vaults", vaultName, "credentials", index, ...issue.field.split(".")],
+							message: issue.message,
+						});
+					}
+				}
+			}
+		}
+	});
 
 export type ParsedConfig = z.infer<typeof projectConfigSchema>;

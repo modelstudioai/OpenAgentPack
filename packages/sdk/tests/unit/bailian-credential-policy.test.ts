@@ -103,4 +103,71 @@ describe("Bailian credential injection policy", () => {
 		});
 		expect(diagnostics).toEqual([]);
 	});
+
+	test.each(["claude", "qoder", "ark"])("keeps legacy networking validation for %s", (provider) => {
+		for (const networking of [undefined, { type: "unrestricted" as const }, { type: "limited" as const }]) {
+			const legacy = { ...credential, networking, injection_location: undefined };
+			const config = {
+				version: "1",
+				providers: { [provider]: {} },
+				vaults: { secrets: { display_name: "Secrets", credentials: [legacy] } },
+			};
+			expect(projectConfigSchema.parse(config).vaults?.secrets?.credentials[0]).toEqual(legacy);
+			expect(validateProjectConfig(config)).toEqual([]);
+		}
+		const missingType = {
+			version: "1",
+			providers: { [provider]: {} },
+			vaults: {
+				secrets: {
+					display_name: "Secrets",
+					credentials: [{ ...credential, networking: {}, injection_location: undefined }],
+				},
+			},
+		};
+		expect(projectConfigSchema.safeParse(missingType).success).toBe(false);
+		expect(validateProjectConfig(missingType).map((diagnostic) => diagnostic.code)).toContain(
+			`${provider}.vault.networking.type.required`,
+		);
+	});
+
+	test.each(["claude", "qoder", "ark"])("blocks Bailian policy fields for %s before execution", (provider) => {
+		const config = {
+			version: "1",
+			providers: { [provider]: {} },
+			vaults: { secrets: { display_name: "Secrets", credentials: [credential] } },
+		};
+		const parsed = projectConfigSchema.safeParse(config);
+		expect(parsed.success).toBe(false);
+		if (!parsed.success) {
+			expect(parsed.error.issues.map((issue) => issue.path.join("."))).toContain(
+				"vaults.secrets.credentials.0.networking.allowed_hosts",
+			);
+			expect(JSON.stringify(parsed.error.issues)).not.toContain(credential.secret_value!);
+		}
+		expect(validateProjectConfig(config).map((diagnostic) => diagnostic.code)).toContain(
+			`${provider}.vault.networking.allowed_hosts.unsupported`,
+		);
+	});
+
+	test("resolves policy ownership from the vault, defaults, and provider selection", () => {
+		const config = {
+			version: "1",
+			providers: { bailian: {}, qoder: {} },
+			vaults: { secrets: { display_name: "Secrets", credentials: [credential] } },
+		};
+		expect(projectConfigSchema.safeParse(config).success).toBe(false);
+		const bailianDefault = { ...config, defaults: { provider: "bailian" } };
+		expect(projectConfigSchema.safeParse(bailianDefault).success).toBe(true);
+		expect(
+			validateProjectConfig(bailianDefault, { providers: ["qoder"] }).map((diagnostic) => diagnostic.code),
+		).toContain("qoder.vault.networking.allowed_hosts.unsupported");
+		expect(
+			projectConfigSchema.safeParse({
+				...config,
+				defaults: { provider: "qoder" },
+				vaults: { secrets: { ...config.vaults.secrets, provider: "bailian" } },
+			}).success,
+		).toBe(true);
+	});
 });

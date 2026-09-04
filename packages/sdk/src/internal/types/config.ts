@@ -101,8 +101,9 @@ export interface VaultDecl {
 export type CredentialType = "static_bearer" | "environment_variable";
 
 export interface CredentialNetworking {
-	/** Legacy policy type; Bailian requests use allowed_hosts instead. */
+	/** Required when networking is declared for non-Bailian providers; optional for Bailian. */
 	type?: "unrestricted" | "limited";
+	/** Bailian only. Other providers retain their networking.type contract. */
 	allowed_hosts?: string[];
 }
 
@@ -123,6 +124,7 @@ export interface CredentialDecl {
 	secret_name?: string;
 	secret_value?: string;
 	networking?: CredentialNetworking;
+	/** Bailian only. */
 	injection_location?: CredentialInjectionLocation;
 }
 

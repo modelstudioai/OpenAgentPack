@@ -24,7 +24,6 @@ vaults:
         secret_value: ${DB_TOKEN}
         networking:
           type: limited
-          allowed_hosts: ["api.example.com"]
 ```
 
 | Credential type | Key fields |
@@ -61,6 +60,11 @@ Use `["*"]` to explicitly allow all hosts. Existing declarations with no network
 policy or with `type: unrestricted` retain that scope; an omitted injection location
 defaults to headers enabled and body disabled. Legacy `type: limited` requires an
 explicit `allowed_hosts` list.
+
+Credential `networking.allowed_hosts` and `injection_location` are Bailian-only.
+For other providers, keep using `networking.type` (`unrestricted` or `limited`);
+it is required when `networking` is present. Pin the vault with `provider: bailian`
+when using these new fields in a multi-provider project.
 
 ## Attach MCP servers to an agent
 

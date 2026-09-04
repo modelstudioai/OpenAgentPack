@@ -15,11 +15,11 @@ const credential: CredentialDecl = {
 	metadata: { owner: "cli" },
 };
 
-function candidateConfig(): ResolvedProjectConfig {
+function candidateConfig(providerName = "bailian"): ResolvedProjectConfig {
 	return {
 		version: "1",
-		providers: { bailian: { api_key: "test", workspace_id: "ws" } },
-		defaults: { provider: "bailian" },
+		providers: { [providerName]: { api_key: "test", workspace_id: "ws" } },
+		defaults: { provider: providerName },
 		vaults: {
 			production: { display_name: "Production", credentials: [credential] },
 		},
@@ -27,11 +27,14 @@ function candidateConfig(): ResolvedProjectConfig {
 	};
 }
 
-async function makeRuntime(options: { remoteCredentials?: VaultCredentialInfo[]; drifted?: boolean } = {}) {
-	const config = candidateConfig();
-	const priorConfig = candidateConfig();
+async function makeRuntime(
+	options: { remoteCredentials?: VaultCredentialInfo[]; drifted?: boolean; provider?: string } = {},
+) {
+	const providerName = options.provider ?? "bailian";
+	const config = candidateConfig(providerName);
+	const priorConfig = candidateConfig(providerName);
 	priorConfig.vaults!.production!.credentials = [];
-	const address = { type: "vault" as const, name: "production", provider: "bailian" };
+	const address = { type: "vault" as const, name: "production", provider: providerName };
 	const priorHash = await computeResourceHash(address, priorConfig);
 	const state = StateManager.initialize("/tmp/vault-credential-runtime.json");
 	state.setResource({
@@ -44,7 +47,7 @@ async function makeRuntime(options: { remoteCredentials?: VaultCredentialInfo[];
 	let createCalls = 0;
 	let listCalls = 0;
 	const provider = {
-		name: "bailian",
+		name: providerName,
 		listCredentials: async () => {
 			listCalls += 1;
 			return options.remoteCredentials ?? [];
@@ -58,7 +61,7 @@ async function makeRuntime(options: { remoteCredentials?: VaultCredentialInfo[];
 		projectName: "test",
 		config,
 		state,
-		providers: new Map([["bailian", provider]]),
+		providers: new Map([[providerName, provider]]),
 	} as unknown as ProjectRuntimeContext;
 	return {
 		runtime,
@@ -69,6 +72,41 @@ async function makeRuntime(options: { remoteCredentials?: VaultCredentialInfo[];
 }
 
 describe("scoped Vault Credential create", () => {
+	test.each(["claude", "qoder", "ark"])("preserves legacy limited-policy adoption for %s", async (provider) => {
+		const { runtime, getCreateCalls } = await makeRuntime({
+			provider,
+			remoteCredentials: [
+				{
+					id: "credential_existing",
+					display_name: credential.name,
+					auth_type: credential.type,
+					secret_name: credential.secret_name,
+					networking_type: "limited",
+					metadata: credential.metadata,
+				},
+			],
+		});
+		runtime.config.vaults!.production!.credentials = [{ ...credential, networking: { type: "limited" } }];
+		const result = await createVaultCredential(runtime, "production", "api-token", { refresh: false });
+		expect(result.adopted).toBe(true);
+		expect(getCreateCalls()).toBe(0);
+	});
+
+	test.each(["claude", "qoder", "ark"])("rejects Bailian-only fields before remote calls for %s", async (provider) => {
+		for (const policy of [
+			{ networking: { type: "limited" as const, allowed_hosts: ["api.example.com"] } },
+			{ injection_location: { header: true, body: false } },
+		]) {
+			const { runtime, getCreateCalls, getListCalls } = await makeRuntime({ provider });
+			runtime.config.vaults!.production!.credentials = [{ ...credential, ...policy }];
+			await expect(createVaultCredential(runtime, "production", "api-token", { refresh: false })).rejects.toThrow(
+				/only supported by bailian/,
+			);
+			expect(getListCalls()).toBe(0);
+			expect(getCreateCalls()).toBe(0);
+		}
+	});
+
 	test("offline preview does not list remote credentials", async () => {
 		const { runtime, getListCalls } = await makeRuntime();
 		const result = await planVaultCredentialCreate(runtime, "production", "api-token", {
