@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { isSdkOnly, packedFilename, smokePackages } from "./smoke-packed.ts";
 
 describe("npm pack output", () => {
@@ -22,8 +23,22 @@ describe("--sdk-only mode", () => {
 		expect(isSdkOnly(["--verbose"])).toBe(false);
 	});
 
-	test("restricts the package set to sdk when enabled", () => {
+	test("restricts the package set to Node 18-compatible libraries when enabled", () => {
 		expect(smokePackages(true)).toEqual(["sdk", "project-versions", "project-workspace"]);
+	});
+
+	test("CI builds every library in dependency order before the SDK-only smoke", () => {
+		const workflow = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+		const sdkStep = workflow.match(/ {6}- if: matrix\.scope == 'sdk'\n {8}run: \|\n((?: {10}.*\n)+)/);
+		expect(sdkStep).not.toBeNull();
+		const commands = sdkStep?.[1]
+			.trim()
+			.split("\n")
+			.map((line) => line.trim());
+		expect(commands).toEqual([
+			...smokePackages(true).map((pkg) => `bun run build:${pkg}`),
+			"bun scripts/release/smoke-packed.ts --sdk-only",
+		]);
 	});
 
 	test("keeps the full package set when disabled", () => {
