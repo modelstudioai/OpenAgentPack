@@ -72,7 +72,7 @@ export async function projectBuildCommand(
 	if (options.dryRun) return;
 	if (!options.yes) {
 		const confirmed = await prompts.confirm({
-			message: "Write the generated Build and organize shared skills?",
+			message: "Write the Build, inferred resource associations, and Vault secret references (.env)?",
 			output: process.stderr,
 		});
 		if (prompts.isCancel(confirmed) || !confirmed) {

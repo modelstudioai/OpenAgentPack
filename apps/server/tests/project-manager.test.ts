@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +7,7 @@ import {
 	getProjectBuildStatus,
 	initializeDirectoryProject,
 } from "@openagentpack/project-workspace";
+import { listProjectDeclarations } from "../src/services/project-declarations";
 import { ProjectRuntimeManager } from "../src/services/project-manager";
 
 const directories: string[] = [];
@@ -20,6 +21,52 @@ afterEach(async () => {
 });
 
 describe("ProjectRuntimeManager", () => {
+	test("does not expose initialization examples as Workbench declarations", async () => {
+		const directory = await initializedProject("ignored-examples");
+		const manager = trackManager(new ProjectRuntimeManager(directory));
+		await manager.ensureStarted();
+		expect(manager.getSnapshot().status).toBe("valid");
+		const declarations = await listProjectDeclarations(manager);
+		expect(declarations.resources.map((resource) => `${resource.type}.${resource.id}`)).toEqual(["agent.assistant"]);
+	});
+	test("reloads generated Vault references using the project-local .env after Build", async () => {
+		const directory = await initializedProject("vault-build");
+		const vaultPath = join(directory, "agents/assistant/vaults/secrets/vault.json");
+		await mkdir(join(vaultPath, ".."), { recursive: true });
+		await writeFile(
+			vaultPath,
+			JSON.stringify({
+				id: "secrets",
+				display_name: "Secrets",
+				credentials: [
+					{
+						name: "runtime",
+						type: "environment_variable",
+						secret_name: "TOKEN",
+						secret_value: "local-only-runtime-secret",
+					},
+				],
+			}),
+		);
+		const manager = trackManager(new ProjectRuntimeManager(directory));
+		await manager.ensureStarted();
+		await commitProjectBuild({ projectRoot: directory, baseRevision: manager.getSnapshot().revision! });
+		await manager.refreshAfterSourceMutation();
+		expect(manager.getSnapshot().status).toBe("valid");
+		expect(manager.getSnapshot().config?.vaults?.secrets?.credentials[0]).toMatchObject({
+			secret_value: "local-only-runtime-secret",
+		});
+		expect(await readFile(vaultPath, "utf8")).not.toContain("local-only-runtime-secret");
+		const environmentPath = join(directory, ".env");
+		await writeFile(
+			environmentPath,
+			(await readFile(environmentPath, "utf8")).replace("local-only-runtime-secret", "updated-local-runtime-secret"),
+		);
+		await manager.refreshAfterSourceMutation();
+		expect(manager.getSnapshot().config?.vaults?.secrets?.credentials[0]).toMatchObject({
+			secret_value: "updated-local-runtime-secret",
+		});
+	});
 	test("surfaces a missing directory project and watches its root", async () => {
 		const directory = await temporaryDirectory("missing");
 		const manager = trackManager(new ProjectRuntimeManager(directory));

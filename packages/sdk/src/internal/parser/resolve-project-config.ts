@@ -1,7 +1,7 @@
 import { basename, dirname, resolve } from "node:path";
 import { UserError } from "../errors.ts";
 import type { ProjectConfig, ResolvedProjectConfig } from "../types/config.ts";
-import { interpolateEnvVars } from "../utils/env.ts";
+import { interpolateObjectEnv } from "../utils/env.ts";
 import { resolveFileReferences } from "./file-resolver.ts";
 import { projectConfigSchema } from "./schema.ts";
 import { loadConfig } from "./yaml-loader.ts";
@@ -11,6 +11,8 @@ export interface ResolveProjectConfigOptions {
 	projectName?: string;
 	/** Expand `${env:...}` references while loading (defaults to true). */
 	resolveEnv?: boolean;
+	/** Project-local fallback values; the process environment takes precedence. Never mutates process.env. */
+	environment?: Record<string, string>;
 }
 
 export interface LoadedProjectConfig {
@@ -32,7 +34,11 @@ export async function resolveProjectConfig(
 ): Promise<LoadedProjectConfig> {
 	const configPath = resolve(filePath);
 	const projectName = options.projectName ?? basename(dirname(configPath));
-	const { config: parsed, errors } = await loadConfig(configPath, options.resolveEnv ?? true);
+	const { config: parsed, errors } = await loadConfig(
+		configPath,
+		options.resolveEnv ?? true,
+		options.environment ? { ...options.environment, ...process.env } : undefined,
+	);
 	if (errors.length > 0) {
 		throw new UserError(errors.join("\n"));
 	}
@@ -56,6 +62,8 @@ export interface ResolveProjectConfigFromObjectOptions {
 	basePath?: string;
 	/** Resolve `${ENV_VAR}` references recursively before schema validation. */
 	resolveEnv?: boolean;
+	/** Project-local fallback values; the process environment takes precedence. */
+	environment?: Record<string, string>;
 }
 
 /**
@@ -69,7 +77,9 @@ export async function resolveProjectConfigFromObject(
 	options: ResolveProjectConfigFromObjectOptions,
 ): Promise<LoadedProjectConfig> {
 	const basePath = resolve(options.basePath ?? process.cwd());
-	const input = options.resolveEnv ? interpolateObjectEnv(rawConfig) : rawConfig;
+	const input = options.resolveEnv
+		? interpolateObjectEnv(rawConfig, { ...options.environment, ...process.env })
+		: rawConfig;
 	const result = projectConfigSchema.safeParse(input);
 	if (!result.success) {
 		const errors = result.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`);
@@ -82,15 +92,6 @@ export async function resolveProjectConfigFromObject(
 	const sourcePaths = collectProjectSourcePaths(parsed, anchor, false);
 	const config = await resolveFileReferences(parsed, anchor);
 	return { configPath: basePath, projectName: options.projectName, config, sourcePaths };
-}
-
-function interpolateObjectEnv(value: unknown): unknown {
-	if (typeof value === "string") return interpolateEnvVars(value, true);
-	if (Array.isArray(value)) return value.map(interpolateObjectEnv);
-	if (!value || typeof value !== "object") return value;
-	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, interpolateObjectEnv(entry)]),
-	);
 }
 
 function collectProjectSourcePaths(config: ProjectConfig, configPath: string, includeConfigPath: boolean): string[] {

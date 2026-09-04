@@ -1,4 +1,4 @@
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { UserError } from "../errors.ts";
 import { computeComparableDesiredHash } from "../planner/comparable.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
@@ -652,7 +652,9 @@ async function executeActionInner(
 				}
 			}
 			const info = await provider.uploadFile(filePath, {
-				name: decl.name,
+				// Keep the source filename and extension; a declaration label must not
+				// change the multipart filename or the provider's inferred MIME type.
+				name: basename(filePath),
 				purpose: decl.purpose,
 			});
 			result = { id: info.id, type: "file" };

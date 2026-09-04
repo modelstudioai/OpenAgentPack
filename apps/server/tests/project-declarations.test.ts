@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireDirectoryProjectMutation } from "@openagentpack/project-workspace";
+import {
+	acquireDirectoryProjectMutation,
+	FILE_AUTO_ASSOCIATION_IGNORE_FILE,
+	previewProjectBuild,
+} from "@openagentpack/project-workspace";
 import {
 	commitDeclarationChange,
 	listProjectDeclarations,
@@ -223,6 +227,15 @@ describe("directory project declaration editing", () => {
 
 		expect(await stat(join(directory, "agents/assistant/files/input/file.json")).catch(() => null)).toBeNull();
 		expect(await readFile(join(directory, "agents/assistant/files/input/input.txt"), "utf8")).toBe("Keep local file\n");
+		expect(
+			await stat(join(directory, "agents/assistant/files/input", FILE_AUTO_ASSOCIATION_IGNORE_FILE)).then(
+				() => true,
+				() => false,
+			),
+		).toBe(true);
+		const buildPreview = await previewProjectBuild(directory);
+		expect(buildPreview.warnings.map((diagnostic) => diagnostic.code)).not.toContain("project.file.metadata.inferred");
+		expect(buildPreview.canonical_yaml).not.toContain("../../agents/assistant/files/input/input.txt");
 	});
 
 	test("preserves redacted Vault values and redacts replacement secrets in Preview", async () => {

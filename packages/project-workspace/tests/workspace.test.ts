@@ -49,6 +49,77 @@ describe("directory project build", () => {
 		expect((await getProjectBuildStatus(root)).stale).toBe(true);
 	});
 
+	test("auto-associates Agent-local Skill and File content during Build", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		const skillDirectory = resolve(root, "agents/assistant/skills/writer");
+		const filesDirectory = resolve(root, "agents/assistant/files");
+		await mkdir(resolve(skillDirectory, "scripts"), { recursive: true });
+		await mkdir(filesDirectory, { recursive: true });
+		await writeFile(resolve(skillDirectory, "SKILL.md"), "# Writer\n");
+		await writeFile(resolve(skillDirectory, "scripts/run.ts"), "export const run = true;\n");
+		await writeFile(resolve(filesDirectory, "brief.txt"), "Build this brief.\n");
+
+		const preview = await previewProjectBuild(root);
+		expect(preview.can_build).toBe(true);
+		expect(preview.warnings.map((diagnostic) => diagnostic.code)).toEqual(
+			expect.arrayContaining([
+				"project.skill.metadata.inferred",
+				"project.skill.agent_link.inferred",
+				"project.file.discovered",
+				"project.file.agent_link.inferred",
+			]),
+		);
+		expect(preview.canonical_yaml).toContain("    skills:\n      - writer");
+		expect(preview.canonical_yaml).toContain("mount_path: /mnt/brief.txt");
+		expect(preview.canonical_yaml).toContain("../../agents/assistant/files/brief/brief.txt");
+		expect(preview.source_files.map((file) => file.path)).toContain("agents/assistant/skills/writer/scripts/run.ts");
+		await expect(stat(resolve(skillDirectory, "skill.json"))).rejects.toMatchObject({ code: "ENOENT" });
+		await expect(stat(resolve(filesDirectory, "brief/file.json"))).rejects.toMatchObject({ code: "ENOENT" });
+
+		const built = await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		expect(JSON.parse(await readFile(resolve(skillDirectory, "skill.json"), "utf8"))).toEqual({ id: "writer" });
+		expect(JSON.parse(await readFile(resolve(filesDirectory, "brief/file.json"), "utf8"))).toEqual({
+			id: "brief",
+			name: "brief.txt",
+			source: "./brief.txt",
+		});
+		expect(await readFile(resolve(filesDirectory, "brief/brief.txt"), "utf8")).toBe("Build this brief.\n");
+		await expect(stat(resolve(filesDirectory, "brief.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+		const agent = JSON.parse(await readFile(resolve(root, "agents/assistant/agent.json"), "utf8"));
+		expect(agent.skills).toEqual(["writer"]);
+		expect(agent.files).toEqual([{ file: "brief", mount_path: "/mnt/brief.txt" }]);
+		expect(built.manifest.project_revision).not.toBe(preview.project_revision);
+		expect((await getProjectBuildStatus(root)).stale).toBe(false);
+	});
+
+	test("auto-associates a File already placed in its Agent-local resource directory", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		const fileDirectory = resolve(root, "agents/assistant/files/mount");
+		await mkdir(fileDirectory, { recursive: true });
+		await writeFile(resolve(fileDirectory, "mount.md"), "Mounted content.\n");
+
+		const preview = await previewProjectBuild(root);
+		expect(preview.can_build).toBe(true);
+		expect(preview.warnings.map((diagnostic) => diagnostic.code)).toEqual(
+			expect.arrayContaining(["project.file.metadata.inferred", "project.file.agent_link.inferred"]),
+		);
+		expect(preview.canonical_yaml).toContain("mount_path: /mnt/mount.md");
+		expect(preview.canonical_yaml).toContain("../../agents/assistant/files/mount/mount.md");
+		await expect(stat(resolve(fileDirectory, "file.json"))).rejects.toMatchObject({ code: "ENOENT" });
+
+		await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		expect(JSON.parse(await readFile(resolve(fileDirectory, "file.json"), "utf8"))).toEqual({
+			id: "mount",
+			name: "mount.md",
+			source: "./mount.md",
+		});
+		expect(JSON.parse(await readFile(resolve(root, "agents/assistant/agent.json"), "utf8")).files).toEqual([
+			{ file: "mount", mount_path: "/mnt/mount.md" },
+		]);
+	});
+
 	test("does not modify an existing user-managed environment file during initialization", async () => {
 		const root = await temporaryProject();
 		await writeFile(resolve(root, ".env"), "DASHSCOPE_API_KEY=existing\n", { mode: 0o640 });

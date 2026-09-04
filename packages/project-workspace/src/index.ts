@@ -13,7 +13,7 @@ import {
 	stat,
 	writeFile,
 } from "node:fs/promises";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
 	createDirectoryProjectVersionService,
 	type DirectoryProjectSnapshot,
@@ -38,12 +38,20 @@ import {
 	writeProjectRuntime,
 } from "@openagentpack/sdk";
 import { parse, stringify } from "yaml";
+import { directoryProjectScaffold, RESOURCE_EXAMPLES_DIRECTORY } from "./scaffold.ts";
+import {
+	applyVaultSecretMigration,
+	planVaultSecretMigration,
+	readProjectEnvironment,
+	redactVaultText,
+} from "./vault-secrets.ts";
 
 export const PROJECT_METADATA_FILE = "project.json";
 export const PROJECT_INTERNAL_DIRECTORY = ".openagentpack";
 export const PROJECT_BUILD_FILE = ".openagentpack/build/agents.yaml";
 export const PROJECT_BUILD_MANIFEST = ".openagentpack/build/manifest.json";
 export const PROJECT_STATE_FILE = ".openagentpack/state.json";
+export const FILE_AUTO_ASSOCIATION_IGNORE_FILE = ".openagentpack-ignore";
 
 const DIRECTORY_PROJECT_PROVIDER = "bailian";
 const DIRECTORY_PROJECT_PROVIDER_CONFIG = {
@@ -173,7 +181,10 @@ export interface DirectoryProjectMutationLease {
 	release(): Promise<void>;
 }
 
-export type ProjectBuildResolver = (buildPath: string) => Promise<LoadedProjectConfig>;
+export type ProjectBuildResolver = (
+	buildPath: string,
+	options?: { environment?: Record<string, string> },
+) => Promise<LoadedProjectConfig>;
 
 export async function resolveDirectoryProjectRoot(input = "."): Promise<string> {
 	const root = resolve(input);
@@ -185,12 +196,20 @@ export async function resolveDirectoryProjectRoot(input = "."): Promise<string> 
 export async function inspectDirectoryProject(projectDirectory = "."): Promise<DirectoryProjectInspection> {
 	const projectRoot = await resolveDirectoryProjectRoot(projectDirectory);
 	const sourceFiles = await scanProjectSource(projectRoot);
+	return inspectSourceFiles(projectRoot, sourceFiles);
+}
+
+async function inspectSourceFiles(
+	projectRoot: string,
+	sourceFiles: ProjectSourceFile[],
+	metadataOverrides?: Map<string, Record<string, unknown>>,
+): Promise<DirectoryProjectInspection> {
 	const projectRevision = hashFiles(sourceFiles);
 	const diagnostics: Diagnostic[] = [];
 	const warnings: Diagnostic[] = [];
 	let assembled: AssembledProject | null = null;
 	try {
-		assembled = await assembleProject(projectRoot, sourceFiles);
+		assembled = await assembleProject(projectRoot, sourceFiles, metadataOverrides);
 		diagnostics.push(...assembled.diagnostics);
 		warnings.push(...assembled.warnings);
 	} catch (error) {
@@ -223,6 +242,7 @@ export async function resolveDirectoryProjectRuntime(projectDirectory = "."): Pr
 		projectName: basename(inspection.project_root),
 		basePath: resolve(inspection.project_root, ".openagentpack/build"),
 		resolveEnv: true,
+		environment: await readProjectEnvironment(inspection.project_root),
 	});
 }
 
@@ -251,12 +271,52 @@ export async function getProjectBuildStatus(
 }
 
 export async function previewProjectBuild(projectDirectory = "."): Promise<ProjectBuildPreview> {
-	const inspection = await inspectDirectoryProject(projectDirectory);
+	const projectRoot = await resolveDirectoryProjectRoot(projectDirectory);
+	const sourceFiles = await scanProjectSource(projectRoot);
+	let migration: Awaited<ReturnType<typeof planVaultSecretMigration>> | undefined;
+	let migrationError: Diagnostic | undefined;
+	try {
+		migration = await planVaultSecretMigration(projectRoot, sourceFiles);
+	} catch (error) {
+		migrationError = toDiagnostic(error);
+	}
+	const inspection = await inspectSourceFiles(projectRoot, sourceFiles, migration?.overrides);
+	const literals = migration?.literals ?? [];
+	if (migrationError) {
+		inspection.diagnostics = [migrationError];
+		inspection.canonical_yaml = "# Vault migration could not be previewed safely.\n";
+	} else if (migration?.count) {
+		inspection.warnings.push({
+			severity: "warning",
+			code: "project.vault.secrets.externalized",
+			message: `${migration.count} Vault secret(s) will move to project .env; vault.json will use environment references. / ${migration.count} 个 Vault 密钥将移入项目 .env，vault.json 将改用环境变量引用。`,
+		});
+	}
+	inspection.loaded = null;
+	inspection.diagnostics = inspection.diagnostics.map((diagnostic) => ({
+		...diagnostic,
+		message: redactVaultText(diagnostic.message, literals),
+	}));
+	inspection.warnings = inspection.warnings.map((diagnostic) => ({
+		...diagnostic,
+		message: redactVaultText(diagnostic.message, literals),
+	}));
+	// Preview carries display copies only. Revision checks and version snapshots
+	// always rescan the original source, never these normalized/redacted copies.
+	inspection.source_files = sourceFiles.map((file) => {
+		if (hasErrors(inspection.diagnostics) && file.path.endsWith("/vault.json"))
+			return { ...file, content: Buffer.from("[omitted]") };
+		const normalized = migration?.overrides.get(file.path);
+		if (normalized) return { ...file, content: Buffer.from(JSON.stringify(normalized, null, 2)) };
+		if (!literals.some((literal) => Buffer.from(file.content).includes(literal))) return file;
+		return { ...file, content: Buffer.from("[omitted: contains a Vault secret]") };
+	});
 	const buildStatus = await getProjectBuildStatus(inspection.project_root, inspection);
 	const beforeYaml = await readFile(resolve(inspection.project_root, PROJECT_BUILD_FILE), "utf8").catch(() => "");
+	const safeBefore = await inspectProjectSource(beforeYaml, resolve(projectRoot, PROJECT_BUILD_FILE));
 	return {
 		...inspection,
-		before_yaml: beforeYaml,
+		before_yaml: safeBefore.redacted_source,
 		after_yaml: inspection.canonical_yaml,
 		build_status: buildStatus,
 		can_build: !hasErrors(inspection.diagnostics),
@@ -272,9 +332,21 @@ export async function commitProjectBuild(input: {
 		if (before.project_revision !== input.baseRevision)
 			throw new UserError("Project source changed. Preview Build again.");
 		if (!before.can_build) throw new UserError("Project contains errors and cannot be built.");
+		const sourceFiles = await scanProjectSource(before.project_root);
+		if (hashFiles(sourceFiles) !== input.baseRevision)
+			throw new UserError("Project source changed. Preview Build again.");
+		const migration = await planVaultSecretMigration(before.project_root, sourceFiles);
+		const assembled = await assembleProject(before.project_root, sourceFiles, migration.overrides);
+		if (hasErrors(assembled.diagnostics)) throw new UserError("Project contains errors and cannot be built.");
+		await applyVaultSecretMigration(before.project_root, sourceFiles, migration);
+		await applyProjectAutoAssociations(before.project_root, assembled.autoAssociations);
 		for (const move of before.organization_moves) await applyOrganizationMove(before.project_root, move);
 		const after = await previewProjectBuild(before.project_root);
 		if (!after.can_build) throw new UserError("Organized project contains errors and cannot be built.");
+		const materialized = await inspectDirectoryProject(before.project_root);
+		if (materialized.project_revision !== after.project_revision || materialized.yaml_hash !== after.yaml_hash) {
+			throw new UserError("Project source changed during Build. Preview Build again.");
+		}
 		const manifest: ProjectBuildManifest = {
 			schema_version: 1,
 			project_revision: after.project_revision,
@@ -322,7 +394,9 @@ export async function planProjectPublish(
 	} = {},
 ): Promise<ProjectPublishPlan> {
 	const build = await readValidProjectBuild(projectDirectory);
-	const loaded = await (options.resolveBuild ?? resolveProjectConfig)(build.buildPath);
+	const loaded = await (options.resolveBuild ?? resolveProjectConfig)(build.buildPath, {
+		environment: await readProjectEnvironment(build.inspection.project_root),
+	});
 	const planned = await planProjectWithStateBackend(
 		{
 			projectName: basename(build.inspection.project_root),
@@ -378,7 +452,9 @@ export async function executeProjectPublish(input: {
 		) {
 			throw new UserError("Project or Build changed while Publish was starting.");
 		}
-		const loaded = await (input.resolveBuild ?? resolveProjectConfig)(checked.buildPath);
+		const loaded = await (input.resolveBuild ?? resolveProjectConfig)(checked.buildPath, {
+			environment: await readProjectEnvironment(checked.inspection.project_root),
+		});
 		const run = await writeProjectRuntime(
 			{
 				projectName: basename(checked.inspection.project_root),
@@ -491,6 +567,7 @@ interface AssembledProject {
 	diagnostics: Diagnostic[];
 	warnings: Diagnostic[];
 	moves: ProjectOrganizationMove[];
+	autoAssociations: ProjectAutoAssociationPlan;
 }
 
 interface LocalSkill {
@@ -499,13 +576,26 @@ interface LocalSkill {
 	location: string;
 	relativeDirectory: string;
 	rootSkill: boolean;
+	ownerAgent?: string;
+	inferred?: boolean;
 }
 
 interface LocalDirectoryResource extends DirectoryResourceSource {
 	metadata: Record<string, unknown>;
+	inferred?: boolean;
 }
 
-async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFile[]): Promise<AssembledProject> {
+interface ProjectAutoAssociationPlan {
+	fileMoves: Array<{ from: string; to: string }>;
+	jsonWrites: Map<string, Record<string, unknown>>;
+	warnings: Diagnostic[];
+}
+
+async function assembleProject(
+	projectRoot: string,
+	sourceFiles: ProjectSourceFile[],
+	metadataOverrides?: Map<string, Record<string, unknown>>,
+): Promise<AssembledProject> {
 	if (!sourceFiles.some((file) => file.path === PROJECT_METADATA_FILE)) {
 		throw new UserError(`Missing ${PROJECT_METADATA_FILE}. Run project init first.`);
 	}
@@ -530,12 +620,20 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 		);
 	}
 	const agents: Record<string, Record<string, unknown>> = {};
+	const agentSources = new Map<string, Record<string, unknown>>();
+	const autoAssociations: ProjectAutoAssociationPlan = {
+		fileMoves: [],
+		jsonWrites: new Map(),
+		warnings: [],
+	};
 	const agentDirectories = await childDirectories(resolve(projectRoot, "agents"));
 	for (const agentId of agentDirectories) {
 		const agentDirectory = resolve(projectRoot, "agents", agentId);
 		const agentPath = resolve(agentDirectory, "agent.json");
 		if (!(await pathExists(agentPath))) continue;
-		const agent = await readJsonObject(agentPath);
+		const agentSource = await readJsonObject(agentPath);
+		agentSources.set(agentId, agentSource);
+		const agent = structuredClone(agentSource);
 		if ("id" in agent && agent.id !== agentId)
 			throw new UserError(`agents/${agentId}/agent.json: id cannot differ from its directory name.`);
 		delete agent.id;
@@ -548,11 +646,14 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 			instructions: buildRelativePath(`agents/${agentId}/instructions.md`),
 		};
 	}
-	const skills = await discoverSkills(projectRoot, agentDirectories);
+	const skills = await discoverSkills(projectRoot, agentDirectories, autoAssociations);
 	const skillById = new Map<string, LocalSkill>();
 	for (const skill of skills) {
 		if (skillById.has(skill.id)) throw new UserError(`Duplicate local skill id: ${skill.id}`);
 		skillById.set(skill.id, skill);
+		if (skill.ownerAgent && skill.inferred) {
+			autoAssociateSkill(skill, projectRoot, agents, agentSources, autoAssociations);
+		}
 	}
 	const referenceCounts = countSkillReferences(agents, skillById);
 	const moves: ProjectOrganizationMove[] = [];
@@ -567,7 +668,7 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 			});
 		}
 	}
-	const warnings: Diagnostic[] = [];
+	const warnings: Diagnostic[] = autoAssociations.warnings;
 	const skillDeclarations: Record<string, Record<string, unknown>> = {};
 	for (const skill of skills) {
 		const references = referenceCounts.get(skill.id)?.size ?? 0;
@@ -587,12 +688,20 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 		delete declaration.source;
 		skillDeclarations[skill.id] = { ...declaration, source: buildRelativePath(finalDirectory) };
 	}
-	const resources = await discoverDirectoryResources(projectRoot, agentDirectories);
+	const resources = await discoverDirectoryResources(
+		projectRoot,
+		agentDirectories,
+		autoAssociations,
+		metadataOverrides,
+	);
 	const resourceKeys = new Set<string>();
 	for (const resource of resources) {
 		const key = `${resource.type}:${resource.id}`;
 		if (resourceKeys.has(key)) throw new UserError(`Duplicate ${resource.type} id: ${resource.id}`);
 		resourceKeys.add(key);
+		if (resource.type === "file" && resource.owner_agent && resource.inferred) {
+			autoAssociateFile(resource, projectRoot, agents, agentSources, autoAssociations);
+		}
 		if (
 			resource.owner_agent &&
 			isDirectoryResourceShared(resource.type, resource.id, resource.owner_agent, agents, project)
@@ -630,7 +739,7 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 	});
 	const diagnostics = validateProjectConfig(loaded.config);
 	const canonicalYaml = stringify(sortObjectDeep(rawConfig), { lineWidth: 0, sortMapEntries: true });
-	return { canonicalYaml, loaded, diagnostics, warnings, moves };
+	return { canonicalYaml, loaded, diagnostics, warnings, moves, autoAssociations };
 }
 
 function directoryResourceDeclarationForBuild(
@@ -646,11 +755,11 @@ function directoryResourceDeclarationForBuild(
 	if (isAbsolute(declaration.source)) {
 		throw new UserError(`${resource.relative_directory}/file.json: source must be relative to the File directory.`);
 	}
-	const sourcePath = resolve(projectRoot, resource.relative_directory, declaration.source);
+	const sourcePath = resolve(resource.directory, declaration.source);
 	if (!isPathInside(projectRoot, sourcePath)) {
 		throw new UserError(`${resource.relative_directory}/file.json: source escapes the project root.`);
 	}
-	const sourceRelativeToResource = relative(resolve(projectRoot, resource.relative_directory), sourcePath);
+	const sourceRelativeToResource = relative(resource.directory, sourcePath);
 	const finalSourcePath = resolve(projectRoot, finalDirectory, sourceRelativeToResource);
 	const projectRelative = relative(projectRoot, finalSourcePath).split(sep).join("/");
 	declaration.source = buildRelativePath(projectRelative);
@@ -678,6 +787,8 @@ export async function locateDirectoryProjectResource(
 async function discoverDirectoryResources(
 	projectRoot: string,
 	agentDirectories: string[],
+	autoAssociations: ProjectAutoAssociationPlan = createProjectAutoAssociationPlan(),
+	metadataOverrides?: Map<string, Record<string, unknown>>,
 ): Promise<LocalDirectoryResource[]> {
 	const locations: Array<{
 		type: DirectoryResourceType;
@@ -688,7 +799,7 @@ async function discoverDirectoryResources(
 	}> = [];
 	for (const type of DIRECTORY_RESOURCE_TYPES) {
 		const spec = DIRECTORY_RESOURCE_SPECS[type];
-		for (const resourceId of await childDirectories(resolve(projectRoot, "resources", spec.directory))) {
+		for (const resourceId of await resourceDirectories(resolve(projectRoot, "resources", spec.directory))) {
 			locations.push({
 				type,
 				id: resourceId,
@@ -697,7 +808,7 @@ async function discoverDirectoryResources(
 			});
 		}
 		for (const agentId of agentDirectories) {
-			for (const resourceId of await childDirectories(resolve(projectRoot, "agents", agentId, spec.directory))) {
+			for (const resourceId of await resourceDirectories(resolve(projectRoot, "agents", agentId, spec.directory))) {
 				locations.push({
 					type,
 					id: resourceId,
@@ -712,11 +823,33 @@ async function discoverDirectoryResources(
 	for (const location of locations) {
 		const metadataFile = DIRECTORY_RESOURCE_SPECS[location.type].metadataFile;
 		const metadataPath = resolve(location.directory, metadataFile);
-		if (!(await pathExists(metadataPath))) {
+		let metadata: Record<string, unknown>;
+		let inferred = false;
+		if (await pathExists(metadataPath)) {
+			metadata =
+				metadataOverrides?.get(`${location.relativeDirectory}/${metadataFile}`) ?? (await readJsonObject(metadataPath));
+		} else if (location.type === "file" && location.ownerAgent) {
+			if (await pathExists(resolve(location.directory, FILE_AUTO_ASSOCIATION_IGNORE_FILE))) continue;
+			const fileNames = await directProjectFiles(location.directory);
+			if (fileNames.length === 0) continue;
+			if (fileNames.length > 1) {
+				throw new UserError(
+					`${location.relativeDirectory}/file.json is required when a File directory contains multiple files.`,
+				);
+			}
+			const [fileName] = fileNames;
+			metadata = { id: location.id, name: fileName, source: `./${fileName}` };
+			inferred = true;
+			planJsonWrite(autoAssociations, projectRoot, metadataPath, metadata);
+			autoAssociations.warnings.push({
+				severity: "warning",
+				code: "project.file.metadata.inferred",
+				message: `${location.relativeDirectory}/${fileName} will become File '${location.id}'.`,
+			});
+		} else {
 			if (location.type === "file") continue;
 			throw new UserError(`${location.relativeDirectory}/${metadataFile} is required.`);
 		}
-		const metadata = await readJsonObject(metadataPath);
 		if (metadata.id !== location.id) {
 			throw new UserError(`${location.relativeDirectory}/${metadataFile}: id must be '${location.id}'.`);
 		}
@@ -728,7 +861,37 @@ async function discoverDirectoryResources(
 			relative_directory: location.relativeDirectory,
 			...(location.ownerAgent ? { owner_agent: location.ownerAgent } : {}),
 			metadata,
+			...(inferred ? { inferred: true } : {}),
 		});
+	}
+	for (const agentId of agentDirectories) {
+		const filesDirectory = resolve(projectRoot, "agents", agentId, DIRECTORY_RESOURCE_SPECS.file.directory);
+		for (const fileName of await directProjectFiles(filesDirectory)) {
+			const resourceId = inferFileResourceId(fileName);
+			const relativeDirectory = `agents/${agentId}/files/${resourceId}`;
+			const destinationDirectory = resolve(projectRoot, relativeDirectory);
+			const metadata = { id: resourceId, name: fileName, source: `./${fileName}` };
+			resources.push({
+				type: "file",
+				id: resourceId,
+				path: resolve(destinationDirectory, "file.json"),
+				directory: filesDirectory,
+				relative_directory: relativeDirectory,
+				owner_agent: agentId,
+				metadata,
+				inferred: true,
+			});
+			autoAssociations.fileMoves.push({
+				from: `agents/${agentId}/files/${fileName}`,
+				to: `${relativeDirectory}/${fileName}`,
+			});
+			planJsonWrite(autoAssociations, projectRoot, resolve(destinationDirectory, "file.json"), metadata);
+			autoAssociations.warnings.push({
+				severity: "warning",
+				code: "project.file.discovered",
+				message: `agents/${agentId}/files/${fileName} will become File '${resourceId}' and be linked to Agent '${agentId}'.`,
+			});
+		}
 	}
 	return resources;
 }
@@ -781,9 +944,18 @@ function deploymentReferencesDirectoryResource(
 	);
 }
 
-async function discoverSkills(projectRoot: string, agentDirectories: string[]): Promise<LocalSkill[]> {
-	const locations: Array<{ path: string; relativeDirectory: string; rootSkill: boolean }> = [];
-	for (const skillDirectory of await childDirectories(resolve(projectRoot, "skills"))) {
+async function discoverSkills(
+	projectRoot: string,
+	agentDirectories: string[],
+	autoAssociations: ProjectAutoAssociationPlan,
+): Promise<LocalSkill[]> {
+	const locations: Array<{
+		path: string;
+		relativeDirectory: string;
+		rootSkill: boolean;
+		ownerAgent?: string;
+	}> = [];
+	for (const skillDirectory of await resourceDirectories(resolve(projectRoot, "skills"))) {
 		locations.push({
 			path: resolve(projectRoot, "skills", skillDirectory),
 			relativeDirectory: `skills/${skillDirectory}`,
@@ -791,19 +963,35 @@ async function discoverSkills(projectRoot: string, agentDirectories: string[]): 
 		});
 	}
 	for (const agentId of agentDirectories) {
-		for (const skillDirectory of await childDirectories(resolve(projectRoot, "agents", agentId, "skills"))) {
+		for (const skillDirectory of await resourceDirectories(resolve(projectRoot, "agents", agentId, "skills"))) {
 			locations.push({
 				path: resolve(projectRoot, "agents", agentId, "skills", skillDirectory),
 				relativeDirectory: `agents/${agentId}/skills/${skillDirectory}`,
 				rootSkill: false,
+				ownerAgent: agentId,
 			});
 		}
 	}
 	const result: LocalSkill[] = [];
 	for (const location of locations) {
 		const metadataPath = resolve(location.path, "skill.json");
-		if (!(await pathExists(metadataPath))) continue;
-		const metadata = await readJsonObject(metadataPath);
+		let metadata: Record<string, unknown>;
+		let inferred = false;
+		if (await pathExists(metadataPath)) {
+			metadata = await readJsonObject(metadataPath);
+		} else if (location.ownerAgent && (await pathExists(resolve(location.path, "SKILL.md")))) {
+			const skillId = basename(location.path);
+			metadata = { id: skillId };
+			inferred = true;
+			planJsonWrite(autoAssociations, projectRoot, metadataPath, metadata);
+			autoAssociations.warnings.push({
+				severity: "warning",
+				code: "project.skill.metadata.inferred",
+				message: `${location.relativeDirectory}/skill.json will be created for Skill '${skillId}'.`,
+			});
+		} else {
+			continue;
+		}
 		if (typeof metadata.id !== "string" || !metadata.id.trim())
 			throw new UserError(`${relative(projectRoot, metadataPath)}: id is required.`);
 		if (!(await pathExists(resolve(location.path, "SKILL.md"))))
@@ -814,9 +1002,84 @@ async function discoverSkills(projectRoot: string, agentDirectories: string[]): 
 			location: location.relativeDirectory,
 			relativeDirectory: location.relativeDirectory,
 			rootSkill: location.rootSkill,
+			...(location.ownerAgent ? { ownerAgent: location.ownerAgent } : {}),
+			...(inferred ? { inferred: true } : {}),
 		});
 	}
 	return result;
+}
+
+function autoAssociateSkill(
+	skill: LocalSkill,
+	projectRoot: string,
+	agents: Record<string, Record<string, unknown>>,
+	agentSources: Map<string, Record<string, unknown>>,
+	autoAssociations: ProjectAutoAssociationPlan,
+): void {
+	const ownerAgent = skill.ownerAgent;
+	if (!ownerAgent) return;
+	const agent = agents[ownerAgent];
+	const agentSource = agentSources.get(ownerAgent);
+	if (!agent || !agentSource) return;
+	if (agent.skills !== undefined && !Array.isArray(agent.skills)) return;
+	const references = Array.isArray(agent.skills) ? agent.skills : [];
+	if (references.some((reference) => skillReferenceId(reference) === skill.id)) return;
+	const nextReferences = [...references, skill.id];
+	agent.skills = nextReferences;
+	agentSource.skills = structuredClone(nextReferences);
+	planJsonWrite(autoAssociations, projectRoot, resolve(projectRoot, "agents", ownerAgent, "agent.json"), agentSource);
+	autoAssociations.warnings.push({
+		severity: "warning",
+		code: "project.skill.agent_link.inferred",
+		message: `Skill '${skill.id}' will be added to agents/${ownerAgent}/agent.json.`,
+	});
+}
+
+function autoAssociateFile(
+	resource: LocalDirectoryResource,
+	projectRoot: string,
+	agents: Record<string, Record<string, unknown>>,
+	agentSources: Map<string, Record<string, unknown>>,
+	autoAssociations: ProjectAutoAssociationPlan,
+): void {
+	const ownerAgent = resource.owner_agent;
+	if (!ownerAgent) return;
+	const agent = agents[ownerAgent];
+	const agentSource = agentSources.get(ownerAgent);
+	if (!agent || !agentSource) return;
+	if (agent.files !== undefined && !Array.isArray(agent.files)) return;
+	const references = Array.isArray(agent.files) ? agent.files : [];
+	if (references.some((reference) => isRecord(reference) && reference.file === resource.id)) return;
+	const mountPath = defaultFileMountPath(resource);
+	const nextReferences = [...references, { file: resource.id, mount_path: mountPath }];
+	agent.files = nextReferences;
+	agentSource.files = structuredClone(nextReferences);
+	planJsonWrite(autoAssociations, projectRoot, resolve(projectRoot, "agents", ownerAgent, "agent.json"), agentSource);
+	autoAssociations.warnings.push({
+		severity: "warning",
+		code: "project.file.agent_link.inferred",
+		message: `File '${resource.id}' will be mounted at '${mountPath}' in agents/${ownerAgent}/agent.json.`,
+	});
+}
+
+function skillReferenceId(reference: unknown): string | null {
+	if (typeof reference === "string") return reference;
+	return isRecord(reference) && typeof reference.skill_id === "string" ? reference.skill_id : null;
+}
+
+function defaultFileMountPath(resource: LocalDirectoryResource): string {
+	const source = resource.metadata.source;
+	let fileName = resource.id;
+	if (typeof source === "string" && /^https?:\/\//i.test(source)) {
+		try {
+			fileName = basename(new URL(source).pathname) || resource.id;
+		} catch {
+			fileName = resource.id;
+		}
+	} else if (typeof source === "string") {
+		fileName = basename(source) || resource.id;
+	}
+	return `/mnt/${fileName}`;
 }
 
 function countSkillReferences(
@@ -827,8 +1090,7 @@ function countSkillReferences(
 	for (const [agentId, agent] of Object.entries(agents)) {
 		const refs = Array.isArray(agent.skills) ? agent.skills : [];
 		for (const ref of refs) {
-			const id =
-				typeof ref === "string" ? ref : isRecord(ref) && typeof ref.skill_id === "string" ? ref.skill_id : null;
+			const id = skillReferenceId(ref);
 			if (!id || !skills.has(id)) continue;
 			const agentsForSkill = result.get(id) ?? new Set<string>();
 			agentsForSkill.add(agentId);
@@ -1008,6 +1270,31 @@ function snapshotFromInspection(inspection: DirectoryProjectInspection): Directo
 	};
 }
 
+async function applyProjectAutoAssociations(
+	projectRoot: string,
+	autoAssociations: ProjectAutoAssociationPlan,
+): Promise<void> {
+	for (const move of autoAssociations.fileMoves) {
+		const source = resolve(projectRoot, move.from);
+		const destination = resolve(projectRoot, move.to);
+		if (await pathExists(destination)) {
+			throw new UserError(`Cannot organize discovered File: ${move.to} already exists.`);
+		}
+		await mkdir(dirname(destination), { recursive: true });
+		await rename(source, destination);
+	}
+	for (const [relativePath, value] of autoAssociations.jsonWrites) {
+		const destination = resolve(projectRoot, relativePath);
+		const mode = await stat(destination)
+			.then((details) => details.mode & 0o777)
+			.catch((error: unknown) => {
+				if (isFsError(error, "ENOENT")) return 0o644;
+				throw error;
+			});
+		await writeTextAtomic(destination, `${JSON.stringify(value, null, 2)}\n`, mode);
+	}
+}
+
 async function applyOrganizationMove(projectRoot: string, move: ProjectOrganizationMove): Promise<void> {
 	const source = resolve(projectRoot, move.from);
 	const destination = resolve(projectRoot, move.to);
@@ -1018,15 +1305,18 @@ async function applyOrganizationMove(projectRoot: string, move: ProjectOrganizat
 }
 
 async function scaffoldProject(projectRoot: string): Promise<void> {
-	const project = { version: "1" };
-	const agentDirectory = resolve(projectRoot, "agents", "assistant");
-	await mkdir(agentDirectory, { recursive: true });
-	await writeTextAtomic(resolve(projectRoot, PROJECT_METADATA_FILE), `${JSON.stringify(project, null, 2)}\n`);
-	await writeTextAtomic(
-		resolve(agentDirectory, "agent.json"),
-		`${JSON.stringify({ name: "Assistant", model: "qwen3.7-max" }, null, 2)}\n`,
-	);
-	await writeTextAtomic(resolve(agentDirectory, "instructions.md"), "You are a helpful assistant.\n");
+	const files = directoryProjectScaffold();
+	// Reject source symlinks and collisions before writing any scaffold file.
+	await scanProjectSource(projectRoot);
+	for (const path of Object.keys(files)) {
+		const existing = await lstat(resolve(projectRoot, path)).catch((error) => {
+			if (isFsError(error, "ENOENT")) return null;
+			throw error;
+		});
+		if (existing)
+			throw new UserError(`Cannot initialize project: ${path} already exists. / 初始化被阻止：文件已存在。`);
+	}
+	for (const [path, content] of Object.entries(files)) await writeTextAtomic(resolve(projectRoot, path), content);
 }
 
 async function convertYamlProject(projectRoot: string, yamlPath: string): Promise<void> {
@@ -1209,6 +1499,48 @@ async function childDirectories(path: string): Promise<string[]> {
 		if (isFsError(error, "ENOENT")) return [];
 		throw error;
 	}
+}
+
+async function resourceDirectories(path: string): Promise<string[]> {
+	return (await childDirectories(path)).filter((directory) => directory !== RESOURCE_EXAMPLES_DIRECTORY);
+}
+
+function createProjectAutoAssociationPlan(): ProjectAutoAssociationPlan {
+	return { fileMoves: [], jsonWrites: new Map(), warnings: [] };
+}
+
+function planJsonWrite(
+	autoAssociations: ProjectAutoAssociationPlan,
+	projectRoot: string,
+	path: string,
+	value: Record<string, unknown>,
+): void {
+	if (!isPathInside(projectRoot, path))
+		throw new UserError(`Cannot write inferred project metadata outside ${projectRoot}.`);
+	autoAssociations.jsonWrites.set(relative(projectRoot, path).split(sep).join("/"), structuredClone(value));
+}
+
+async function directProjectFiles(directory: string): Promise<string[]> {
+	try {
+		return (await readdir(directory, { withFileTypes: true }))
+			.filter((entry) => entry.isFile() && !entry.name.startsWith(".") && entry.name !== "file.json")
+			.map((entry) => entry.name)
+			.sort();
+	} catch (error) {
+		if (isFsError(error, "ENOENT")) return [];
+		throw error;
+	}
+}
+
+function inferFileResourceId(fileName: string): string {
+	const extension = extname(fileName);
+	const stem = extension ? fileName.slice(0, -extension.length) : fileName;
+	const normalized = stem
+		.normalize("NFKC")
+		.trim()
+		.replace(/[^\p{L}\p{N}_-]+/gu, "-")
+		.replace(/^-+|-+$/g, "");
+	return normalized || `file-${hash(fileName).slice(0, 8)}`;
 }
 
 function buildRelativePath(projectRelativePath: string): string {

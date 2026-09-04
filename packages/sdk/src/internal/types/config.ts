@@ -142,6 +142,7 @@ export interface SkillDecl {
 
 export interface FileDecl {
 	source: string;
+	/** Local label only; declarative uploads preserve the source file's basename. */
 	name?: string;
 	purpose?: string;
 	provider?: ProviderName;

@@ -4,6 +4,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 import {
 	acquireDirectoryProjectMutation,
 	type DirectoryResourceType,
+	FILE_AUTO_ASSOCIATION_IGNORE_FILE,
 	inspectDirectoryProject,
 	locateDirectoryProjectResource,
 } from "@openagentpack/project-workspace";
@@ -405,6 +406,17 @@ async function commitDelete(projectRoot: string, prepared: PreparedDeclarationCh
 	const trash = resolve(projectRoot, ".openagentpack", "trash", `${prepared.type}-${prepared.id}-${randomUUID()}`);
 	await mkdir(dirname(trash), { recursive: true });
 	await rename(prepared.deletePath, trash);
+	if (prepared.type === "file" && prepared.target.kind === "resource") {
+		try {
+			await writeNewTextAtomic(
+				resolve(dirname(prepared.deletePath), FILE_AUTO_ASSOCIATION_IGNORE_FILE),
+				"Workbench removed this File declaration. Delete this marker or add file.json to declare it again.\n",
+			);
+		} catch (error) {
+			await rename(trash, prepared.deletePath);
+			throw error;
+		}
+	}
 }
 
 function deletePathForTarget(type: DeclarationType, target: SourceTarget): string | undefined {
@@ -553,6 +565,17 @@ async function writeTextAtomic(path: string, content: string): Promise<void> {
 	const temporary = resolve(dirname(path), `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
 	try {
 		await writeFile(temporary, content, { encoding: "utf8", mode: details.mode });
+		await rename(temporary, path);
+	} catch (error) {
+		await unlink(temporary).catch(() => undefined);
+		throw error;
+	}
+}
+
+async function writeNewTextAtomic(path: string, content: string): Promise<void> {
+	const temporary = resolve(dirname(path), `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+	try {
+		await writeFile(temporary, content, { encoding: "utf8", mode: 0o600 });
 		await rename(temporary, path);
 	} catch (error) {
 		await unlink(temporary).catch(() => undefined);

@@ -87,6 +87,8 @@ agents project workbench        # edit and debug the same directory project
 
 Directory projects keep global settings in `project.json`, each Agent under `agents/<id>/`, Agent instructions in `instructions.md`, and local Skill source either beside its Agent or under the shared `skills/` directory. Build promotes a Skill to the shared directory when multiple Agents reference it and deterministically writes `.openagentpack/build/agents.yaml`. Publish never runs Build implicitly.
 
+Fresh Init includes Skill, File, Vault, and Environment examples under each resource directory's `_examples/`, with bilingual configuration instructions. They are not linked in `agent.json`, do not enter generated YAML, and are not published remotely. Copy an example outside `_examples/` and configure its Agent reference to enable it.
+
 Workbench and CLI share `agents project version status|enable|disable|list|preview|restore`. Versions are Git-independent full source-tree snapshots: immutable manifests point to content-addressed text and binary blobs, while `.openagentpack/state.json` is always excluded. Restore writes a historical tree forward into the working directory without moving version history or remote State. Deployment and Channel declarations remain read-only in Workbench but participate in full project Publish.
 
 The original YAML workflow remains available through `agents init`, `validate`, `plan`, `apply`, and `destroy`. `agents playground -f agents.yaml` continues to open a YAML Agent Session Preview, but YAML Apply no longer creates project versions and cannot be used inside a directory-project root.

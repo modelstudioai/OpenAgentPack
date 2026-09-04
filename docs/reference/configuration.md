@@ -236,6 +236,11 @@ files:
     provider: <string>         # optional
 ```
 
+Declarative uploads use the basename of `source`, preserving its extension.
+`name` is an optional local label, not an upload filename override. For example,
+`source: ./reference.md` with `name: Assistant Reference` uploads as `reference.md`.
+文件上传使用 `source` 的原始文件名（含扩展名）；`name` 仅作为本地名称，不覆盖上传文件名。
+
 ## Agent
 
 ```yaml
