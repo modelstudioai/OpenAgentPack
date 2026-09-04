@@ -17,7 +17,7 @@
     },
     "apps/server": {
       "name": "@openagentpack/server",
-      "version": "0.0.8",
+      "version": "0.0.11",
       "dependencies": {
         "@hono/zod-openapi": "^1.4.0",
         "@openagentpack/project-versions": "workspace:*",
@@ -69,7 +69,7 @@
     },
     "packages/cli": {
       "name": "@openagentpack/cli",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "bin": {
         "agents": "dist/bin/agents.js",
       },
@@ -98,16 +98,19 @@
     },
     "packages/playground": {
       "name": "@openagentpack/playground",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "bin": {
         "agents-playground": "dist/bin/playground.js",
       },
       "dependencies": {
         "@hono/node-server": "^2.0.5",
         "@hono/zod-openapi": "^1.4.0",
+        "@openagentpack/project-versions": "workspace:*",
+        "@openagentpack/project-workspace": "workspace:*",
         "@openagentpack/sdk": "workspace:*",
         "chokidar": "^4.0.3",
         "hono": "^4.12.28",
+        "yaml": "^2.9.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -120,7 +123,7 @@
     },
     "packages/project-versions": {
       "name": "@openagentpack/project-versions",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "dependencies": {
         "@openagentpack/sdk": "workspace:*",
       },
@@ -132,7 +135,7 @@
     },
     "packages/project-workspace": {
       "name": "@openagentpack/project-workspace",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "dependencies": {
         "@openagentpack/project-versions": "workspace:*",
         "@openagentpack/sdk": "workspace:*",
@@ -146,7 +149,7 @@
     },
     "packages/sdk": {
       "name": "@openagentpack/sdk",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "dependencies": {
         "jszip": "^3.10.1",
         "yaml": "^2.9.0",
