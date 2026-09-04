@@ -13,6 +13,8 @@ import { projectMutationCoordinator } from "../src/services/project-mutations";
 
 const directories: string[] = [];
 const managers: ProjectRuntimeManager[] = [];
+process.env.DASHSCOPE_API_KEY ??= "test-bailian-api-key";
+process.env.BAILIAN_BASE_URL ??= "https://example.com/api/v1/agentstudio";
 
 afterEach(async () => {
 	for (const manager of managers.splice(0)) manager.close();
@@ -32,7 +34,9 @@ describe("directory project declaration editing", () => {
 		expect(agent.declaration.instructions).toBe("External instructions\n");
 		expect(agent.read_only_paths).not.toContainEqual(["instructions"]);
 		expect(skill.declaration.content).toBe("# Helper\n\nHelp the selected Agent.\n");
-		expect(file.declaration.source).toBe("./keep.txt");
+		expect(file.declaration.source).toBe("./input.txt");
+		expect(file.owner_agent).toBe("assistant");
+		expect(file.references.map((reference) => reference.path)).toEqual(["agents.assistant.files"]);
 		expect(agent.references.map((reference) => reference.path)).toContain("deployments.daily.agent");
 		expect(vault.declaration.credentials).toEqual([
 			{
@@ -105,7 +109,12 @@ describe("directory project declaration editing", () => {
 			manager,
 		);
 		const project = JSON.parse(await readFile(join(directory, "project.json"), "utf8"));
-		expect(project.files.input).toEqual({ source: "./keep.txt", name: "Input File" });
+		expect(project.files).toBeUndefined();
+		expect(JSON.parse(await readFile(join(directory, "agents/assistant/files/input/file.json"), "utf8"))).toEqual({
+			id: "input",
+			source: "./input.txt",
+			name: "Input File",
+		});
 	});
 
 	test("rejects stale revisions, missing resources, and writes during another mutation", async () => {
@@ -161,14 +170,19 @@ describe("directory project declaration editing", () => {
 	test("blocks referenced deletes and reports every protected dependency", async () => {
 		const { manager } = await projectFixture();
 		const listed = await listProjectDeclarations(manager);
-		const paths = (type: "agent" | "environment" | "skill" | "vault" | "memory_store", id: string) =>
+		const paths = (type: "agent" | "environment" | "skill" | "vault" | "file", id: string) =>
 			resource(listed.resources, type, id).references.map((reference) => reference.path);
 
 		expect(paths("agent", "assistant")).toContain("deployments.daily.agent");
 		expect(paths("environment", "sandbox")).toEqual(["agents.assistant.environment", "deployments.daily.environment"]);
 		expect(paths("skill", "helper")).toEqual(["agents.assistant.skills"]);
 		expect(paths("vault", "secrets")).toEqual(["agents.assistant.vault", "deployments.daily.vaults"]);
-		expect(paths("memory_store", "memory")).toContain("deployments.daily.resources");
+		expect(paths("file", "input")).toEqual(["agents.assistant.files"]);
+		const filePreview = await previewDeclarationChange(
+			{ type: "file", id: "input", baseRevision: listed.revision, action: "delete" },
+			manager,
+		);
+		expect(filePreview.can_commit).toBe(false);
 
 		const preview = await previewDeclarationChange(
 			{ type: "agent", id: "assistant", baseRevision: listed.revision, action: "delete" },
@@ -200,16 +214,15 @@ describe("directory project declaration editing", () => {
 	});
 
 	test("removes a File declaration without deleting its local source", async () => {
-		const { directory, manager } = await projectFixture();
+		const { directory, manager } = await projectFixture({ fileMount: false });
 		const listed = await listProjectDeclarations(manager);
 		await commitDeclarationChange(
 			{ type: "file", id: "input", baseRevision: listed.revision, action: "delete" },
 			manager,
 		);
 
-		const project = JSON.parse(await readFile(join(directory, "project.json"), "utf8"));
-		expect(project.files).toBeUndefined();
-		expect(await readFile(join(directory, "keep.txt"), "utf8")).toBe("Keep local file\n");
+		expect(await stat(join(directory, "agents/assistant/files/input/file.json")).catch(() => null)).toBeNull();
+		expect(await readFile(join(directory, "agents/assistant/files/input/input.txt"), "utf8")).toBe("Keep local file\n");
 	});
 
 	test("preserves redacted Vault values and redacts replacement secrets in Preview", async () => {
@@ -226,7 +239,9 @@ describe("directory project declaration editing", () => {
 			},
 			manager,
 		);
-		expect(await readFile(join(directory, "project.json"), "utf8")).toContain("literal-secret");
+		expect(await readFile(join(directory, "agents/assistant/vaults/secrets/vault.json"), "utf8")).toContain(
+			"literal-secret",
+		);
 
 		const refreshed = await listProjectDeclarations(manager);
 		const preview = await previewDeclarationChange(
@@ -273,7 +288,7 @@ describe("directory project declaration editing", () => {
 	});
 });
 
-async function projectFixture(options: { deployment?: boolean } = {}): Promise<{
+async function projectFixture(options: { deployment?: boolean; fileMount?: boolean } = {}): Promise<{
 	directory: string;
 	manager: ProjectRuntimeManager;
 }> {
@@ -281,17 +296,20 @@ async function projectFixture(options: { deployment?: boolean } = {}): Promise<{
 	directories.push(directory);
 	await mkdir(join(directory, "agents/assistant"), { recursive: true });
 	await mkdir(join(directory, "skills/helper"), { recursive: true });
+	await mkdir(join(directory, "agents/assistant/environments/sandbox"), { recursive: true });
+	await mkdir(join(directory, "agents/assistant/vaults/secrets"), { recursive: true });
+	await mkdir(join(directory, "agents/assistant/files/input"), { recursive: true });
 	await writeFile(join(directory, "agents/assistant/instructions.md"), "External instructions\n");
 	await writeFile(
 		join(directory, "agents/assistant/agent.json"),
 		`${JSON.stringify(
 			{
 				description: "Existing Agent",
-				model: "ultimate",
+				model: "qwen-plus",
 				environment: "sandbox",
 				skills: ["helper"],
 				vault: "secrets",
-				memory_stores: ["memory"],
+				...(options.fileMount === false ? {} : { files: [{ file: "input", mount_path: "/mnt/input.txt" }] }),
 			},
 			null,
 			2,
@@ -299,14 +317,15 @@ async function projectFixture(options: { deployment?: boolean } = {}): Promise<{
 	);
 	await writeFile(join(directory, "skills/helper/skill.json"), '{"id":"helper","name":"Helper"}\n');
 	await writeFile(join(directory, "skills/helper/SKILL.md"), "# Helper\n\nHelp the selected Agent.\n");
-	await writeFile(join(directory, "keep.txt"), "Keep local file\n");
-	const project: Record<string, unknown> = {
-		version: "1",
-		providers: { qoder: {} },
-		defaults: { provider: "qoder" },
-		environments: { sandbox: { config: { type: "cloud" } } },
-		vaults: {
-			secrets: {
+	await writeFile(
+		join(directory, "agents/assistant/environments/sandbox/environment.json"),
+		'{"id":"sandbox","config":{"type":"cloud"}}\n',
+	);
+	await writeFile(
+		join(directory, "agents/assistant/vaults/secrets/vault.json"),
+		`${JSON.stringify(
+			{
+				id: "secrets",
 				display_name: "Secrets",
 				credentials: [
 					{
@@ -317,18 +336,19 @@ async function projectFixture(options: { deployment?: boolean } = {}): Promise<{
 					},
 				],
 			},
-		},
-		memory_stores: { memory: { description: "Existing memory", entries: [{ key: "note", content: "inline note" }] } },
-		files: { input: { source: "./keep.txt" } },
-	};
+			null,
+			2,
+		)}\n`,
+	);
+	await writeFile(join(directory, "agents/assistant/files/input/file.json"), '{"id":"input","source":"./input.txt"}\n');
+	await writeFile(join(directory, "agents/assistant/files/input/input.txt"), "Keep local file\n");
+	const project: Record<string, unknown> = { version: "1" };
 	if (options.deployment !== false) {
 		project.deployments = {
 			daily: {
 				agent: "assistant",
 				environment: "sandbox",
 				vaults: ["secrets"],
-				memory_stores: ["memory"],
-				resources: [{ type: "memory_store", memory_store: "memory" }],
 				initial_events: [{ type: "user.message", content: "run" }],
 			},
 		};

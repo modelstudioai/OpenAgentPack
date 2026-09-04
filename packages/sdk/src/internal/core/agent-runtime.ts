@@ -585,6 +585,9 @@ function collectAgentAddressesInto(
 	for (const name of agent.memory_stores ?? []) {
 		addresses.push({ type: "memory_store", name, provider: resolvedProvider });
 	}
+	for (const file of agent.files ?? []) {
+		addresses.push({ type: "file", name: file.file, provider: resolvedProvider });
+	}
 	for (const skill of agent.skills ?? []) {
 		if (typeof skill === "string") {
 			addresses.push({ type: "skill", name: skill, provider: resolvedProvider });

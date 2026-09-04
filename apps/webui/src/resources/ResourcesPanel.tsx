@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
 	AlertTriangle,
 	Braces,
@@ -12,6 +13,7 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	type DeclarationPatchOperation,
 	type DeclarationPreview,
@@ -43,83 +45,68 @@ const AUTO_PREVIEW_DELAY_MS = 350;
 
 interface FieldDefinition {
 	name: string;
-	label: string;
+	labelKey: string;
 	kind: FieldKind;
 	required?: boolean;
 	placeholder?: string;
 }
 
-const TYPE_LABELS: Record<DeclarationType, string> = {
-	agent: "Agents",
-	environment: "Environments",
-	skill: "Skills",
-	vault: "Vaults",
-	memory_store: "Memory Stores",
-	file: "Files",
-};
-
-const TYPE_DESCRIPTIONS: Record<DeclarationType, string> = {
-	agent: "Remote Agent definitions and their runtime bindings",
-	environment: "Managed or externally owned execution environments",
-	skill: "Skill packages referenced by Agents",
-	vault: "Credential collections; existing secrets remain redacted",
-	memory_store: "Memory definitions and inline entries",
-	file: "Declared source files; removing a declaration keeps the local file",
-};
+const DECLARATION_TYPES: DeclarationType[] = ["agent", "environment", "skill", "vault", "memory_store", "file"];
 
 const FIELD_DEFINITIONS: Record<DeclarationType, FieldDefinition[]> = {
 	agent: [
-		{ name: "name", label: "Display name", kind: "text" },
-		{ name: "description", label: "Description", kind: "textarea" },
-		{ name: "model", label: "Model", kind: "string-or-json", required: true },
-		{ name: "instructions", label: "Instructions", kind: "textarea", required: true },
-		{ name: "environment", label: "Environment", kind: "text" },
-		{ name: "tunnel", label: "Tunnel", kind: "text" },
-		{ name: "provider", label: "Provider", kind: "text" },
-		{ name: "tools", label: "Tools", kind: "json" },
-		{ name: "mcp_servers", label: "MCP servers", kind: "json" },
-		{ name: "skills", label: "Skills", kind: "json" },
-		{ name: "vault", label: "Vault", kind: "text" },
-		{ name: "memory_stores", label: "Memory stores", kind: "json" },
-		{ name: "resources", label: "Runtime resources", kind: "json" },
-		{ name: "multiagent", label: "Multi-Agent configuration", kind: "json" },
-		{ name: "metadata", label: "Metadata", kind: "json" },
-		{ name: "environment_variables", label: "Environment variables", kind: "json" },
-		{ name: "delivery", label: "Delivery", kind: "json" },
+		{ name: "name", labelKey: "resources.fields.name", kind: "text" },
+		{ name: "description", labelKey: "resources.fields.description", kind: "textarea" },
+		{ name: "model", labelKey: "resources.fields.model", kind: "string-or-json", required: true },
+		{ name: "instructions", labelKey: "resources.fields.instructions", kind: "textarea", required: true },
+		{ name: "environment", labelKey: "resources.fields.environment", kind: "text" },
+		{ name: "tunnel", labelKey: "resources.fields.tunnel", kind: "text" },
+		{ name: "provider", labelKey: "resources.fields.provider", kind: "text" },
+		{ name: "tools", labelKey: "resources.fields.tools", kind: "json" },
+		{ name: "mcp_servers", labelKey: "resources.fields.mcp_servers", kind: "json" },
+		{ name: "skills", labelKey: "resources.fields.skills", kind: "json" },
+		{ name: "vault", labelKey: "resources.fields.vault", kind: "text" },
+		{ name: "memory_stores", labelKey: "resources.fields.memory_stores", kind: "json" },
+		{ name: "files", labelKey: "resources.fields.files", kind: "json" },
+		{ name: "resources", labelKey: "resources.fields.resources", kind: "json" },
+		{ name: "multiagent", labelKey: "resources.fields.multiagent", kind: "json" },
+		{ name: "metadata", labelKey: "resources.fields.metadata", kind: "json" },
+		{ name: "environment_variables", labelKey: "resources.fields.environment_variables", kind: "json" },
+		{ name: "delivery", labelKey: "resources.fields.delivery", kind: "json" },
 	],
 	environment: [
-		{ name: "name", label: "Display name", kind: "text" },
-		{ name: "description", label: "Description", kind: "textarea" },
-		{ name: "provider", label: "Provider", kind: "text" },
-		{ name: "config", label: "Environment config", kind: "json", required: true },
-		{ name: "metadata", label: "Metadata", kind: "json" },
+		{ name: "name", labelKey: "resources.fields.name", kind: "text" },
+		{ name: "description", labelKey: "resources.fields.description", kind: "textarea" },
+		{ name: "provider", labelKey: "resources.fields.provider", kind: "text" },
+		{ name: "config", labelKey: "resources.fields.config", kind: "json", required: true },
+		{ name: "metadata", labelKey: "resources.fields.metadata", kind: "json" },
 	],
 	skill: [
-		{ name: "name", label: "Display name", kind: "text" },
-		{ name: "source", label: "Source", kind: "text", required: true },
-		{ name: "content", label: "SKILL.md", kind: "textarea", required: true },
-		{ name: "description", label: "Description", kind: "textarea" },
-		{ name: "version", label: "Version", kind: "text" },
-		{ name: "origin", label: "Origin", kind: "text" },
-		{ name: "provider", label: "Provider", kind: "text" },
+		{ name: "name", labelKey: "resources.fields.name", kind: "text" },
+		{ name: "source", labelKey: "resources.fields.source", kind: "text", required: true },
+		{ name: "content", labelKey: "resources.fields.content", kind: "textarea", required: true },
+		{ name: "description", labelKey: "resources.fields.description", kind: "textarea" },
+		{ name: "version", labelKey: "resources.fields.version", kind: "text" },
+		{ name: "origin", labelKey: "resources.fields.origin", kind: "text" },
+		{ name: "provider", labelKey: "resources.fields.provider", kind: "text" },
 	],
 	vault: [
-		{ name: "display_name", label: "Display name", kind: "text", required: true },
-		{ name: "provider", label: "Provider", kind: "text" },
-		{ name: "credentials", label: "Credentials", kind: "credentials", required: true },
-		{ name: "metadata", label: "Metadata", kind: "json" },
+		{ name: "display_name", labelKey: "resources.fields.display_name", kind: "text", required: true },
+		{ name: "provider", labelKey: "resources.fields.provider", kind: "text" },
+		{ name: "credentials", labelKey: "resources.fields.credentials", kind: "credentials", required: true },
+		{ name: "metadata", labelKey: "resources.fields.metadata", kind: "json" },
 	],
 	memory_store: [
-		{ name: "description", label: "Description", kind: "textarea", required: true },
-		{ name: "provider", label: "Provider", kind: "text" },
-		{ name: "metadata", label: "Metadata", kind: "json" },
-		{ name: "entries", label: "Memory entries", kind: "json" },
+		{ name: "description", labelKey: "resources.fields.description", kind: "textarea", required: true },
+		{ name: "provider", labelKey: "resources.fields.provider", kind: "text" },
+		{ name: "metadata", labelKey: "resources.fields.metadata", kind: "json" },
+		{ name: "entries", labelKey: "resources.fields.entries", kind: "json" },
 	],
 	file: [
-		{ name: "source", label: "Source", kind: "text", required: true },
-		{ name: "name", label: "Display name", kind: "text" },
-		{ name: "purpose", label: "Purpose", kind: "text" },
-		{ name: "provider", label: "Provider", kind: "text" },
+		{ name: "source", labelKey: "resources.fields.source", kind: "text", required: true },
+		{ name: "name", labelKey: "resources.fields.name", kind: "text" },
+		{ name: "purpose", labelKey: "resources.fields.purpose", kind: "text" },
+		{ name: "provider", labelKey: "resources.fields.provider", kind: "text" },
 	],
 };
 
@@ -139,6 +126,7 @@ export function ResourcesPanel({
 	writeBlockedReason,
 	onCommitted,
 }: ResourcesPanelProps) {
+	const { t } = useTranslation();
 	const [resources, setResources] = useState<ProjectDeclaration[]>([]);
 	const [revision, setRevision] = useState("");
 	const [loading, setLoading] = useState(true);
@@ -175,13 +163,14 @@ export function ResourcesPanel({
 		return resources.filter(
 			(resource) =>
 				(resource.type === "agent" && resource.id === selectedAgentId) ||
+				resource.owner_agent === selectedAgentId ||
 				resource.references.some((reference) => reference.type === "agent" && reference.id === selectedAgentId),
 		);
 	}, [resources, selectedAgentId]);
 
 	const grouped = useMemo(
 		() =>
-			(Object.keys(TYPE_LABELS) as DeclarationType[]).map((type) => ({
+			DECLARATION_TYPES.map((type) => ({
 				type,
 				resources: visibleResources.filter((resource) => resource.type === type),
 			})),
@@ -192,11 +181,8 @@ export function ResourcesPanel({
 		<section className="resources-panel panel-stack">
 			<div className="action-toolbar">
 				<div>
-					<h2>{selectedAgentId} resources</h2>
-					<p>
-						Edit this Agent and the declarations it references in the directory project. New declarations are
-						intentionally unavailable.
-					</p>
+					<h2>{t("resources.title", { agent: selectedAgentId })}</h2>
+					<p>{t("resources.description")}</p>
 				</div>
 			</div>
 			{error && <InlineNotice tone="error">{error}</InlineNotice>}
@@ -204,7 +190,7 @@ export function ResourcesPanel({
 			{loading ? (
 				<div className="empty-panel">
 					<LoaderCircle className="spin" />
-					<p>Reading declarations from directory source files…</p>
+					<p>{t("resources.loading")}</p>
 				</div>
 			) : (
 				<div className="resource-groups">
@@ -216,8 +202,8 @@ export function ResourcesPanel({
 									<div className="resource-group-title">
 										<Icon />
 										<span>
-											<strong>{TYPE_LABELS[type]}</strong>
-											<small>{TYPE_DESCRIPTIONS[type]}</small>
+											<strong>{t(`resources.types.${type}`)}</strong>
+											<small>{t(`resources.typeDescriptions.${type}`)}</small>
 										</span>
 									</div>
 									<b>{typeResources.length}</b>
@@ -227,10 +213,10 @@ export function ResourcesPanel({
 										<div className="resource-declaration-row" key={`${resource.type}:${resource.id}`}>
 											<div>
 												<strong>{resource.id}</strong>
-												<small>{resourceSummary(resource)}</small>
+												<small>{resourceSummary(t, resource)}</small>
 											</div>
 											<span className="reference-count">
-												{resource.references.length} reference{resource.references.length === 1 ? "" : "s"}
+												{t("resources.references", { count: resource.references.length })}
 											</span>
 											<button
 												type="button"
@@ -238,7 +224,7 @@ export function ResourcesPanel({
 												disabled={!projectValid}
 												onClick={() => setEditor({ resource, action: "edit" })}
 											>
-												<Edit3 /> Edit
+												<Edit3 /> {t("resources.edit")}
 											</button>
 											<button
 												type="button"
@@ -246,11 +232,15 @@ export function ResourcesPanel({
 												disabled={!projectValid}
 												onClick={() => setEditor({ resource, action: "delete" })}
 											>
-												<Trash2 /> Remove from project
+												<Trash2 /> {t("resources.removeFromProject")}
 											</button>
 										</div>
 									))}
-									{typeResources.length === 0 && <p className="resource-empty-row">No declared {TYPE_LABELS[type]}.</p>}
+									{typeResources.length === 0 && (
+										<p className="resource-empty-row">
+											{t("resources.noDeclared", { type: t(`resources.types.${type}`) })}
+										</p>
+									)}
 								</div>
 							</section>
 						);
@@ -290,6 +280,7 @@ function DeclarationEditor({
 		baselinePlan?: ProjectPlan,
 	): Promise<void>;
 }) {
+	const { t } = useTranslation();
 	const fields = FIELD_DEFINITIONS[resource.type];
 	const [enabledFields, setEnabledFields] = useState(
 		() =>
@@ -323,14 +314,14 @@ function DeclarationEditor({
 				if (existed) operations.push({ op: "remove", path: [field.name] });
 				continue;
 			}
-			const value = parseFieldValue(values[field.name] ?? "", field);
+			const value = parseFieldValue(t, values[field.name] ?? "", field);
 			const withSecrets = field.kind === "credentials" ? applySecretReplacements(value, secretReplacements) : value;
 			if (!existed || !deepEqual(withSecrets, resource.declaration[field.name])) {
 				operations.push({ op: "set", path: [field.name], value: withSecrets });
 			}
 		}
 		return operations;
-	}, [enabledFields, fields, resource.declaration, secretReplacements, values]);
+	}, [enabledFields, fields, resource.declaration, secretReplacements, t, values]);
 
 	const runPreview = useCallback(
 		async (signature: string, requestGeneration: number) => {
@@ -403,20 +394,20 @@ function DeclarationEditor({
 			<button
 				type="button"
 				className="declaration-editor-dismiss"
-				aria-label="Close declaration editor"
+				aria-label={t("resources.editor.close")}
 				onClick={onClose}
 			/>
 			<aside
 				className="declaration-editor"
-				aria-label={`${action === "edit" ? "Edit" : "Remove"} ${resource.type} ${resource.id}`}
+				aria-label={`${action === "edit" ? t("resources.editor.edit") : t("resources.editor.remove")} ${resource.type} ${resource.id}`}
 			>
 				<header className="declaration-editor-header">
 					<div>
-						<span>{action === "edit" ? "Edit declaration" : "Remove declaration"}</span>
+						<span>{action === "edit" ? t("resources.editor.edit") : t("resources.editor.remove")}</span>
 						<h2>{resource.id}</h2>
-						<code>{resource.type} · resource key is immutable</code>
+						<code>{t("resources.editor.immutable", { type: resource.type })}</code>
 					</div>
-					<button type="button" onClick={onClose} aria-label="Close declaration editor">
+					<button type="button" onClick={onClose} aria-label={t("resources.editor.close")}>
 						<X />
 					</button>
 				</header>
@@ -426,7 +417,7 @@ function DeclarationEditor({
 						<div className="declaration-form">
 							{resource.type === "environment" && resource.declaration.environment_id !== undefined && (
 								<InlineNotice tone="info">
-									External environment ownership ({String(resource.declaration.environment_id)}) is read-only.
+									{t("resources.editor.externalEnvironment", { id: String(resource.declaration.environment_id) })}
 								</InlineNotice>
 							)}
 							{fields.map((field) => {
@@ -451,8 +442,8 @@ function DeclarationEditor({
 													});
 												}}
 											/>
-											<span>{field.label}</span>
-											{field.required && <small>required</small>}
+											<span>{t(field.labelKey)}</span>
+											{field.required && <small>{t("resources.editor.required")}</small>}
 										</label>
 										{enabled && (
 											<FieldInput
@@ -466,7 +457,7 @@ function DeclarationEditor({
 										)}
 										{containsReadOnlyContent && (
 											<small className="field-readonly-note">
-												Referenced local content at {readOnlyPath?.join(".")} is read-only in this release.
+												{t("resources.editor.readOnlyContent", { path: readOnlyPath?.join(".") })}
 											</small>
 										)}
 										{field.kind === "credentials" && enabled && credentials && (
@@ -485,13 +476,8 @@ function DeclarationEditor({
 					) : (
 						<div className="delete-declaration-copy">
 							<AlertTriangle />
-							<h3>
-								Remove {resource.type}.{resource.id} from the directory project?
-							</h3>
-							<p>
-								This only removes the local declaration. Remote deletion happens later through a reviewed project Plan
-								and Publish. File declarations never delete their referenced local files.
-							</p>
+							<h3>{t("resources.editor.removeQuestion", { type: resource.type, id: resource.id })}</h3>
+							<p>{t("resources.editor.removeDescription")}</p>
 						</div>
 					)}
 
@@ -499,12 +485,16 @@ function DeclarationEditor({
 
 					<div className="preview-toolbar">
 						<div>
-							<h3>Server preview</h3>
-							<p>Preview updates automatically after you pause editing and never writes project source files.</p>
+							<h3>{t("resources.editor.serverPreview")}</h3>
+							<p>{t("resources.editor.previewDescription")}</p>
 						</div>
 						<span className={`auto-preview-status ${previewBusy ? "loading" : previewIsCurrent ? "ready" : ""}`}>
 							{previewBusy ? <LoaderCircle className="spin" /> : previewIsCurrent ? <CheckCircle2 /> : <RefreshCw />}
-							{previewBusy ? "Previewing…" : previewIsCurrent ? "Preview current" : "Auto preview"}
+							{previewBusy
+								? t("resources.editor.previewing")
+								: previewIsCurrent
+									? t("resources.editor.previewCurrent")
+									: t("resources.editor.autoPreview")}
 						</span>
 					</div>
 
@@ -515,26 +505,22 @@ function DeclarationEditor({
 							<Code2 />
 							<span>
 								{previewBusy
-									? "Generating the latest YAML Diff…"
+									? t("resources.editor.generatingDiff")
 									: preview
-										? "Fields changed; preview will refresh automatically."
+										? t("resources.editor.fieldsChanged")
 										: action === "edit"
-											? "Change a field to generate a preview automatically."
-											: "Generating delete preview…"}
+											? t("resources.editor.changeField")
+											: t("resources.editor.generatingDelete")}
 							</span>
 						</div>
 					)}
 				</div>
 
 				<footer className="declaration-editor-footer">
-					<span>
-						{writeBlockedReason
-							? "Publish is running; this draft is preserved, but saving is temporarily disabled."
-							: "Saving updates directory source only. Run Build before the next Publish."}
-					</span>
+					<span>{writeBlockedReason ? t("resources.editor.publishDraft") : t("resources.editor.saveDescription")}</span>
 					<div>
 						<button type="button" className="secondary-button" onClick={onClose}>
-							Cancel
+							{t("common.cancel")}
 						</button>
 						<button
 							type="button"
@@ -545,7 +531,7 @@ function DeclarationEditor({
 							onClick={() => void handleCommit()}
 						>
 							{commitBusy ? <LoaderCircle className="spin" /> : action === "delete" ? <Trash2 /> : <CheckCircle2 />}
-							{action === "delete" ? "Remove declaration" : "Save project files"}
+							{action === "delete" ? t("resources.editor.remove") : t("resources.editor.saveFiles")}
 						</button>
 					</div>
 				</footer>
@@ -597,21 +583,22 @@ function CredentialSecretInputs({
 	replacements: Record<string, string>;
 	onChange(key: string, value: string): void;
 }) {
+	const { t } = useTranslation();
 	return (
 		<div className="credential-secret-list">
-			<p>Secret replacements</p>
+			<p>{t("resources.editor.secretReplacements")}</p>
 			{credentials.map((credential, index) => {
 				const field = credential.type === "static_bearer" ? "access_token" : "secret_value";
 				const key = credentialSecretKey(credential, field);
 				return (
 					<label key={key}>
 						<span>
-							{String(credential.name ?? `Credential ${index + 1}`)} · {field}
+							{String(credential.name ?? t("resources.editor.credential", { number: index + 1 }))} · {field}
 						</span>
 						<input
 							type="password"
 							value={replacements[key] ?? ""}
-							placeholder="Stored value unchanged"
+							placeholder={t("resources.editor.storedUnchanged")}
 							autoComplete="new-password"
 							onChange={(event) => onChange(key, event.target.value)}
 						/>
@@ -623,13 +610,14 @@ function CredentialSecretInputs({
 }
 
 function PreviewResult({ preview }: { preview: DeclarationPreview }) {
+	const { t } = useTranslation();
 	const diff = buildYamlLineDiff(preview.before_yaml, preview.after_yaml);
 	return (
 		<div className="declaration-preview-result">
 			<div className="yaml-unified-diff">
 				<div className="yaml-diff-file-header">
-					<span>--- project source · before</span>
-					<span>+++ project source · after</span>
+					<span>--- {t("resources.editor.before")}</span>
+					<span>+++ {t("resources.editor.after")}</span>
 				</div>
 				<div className="yaml-diff-hunk">
 					@@ -1,{diff.beforeLineCount} +1,{diff.afterLineCount} @@
@@ -652,11 +640,11 @@ function PreviewResult({ preview }: { preview: DeclarationPreview }) {
 			</div>
 			<div className={`commit-readiness ${preview.can_commit ? "ready" : "blocked"}`}>
 				{preview.can_commit ? <CheckCircle2 /> : <AlertTriangle />}
-				<span>{preview.can_commit ? "Ready to save project files" : "Save blocked by validation or references"}</span>
+				<span>{preview.can_commit ? t("resources.editor.readyToSave") : t("resources.editor.saveBlocked")}</span>
 			</div>
 			{preview.references.length > 0 && (
 				<div className="preview-findings">
-					<h4>Blocking references</h4>
+					<h4>{t("resources.editor.blockingReferences")}</h4>
 					{preview.references.map((reference) => (
 						<code key={`${reference.type}:${reference.id}:${reference.path}`}>{reference.path}</code>
 					))}
@@ -664,7 +652,7 @@ function PreviewResult({ preview }: { preview: DeclarationPreview }) {
 			)}
 			{preview.diagnostics.length > 0 && (
 				<div className="preview-findings">
-					<h4>Validation diagnostics</h4>
+					<h4>{t("resources.editor.validationDiagnostics")}</h4>
 					{preview.diagnostics.map((diagnostic) => (
 						<div
 							className={`preview-diagnostic ${diagnostic.severity}`}
@@ -696,29 +684,40 @@ function fieldText(value: unknown, kind: FieldKind): string {
 	return String(value);
 }
 
-function parseFieldValue(value: string, field: FieldDefinition): unknown {
+function parseFieldValue(t: TFunction, value: string, field: FieldDefinition): unknown {
 	if (field.kind === "json" || field.kind === "credentials") {
-		if (!value.trim()) throw new Error(`${field.label} must contain valid JSON.`);
-		const parsed = JSON.parse(value) as unknown;
-		if (field.kind === "credentials") assertNoInlineSensitiveValues(parsed);
+		if (!value.trim()) throw new Error(t("resources.editor.validJson", { field: t(field.labelKey) }));
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(value) as unknown;
+		} catch {
+			throw new Error(t("resources.editor.validJson", { field: t(field.labelKey) }));
+		}
+		if (field.kind === "credentials") assertNoInlineSensitiveValues(t, parsed);
 		return parsed;
 	}
 	if (field.kind === "string-or-json") {
 		const trimmed = value.trim();
-		if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(trimmed) as unknown;
+		if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+			try {
+				return JSON.parse(trimmed) as unknown;
+			} catch {
+				throw new Error(t("resources.editor.validJson", { field: t(field.labelKey) }));
+			}
+		}
 	}
 	return value;
 }
 
-function assertNoInlineSensitiveValues(value: unknown): void {
-	if (!Array.isArray(value)) throw new Error("Credentials must be a JSON array.");
+function assertNoInlineSensitiveValues(t: TFunction, value: unknown): void {
+	if (!Array.isArray(value)) throw new Error(t("resources.editor.credentialsArray"));
 	for (const [index, entry] of value.entries()) {
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
 		const credential = entry as Record<string, unknown>;
 		for (const key of ["access_token", "secret_value"]) {
 			const secret = credential[key];
 			if (secret !== undefined && secret !== "[redacted]" && !isEnvironmentReference(secret)) {
-				throw new Error(`Credential ${index + 1} ${key} must be replaced with the password field below.`);
+				throw new Error(t("resources.editor.credentialSecret", { number: index + 1, field: key }));
 			}
 		}
 	}
@@ -762,12 +761,12 @@ function deepEqual(left: unknown, right: unknown): boolean {
 	return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function resourceSummary(resource: ProjectDeclaration): string {
+function resourceSummary(t: TFunction, resource: ProjectDeclaration): string {
 	const declaration = resource.declaration;
 	for (const key of ["description", "display_name", "name", "source", "provider"]) {
 		if (typeof declaration[key] === "string" && declaration[key]) return declaration[key];
 	}
-	return `${Object.keys(declaration).length} declared fields`;
+	return t("resources.editor.declaredFields", { count: Object.keys(declaration).length });
 }
 
 function errorMessage(error: unknown): string {

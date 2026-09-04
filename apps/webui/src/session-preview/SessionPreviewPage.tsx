@@ -30,7 +30,7 @@ export function SessionPreviewPage({ sessionId }: { sessionId: string }) {
 
 	useEffect(() => {
 		document.body.classList.add("session-preview-active");
-		document.title = `${preview.detail?.agent_name ?? "Agent"} · OpenAgentPack Preview`;
+		document.title = `${preview.detail?.agent_name ?? "Agent"} · Managed Agents Preview`;
 		return () => document.body.classList.remove("session-preview-active");
 	}, [preview.detail?.agent_name]);
 
@@ -95,7 +95,7 @@ export function SessionPreviewPage({ sessionId }: { sessionId: string }) {
 						<ArrowLeft />
 					</a>
 					<div className="session-preview-identity">
-						<span className="session-preview-eyebrow">Preview · {preview.detail?.provider ?? "OpenAgentPack"}</span>
+						<span className="session-preview-eyebrow">Preview · {preview.detail?.provider ?? "Managed Agents"}</span>
 						<div className="session-preview-title-row">
 							<h1>{preview.detail?.agent_name ?? "Loading Agent…"}</h1>
 							<PreviewStatus status={session?.status} streamState={preview.streamState} busy={preview.busy} />

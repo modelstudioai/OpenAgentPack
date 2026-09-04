@@ -42,8 +42,10 @@ export async function computeResourceHash(
 
 	if (address.type === "template") {
 		const refs = resolveTemplateReferenceIds(decl as TemplateRefDecl, config, address.provider, state);
-		return contentHash({ decl, refs });
+		return contentHash({ decl: withoutLocalSessionFileMounts(decl), refs });
 	}
+
+	if (address.type === "agent") return contentHash(withoutLocalSessionFileMounts(decl));
 
 	if (address.type === "channel") {
 		const refs = resolveChannelReferenceIds(
@@ -56,6 +58,12 @@ export async function computeResourceHash(
 	}
 
 	return contentHash(decl);
+}
+
+function withoutLocalSessionFileMounts(decl: unknown): unknown {
+	if (!decl || typeof decl !== "object" || Array.isArray(decl)) return decl;
+	const { files: _files, ...remoteDeclaration } = decl as Record<string, unknown>;
+	return remoteDeclaration;
 }
 
 /** Stable, non-reversible identity hint for resources whose YAML key may change. */

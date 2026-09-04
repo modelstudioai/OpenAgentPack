@@ -14,7 +14,7 @@ afterEach(async () => {
 describe("agents project version", () => {
 	test("project init creates a Git-independent baseline and shared local switch", async () => {
 		const root = await temporaryDirectory();
-		const initialized = await runAgents(["project", "init", "--project", root, "--provider", "qoder", "--json"]);
+		const initialized = await runAgents(["project", "init", "--project", root, "--json"]);
 
 		expect(initialized.exitCode).toBe(0);
 		const body = JSON.parse(initialized.stdout);
@@ -99,10 +99,30 @@ describe("agents project version", () => {
 	test("sensitive literals block snapshots without leaking the value", async () => {
 		const root = await initializedProject();
 		await runAgents(["project", "version", "disable", "--project", root, "--json"]);
-		const projectPath = join(root, "project.json");
-		const project = JSON.parse(await readFile(projectPath, "utf8"));
-		project.providers.qoder.api_key = "literal-do-not-leak";
-		await writeFile(projectPath, `${JSON.stringify(project, null, 2)}\n`);
+		const agentPath = join(root, "agents/assistant/agent.json");
+		const agent = JSON.parse(await readFile(agentPath, "utf8"));
+		agent.vault = "secrets";
+		await writeFile(agentPath, `${JSON.stringify(agent, null, 2)}\n`);
+		await mkdir(join(root, "agents/assistant/vaults/secrets"), { recursive: true });
+		await writeFile(
+			join(root, "agents/assistant/vaults/secrets/vault.json"),
+			`${JSON.stringify(
+				{
+					id: "secrets",
+					display_name: "Secrets",
+					credentials: [
+						{
+							name: "bearer",
+							type: "static_bearer",
+							mcp_server_url: "https://example.com/mcp",
+							access_token: "literal-do-not-leak",
+						},
+					],
+				},
+				null,
+				2,
+			)}\n`,
+		);
 
 		const result = await runAgents(["project", "version", "enable", "--project", root, "--json"]);
 		expect(result.exitCode).toBe(1);
@@ -114,6 +134,8 @@ describe("agents project version", () => {
 		const rootHelp = await runAgents(["--help"]);
 		expect(rootHelp.stdout).not.toMatch(/^\s+version\b/m);
 		expect(rootHelp.stdout).not.toMatch(/^\s+workbench\b/m);
+		const initHelp = await runAgents(["project", "init", "--help"]);
+		expect(initHelp.stdout).not.toContain("--provider");
 
 		const result = await runAgents(["project", "version", "--help"]);
 		expect(result.exitCode).toBe(0);
@@ -130,7 +152,7 @@ describe("agents project version", () => {
 
 async function initializedProject(): Promise<string> {
 	const root = await temporaryDirectory();
-	const result = await runAgents(["project", "init", "--project", root, "--provider", "qoder", "--json"]);
+	const result = await runAgents(["project", "init", "--project", root, "--json"]);
 	if (result.exitCode !== 0) throw new Error(result.stderr);
 	return root;
 }

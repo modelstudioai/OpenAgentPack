@@ -41,20 +41,20 @@ The YAML Preview flow is read-only and does not participate in directory project
 
 ## `agents project`
 
-Manage a directory project. The project root contains `project.json`, `agents/<id>/agent.json`, `agents/<id>/instructions.md`, Agent-local or shared Skill directories, and other versioned local files. `.openagentpack/` contains generated Build output, remote State, versions, locks, and recoverable trash; it is not authored source.
+Manage a Bailian directory project. `project.json` contains project-wide metadata but does not declare a Provider; Build always supplies `bailian` using `${DASHSCOPE_API_KEY}` and `${BAILIAN_BASE_URL}`. Agent declarations and owned resources live below `agents/<id>/`: `agent.json`, `instructions.md`, `skills/`, `environments/`, `vaults/`, `memory-stores/`, and `files/`. Add `{ "file": "<id>", "mount_path": "/mnt/<name>" }` to `agent.json.files` to mount a declared File into every new Session. Resources referenced outside their owning Agent are promoted during Build to root `resources/` directories. `.openagentpack/` contains generated Build output, remote State, versions, locks, and recoverable trash; it is not authored source.
 
 | Subcommand | Description |
 |------------|-------------|
 | `project init` | Create a directory project, or convert an existing root `agents.yaml` without deleting it. Creates and enables the baseline source version. |
 | `project validate` | Validate all authored JSON, Markdown, Skill, and referenced local files without remote mutation. |
-| `project build` | Preview full directory source changes against the current version HEAD, or write deterministic `.openagentpack/build/agents.yaml`; shared Skill promotion happens only here. |
+| `project build` | Preview full directory source changes against the current version HEAD, or write deterministic `.openagentpack/build/agents.yaml`; shared Skill and managed-resource promotion happens only here. |
 | `project publish` | Plan and publish the current Build, then record the frozen source revision after complete success. Never runs Build implicitly. |
 | `project workbench` | Open the directory project Workbench. |
 | `project version ...` | Inspect, enable/disable, preview, or restore Git-independent full-tree versions. |
 
-All project subcommands accept `--project <directory>` (default current directory). `project build --dry-run` shows version-backed directory source changes and proposed Skill moves; writing requires `--yes` or interactive confirmation. `project publish` requires a current Build and explicit confirmation, includes Deployment and Channel actions, and uses `.openagentpack/state.json` as the remote-resource ledger.
+All project subcommands accept `--project <directory>` (default current directory). `project build --dry-run` shows version-backed directory source changes and proposed organization moves; writing requires `--yes` or interactive confirmation. `project publish` requires a current Build and explicit confirmation, includes Deployment and Channel actions, and uses `.openagentpack/state.json` as the remote-resource ledger.
 
-Workbench edits or removes existing Agent, Environment, Skill, Vault, Memory Store, and File declarations; it provides no create action. Agent instructions and Skill Markdown are editable, external ownership fields and File paths remain read-only, referenced declarations cannot be removed, and every save requires a server-generated redacted Diff. Saving invalidates Build. The Changes tab separates Build, Plan Publish, and Publish; it never builds or publishes implicitly.
+Workbench edits or removes existing Agent, Environment, Skill, Vault, Memory Store, and File declarations directly in their directory source files; it provides no create action. Agent instructions and Skill Markdown are editable, external ownership fields and File paths remain read-only, referenced declarations cannot be removed, and every save requires a server-generated redacted Diff. Saving invalidates Build. The Changes tab separates Build, Plan Publish, and Publish; it never builds or publishes implicitly.
 
 `project version enable|disable|status|list|preview|restore` and Workbench share one switch and one store under `.openagentpack/versions/project`. Versions contain the complete authored source tree, file modes, text, binary files, and local Skill content through immutable manifests and content-addressed blobs. They never contain or restore `.openagentpack/state.json`. Restore is a forward working-tree write: it does not move history, invoke Publish, or change remote State.
 

@@ -38,7 +38,7 @@ agents init
 
 init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`。这是供 `validate → plan → apply` 与 `agents playground` 使用的紧凑 YAML 流程。
 
-如需本地多文件项目和 Workbench，请改用 `agents project init`。它会创建 `project.json`、`agents/assistant/agent.json`、`instructions.md`，并建立不依赖 Git 的全目录基线版本。后续使用 `agents project validate`、`project build`、`project publish`、`project workbench` 与 `project version ...`。两套流程明确隔离：传统 YAML Apply 不产生目录版本；project Publish 只使用 `.openagentpack/build/agents.yaml`，且不会隐式执行 Build。
+如需本地多文件项目和 Workbench，请改用 `agents project init`。它会创建 `project.json`、`agents/assistant/agent.json`、`instructions.md`，并建立不依赖 Git 的全目录基线版本。目录项目固定使用百炼，因此 `project.json` 不再包含 Provider 配置。Environment、Vault、Memory Store、File 和 Skill 声明放在 Agent 目录（或根共享资源目录），不再写入 `project.json`。后续使用 `agents project validate`、`project build`、`project publish`、`project workbench` 与 `project version ...`。两套流程明确隔离：传统 YAML Apply 不产生目录版本；project Publish 只使用 `.openagentpack/build/agents.yaml`，且不会隐式执行 Build。
 
 为 `bailian` provider、agent 名为 `assistant` 生成的文件如下：
 

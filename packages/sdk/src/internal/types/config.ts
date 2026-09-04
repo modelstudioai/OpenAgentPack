@@ -171,6 +171,8 @@ export interface AgentDecl {
 	skills?: AgentSkillDecl[];
 	vault?: string;
 	memory_stores?: string[];
+	/** Declared Files mounted into every Session created for this Agent. */
+	files?: AgentFileMountDecl[];
 	/** Resources mounted into every managed session created for this agent. */
 	resources?: SessionResourceDecl[];
 	multiagent?: MultiagentDecl;
@@ -179,6 +181,13 @@ export interface AgentDecl {
 	environment_variables?: Record<string, string>;
 	/** Provider-specific remote materialization. Omitted means the existing managed Agent resource. */
 	delivery?: Record<ProviderName, AgentDeliveryDecl>;
+}
+
+export interface AgentFileMountDecl {
+	/** Logical key under the top-level files section. */
+	file: string;
+	/** Provider sandbox path. Bailian paths live under /mnt. */
+	mount_path: string;
 }
 
 export interface AgentDeliveryDecl {

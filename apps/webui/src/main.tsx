@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import "./i18n";
 import "./app/base.css";
 import "./app/project-workbench.css";
 import App from "./App";

@@ -130,6 +130,15 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 					}
 				}
 
+				if (decl.files) {
+					for (const file of decl.files) {
+						const fileAddr: ResourceAddress = { type: "file", name: file.file, provider };
+						if (nodes.has(addressKey(fileAddr))) {
+							addEdge(agentAddr, fileAddr);
+						}
+					}
+				}
+
 				if (decl.multiagent && isSupported(caps, "multiagent")) {
 					for (const subName of decl.multiagent.agents) {
 						const subDecl = config.agents[subName];

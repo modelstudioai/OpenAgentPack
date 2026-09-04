@@ -146,7 +146,6 @@ projectCmd
 	.command("init")
 	.description("Create or convert a directory-based Agent project")
 	.option("--project <directory>", "Project directory", ".")
-	.option("--provider <provider>", "Provider for a new project", "bailian")
 	.option("--json", "Output as JSON")
 	.action(projectInitCommand);
 

@@ -39,7 +39,7 @@ app.route("/api", operationsRoute);
 app.doc("/openapi.json", {
 	openapi: "3.0.0",
 	info: {
-		title: "OpenAgentPack API",
+		title: "Managed Agents Workbench API",
 		version: "1.0.0",
 	},
 });

@@ -11,7 +11,8 @@ import { ProjectRuntimeManager } from "../src/services/project-manager";
 
 const directories: string[] = [];
 const managers: ProjectRuntimeManager[] = [];
-process.env.QODER_PAT ??= "test-qoder-pat";
+process.env.DASHSCOPE_API_KEY ??= "test-bailian-api-key";
+process.env.BAILIAN_BASE_URL ??= "https://example.com/api/v1/agentstudio";
 
 afterEach(async () => {
 	for (const manager of managers.splice(0)) manager.close();
@@ -99,7 +100,7 @@ describe("ProjectRuntimeManager", () => {
 
 async function initializedProject(name: string): Promise<string> {
 	const directory = await temporaryDirectory(name);
-	await initializeDirectoryProject({ projectRoot: directory, provider: "qoder" });
+	await initializeDirectoryProject({ projectRoot: directory });
 	return directory;
 }
 

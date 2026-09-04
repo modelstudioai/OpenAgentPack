@@ -48,6 +48,22 @@ agents session delete <session-id>
 
 A Managed Session binds an Agent + environment + vaults + memory stores + files + declared resources. A Qoder Forward Session binds a Template + Identity; the Template already owns its environment, tunnel, vault, and MCP configuration. `session create` lets callers override the relevant runtime bindings.
 
+To upload a declared File during Apply and mount it into every new Session, reference its logical name from the Agent:
+
+```yaml
+files:
+  input:
+    source: ./input.txt
+agents:
+  assistant:
+    # model, instructions, environment, ...
+    files:
+      - file: input
+        mount_path: /mnt/input.txt
+```
+
+Run `agents apply` after declaring or changing the File. Session creation resolves the remote File ID from State and fails clearly if the File has not been applied. Additional per-Session uploads are merged with declared mounts; two files cannot use the same normalized mount path.
+
 To mount a private GitHub repository in every managed Session, declare a provider-neutral resource on the Agent. Qoder and Claude receive their respective API wire shapes from the same configuration:
 
 ```yaml

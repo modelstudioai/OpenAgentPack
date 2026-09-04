@@ -1,5 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	cp,
+	lstat,
+	mkdir,
+	open,
+	readdir,
+	readFile,
+	realpath,
+	rename,
+	rm,
+	rmdir,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
 	createDirectoryProjectVersionService,
@@ -14,13 +28,15 @@ import {
 	type ResourcePlanResult,
 	type ResourceSyncRun,
 	type RuntimeFeedbackSink,
+	executePlannedProject,
 	inspectProjectSource,
+	planProjectContext,
 	planProjectWithStateBackend,
 	resolveProjectConfigFromObject,
 	resolveProjectConfig,
-	syncProjectResourcesWithStateBackend,
 	UserError,
 	validateProjectConfig,
+	writeProjectRuntime,
 } from "@openagentpack/sdk";
 import { parse, stringify } from "yaml";
 
@@ -30,10 +46,28 @@ export const PROJECT_BUILD_FILE = ".openagentpack/build/agents.yaml";
 export const PROJECT_BUILD_MANIFEST = ".openagentpack/build/manifest.json";
 export const PROJECT_STATE_FILE = ".openagentpack/state.json";
 
+const DIRECTORY_PROJECT_PROVIDER = "bailian";
+const DIRECTORY_PROJECT_PROVIDER_CONFIG = {
+	api_key: `\${DASHSCOPE_API_KEY}`,
+	base_url: `\${BAILIAN_BASE_URL}`,
+};
+
+export const DIRECTORY_RESOURCE_TYPES = ["environment", "vault", "memory_store", "file"] as const;
+export type DirectoryResourceType = (typeof DIRECTORY_RESOURCE_TYPES)[number];
+
+const DIRECTORY_RESOURCE_SPECS: Record<
+	DirectoryResourceType,
+	{ section: "environments" | "vaults" | "memory_stores" | "files"; directory: string; metadataFile: string }
+> = {
+	environment: { section: "environments", directory: "environments", metadataFile: "environment.json" },
+	vault: { section: "vaults", directory: "vaults", metadataFile: "vault.json" },
+	memory_store: { section: "memory_stores", directory: "memory-stores", metadataFile: "memory-store.json" },
+	file: { section: "files", directory: "files", metadataFile: "file.json" },
+};
+
 const IGNORED_ROOT_NAMES = new Set([
 	".git",
 	".openagentpack",
-	".env",
 	"agents.yaml",
 	"agents.state.json",
 	"node_modules",
@@ -42,6 +76,7 @@ const IGNORED_ROOT_NAMES = new Set([
 	".cache",
 	".DS_Store",
 ]);
+const IGNORED_SOURCE_NAMES = new Set([".env"]);
 
 export class DirectoryProjectMutationConflictError extends UserError {
 	readonly status = 409;
@@ -59,10 +94,20 @@ export interface ProjectSourceFile {
 }
 
 export interface ProjectOrganizationMove {
-	skill_id: string;
+	resource_type: "skill" | DirectoryResourceType;
+	resource_id: string;
 	from: string;
 	to: string;
 	reason: "shared";
+}
+
+export interface DirectoryResourceSource {
+	type: DirectoryResourceType;
+	id: string;
+	path: string;
+	directory: string;
+	relative_directory: string;
+	owner_agent?: string;
 }
 
 export interface DirectoryProjectInspection {
@@ -104,6 +149,7 @@ export interface InitializedDirectoryProject {
 	project_root: string;
 	converted_from_yaml: boolean;
 	state_migrated: boolean;
+	environment_file_created: boolean;
 	baseline_version: string | null;
 }
 
@@ -112,6 +158,7 @@ export interface ProjectPublishPlan {
 	project_revision: string;
 	build_manifest: ProjectBuildManifest;
 	build_path: string;
+	plan_fingerprint: string;
 	planned: ResourcePlanResult;
 }
 
@@ -296,6 +343,7 @@ export async function planProjectPublish(
 		project_revision: build.inspection.project_revision,
 		build_manifest: build.manifest,
 		build_path: build.buildPath,
+		plan_fingerprint: projectPublishPlanFingerprint(planned),
 		planned,
 	};
 }
@@ -304,6 +352,7 @@ export async function executeProjectPublish(input: {
 	projectRoot: string;
 	expectedProjectRevision: string;
 	expectedYamlHash: string;
+	expectedPlanFingerprint: string;
 	provider?: string;
 	refresh?: boolean;
 	concurrency?: number;
@@ -332,7 +381,7 @@ export async function executeProjectPublish(input: {
 			throw new UserError("Project or Build changed while Publish was starting.");
 		}
 		const loaded = await (input.resolveBuild ?? resolveProjectConfig)(checked.buildPath);
-		const run = await syncProjectResourcesWithStateBackend(
+		const run = await writeProjectRuntime(
 			{
 				projectName: basename(checked.inspection.project_root),
 				config: loaded.config,
@@ -343,13 +392,24 @@ export async function executeProjectPublish(input: {
 				}),
 				stateScope: { projectId: basename(checked.inspection.project_root) },
 			},
-			{
-				provider: input.provider,
-				refresh: input.refresh,
-				concurrency: input.concurrency,
-				policy: input.policy,
-				confirm: input.confirm,
-				onFeedback: input.onFeedback,
+			async (context) => {
+				const planned = await planProjectContext(context, {
+					provider: input.provider,
+					refresh: input.refresh,
+					onFeedback: input.onFeedback,
+				});
+				if (projectPublishPlanFingerprint(planned) !== input.expectedPlanFingerprint) {
+					throw new UserError("Project, remote resources, or Publish plan changed. Plan Publish again.");
+				}
+				return {
+					planned,
+					execution: await executePlannedProject(planned, {
+						concurrency: input.concurrency,
+						policy: input.policy,
+						confirm: input.confirm,
+						onFeedback: input.onFeedback,
+					}),
+				};
 			},
 		);
 		const incomplete = run.execution?.results.some((result) => result.status !== "success") ?? false;
@@ -373,7 +433,7 @@ export async function executeProjectPublish(input: {
 }
 
 export async function initializeDirectoryProject(
-	input: { projectRoot?: string; provider?: string } = {},
+	input: { projectRoot?: string; environment?: Readonly<Record<string, string>> } = {},
 ): Promise<InitializedDirectoryProject> {
 	const projectRoot = resolve(input.projectRoot ?? ".");
 	await mkdir(projectRoot, { recursive: true });
@@ -393,12 +453,14 @@ export async function initializeDirectoryProject(
 				stateMigrated = true;
 			}
 		} else {
-			await scaffoldProject(projectRoot, input.provider ?? "bailian");
+			await scaffoldProject(projectRoot);
 		}
+		const environmentFileCreated = await initializeProjectEnvironment(projectRoot, input.environment);
 		return {
 			project_root: projectRoot,
 			converted_from_yaml: converted,
 			state_migrated: stateMigrated,
+			environment_file_created: environmentFileCreated,
 			baseline_version: null,
 		};
 	});
@@ -443,15 +505,34 @@ interface LocalSkill {
 	rootSkill: boolean;
 }
 
+interface LocalDirectoryResource extends DirectoryResourceSource {
+	metadata: Record<string, unknown>;
+}
+
 async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFile[]): Promise<AssembledProject> {
 	if (!sourceFiles.some((file) => file.path === PROJECT_METADATA_FILE)) {
 		throw new UserError(`Missing ${PROJECT_METADATA_FILE}. Run project init first.`);
 	}
 	const project = await readJsonObject(resolve(projectRoot, PROJECT_METADATA_FILE));
-	if ("agents" in project || "skills" in project) {
-		throw new UserError("project.json cannot declare agents or skills; use agents/ and skills/ directories.");
+	if ("providers" in project || (isRecord(project.defaults) && "provider" in project.defaults)) {
+		throw new UserError(
+			`project.json cannot declare providers or defaults.provider; directory projects use '${DIRECTORY_PROJECT_PROVIDER}' automatically.`,
+		);
 	}
-	const projectForBuild = projectWithBuildRelativeFiles(projectRoot, project);
+	if ("defaults" in project && !isRecord(project.defaults)) {
+		throw new UserError("project.json defaults must be an object.");
+	}
+	const directorySections = [
+		"agents",
+		"skills",
+		...DIRECTORY_RESOURCE_TYPES.map((type) => DIRECTORY_RESOURCE_SPECS[type].section),
+	];
+	const misplacedSections = directorySections.filter((section) => section in project);
+	if (misplacedSections.length > 0) {
+		throw new UserError(
+			`project.json cannot declare ${misplacedSections.join(", ")}; use agents/ and Agent-local or resources/ directories.`,
+		);
+	}
 	const agents: Record<string, Record<string, unknown>> = {};
 	const agentDirectories = await childDirectories(resolve(projectRoot, "agents"));
 	for (const agentId of agentDirectories) {
@@ -481,11 +562,17 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 	const moves: ProjectOrganizationMove[] = [];
 	for (const skill of skills) {
 		if (!skill.rootSkill && (referenceCounts.get(skill.id)?.size ?? 0) > 1) {
-			moves.push({ skill_id: skill.id, from: skill.relativeDirectory, to: `skills/${skill.id}`, reason: "shared" });
+			moves.push({
+				resource_type: "skill",
+				resource_id: skill.id,
+				from: skill.relativeDirectory,
+				to: `skills/${skill.id}`,
+				reason: "shared",
+			});
 		}
 	}
 	const warnings: Diagnostic[] = [];
-	const declarations: Record<string, Record<string, unknown>> = {};
+	const skillDeclarations: Record<string, Record<string, unknown>> = {};
 	for (const skill of skills) {
 		const references = referenceCounts.get(skill.id)?.size ?? 0;
 		if (references === 0) {
@@ -496,13 +583,51 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 			});
 			continue;
 		}
-		const finalDirectory = moves.find((move) => move.skill_id === skill.id)?.to ?? skill.relativeDirectory;
+		const finalDirectory =
+			moves.find((move) => move.resource_type === "skill" && move.resource_id === skill.id)?.to ??
+			skill.relativeDirectory;
 		const declaration = { ...skill.metadata };
 		delete declaration.id;
 		delete declaration.source;
-		declarations[skill.id] = { ...declaration, source: buildRelativePath(finalDirectory) };
+		skillDeclarations[skill.id] = { ...declaration, source: buildRelativePath(finalDirectory) };
 	}
-	const rawConfig = { ...projectForBuild, agents, skills: declarations };
+	const resources = await discoverDirectoryResources(projectRoot, agentDirectories);
+	const resourceKeys = new Set<string>();
+	for (const resource of resources) {
+		const key = `${resource.type}:${resource.id}`;
+		if (resourceKeys.has(key)) throw new UserError(`Duplicate ${resource.type} id: ${resource.id}`);
+		resourceKeys.add(key);
+		if (
+			resource.owner_agent &&
+			isDirectoryResourceShared(resource.type, resource.id, resource.owner_agent, agents, project)
+		) {
+			const spec = DIRECTORY_RESOURCE_SPECS[resource.type];
+			moves.push({
+				resource_type: resource.type,
+				resource_id: resource.id,
+				from: resource.relative_directory,
+				to: `resources/${spec.directory}/${resource.id}`,
+				reason: "shared",
+			});
+		}
+	}
+	const rawConfig: Record<string, unknown> = {
+		...project,
+		providers: { [DIRECTORY_PROJECT_PROVIDER]: DIRECTORY_PROJECT_PROVIDER_CONFIG },
+		defaults: { ...(isRecord(project.defaults) ? project.defaults : {}), provider: DIRECTORY_PROJECT_PROVIDER },
+		agents,
+		skills: skillDeclarations,
+	};
+	for (const type of DIRECTORY_RESOURCE_TYPES) {
+		const declarations: Record<string, Record<string, unknown>> = {};
+		for (const resource of resources.filter((candidate) => candidate.type === type)) {
+			const finalDirectory =
+				moves.find((move) => move.resource_type === type && move.resource_id === resource.id)?.to ??
+				resource.relative_directory;
+			declarations[resource.id] = directoryResourceDeclarationForBuild(projectRoot, resource, finalDirectory);
+		}
+		if (Object.keys(declarations).length > 0) rawConfig[DIRECTORY_RESOURCE_SPECS[type].section] = declarations;
+	}
 	const loaded = await resolveProjectConfigFromObject(rawConfig, {
 		projectName: basename(projectRoot),
 		basePath: resolve(projectRoot, ".openagentpack/build"),
@@ -512,20 +637,152 @@ async function assembleProject(projectRoot: string, sourceFiles: ProjectSourceFi
 	return { canonicalYaml, loaded, diagnostics, warnings, moves };
 }
 
-function projectWithBuildRelativeFiles(projectRoot: string, project: Record<string, unknown>): Record<string, unknown> {
-	const result = structuredClone(project);
-	if (!isRecord(result.files)) return result;
-	for (const [fileId, value] of Object.entries(result.files)) {
-		if (!isRecord(value) || typeof value.source !== "string" || /^https?:\/\//i.test(value.source)) continue;
-		if (isAbsolute(value.source)) throw new UserError(`files.${fileId}.source must be relative to the project root.`);
-		const sourcePath = resolve(projectRoot, value.source);
-		if (sourcePath !== projectRoot && !sourcePath.startsWith(`${projectRoot}${sep}`)) {
-			throw new UserError(`files.${fileId}.source escapes the project root.`);
-		}
-		const projectRelative = relative(projectRoot, sourcePath).split(sep).join("/");
-		value.source = buildRelativePath(projectRelative);
+function directoryResourceDeclarationForBuild(
+	projectRoot: string,
+	resource: LocalDirectoryResource,
+	finalDirectory: string,
+): Record<string, unknown> {
+	const declaration = structuredClone(resource.metadata);
+	delete declaration.id;
+	if (resource.type !== "file" || typeof declaration.source !== "string" || /^https?:\/\//i.test(declaration.source)) {
+		return declaration;
 	}
-	return result;
+	if (isAbsolute(declaration.source)) {
+		throw new UserError(`${resource.relative_directory}/file.json: source must be relative to the File directory.`);
+	}
+	const sourcePath = resolve(projectRoot, resource.relative_directory, declaration.source);
+	if (!isPathInside(projectRoot, sourcePath)) {
+		throw new UserError(`${resource.relative_directory}/file.json: source escapes the project root.`);
+	}
+	const sourceRelativeToResource = relative(resolve(projectRoot, resource.relative_directory), sourcePath);
+	const finalSourcePath = resolve(projectRoot, finalDirectory, sourceRelativeToResource);
+	const projectRelative = relative(projectRoot, finalSourcePath).split(sep).join("/");
+	declaration.source = buildRelativePath(projectRelative);
+	return declaration;
+}
+
+export async function locateDirectoryProjectResource(
+	projectDirectory: string,
+	type: DirectoryResourceType,
+	id: string,
+): Promise<DirectoryResourceSource | null> {
+	const projectRoot = await resolveDirectoryProjectRoot(projectDirectory);
+	const resources = await discoverDirectoryResources(
+		projectRoot,
+		await childDirectories(resolve(projectRoot, "agents")),
+	);
+	const matches = resources.filter((resource) => resource.type === type && resource.id === id);
+	if (matches.length > 1) throw new UserError(`Duplicate ${type} id: ${id}`);
+	const match = matches[0];
+	if (!match) return null;
+	const { metadata: _metadata, ...source } = match;
+	return source;
+}
+
+async function discoverDirectoryResources(
+	projectRoot: string,
+	agentDirectories: string[],
+): Promise<LocalDirectoryResource[]> {
+	const locations: Array<{
+		type: DirectoryResourceType;
+		id: string;
+		directory: string;
+		relativeDirectory: string;
+		ownerAgent?: string;
+	}> = [];
+	for (const type of DIRECTORY_RESOURCE_TYPES) {
+		const spec = DIRECTORY_RESOURCE_SPECS[type];
+		for (const resourceId of await childDirectories(resolve(projectRoot, "resources", spec.directory))) {
+			locations.push({
+				type,
+				id: resourceId,
+				directory: resolve(projectRoot, "resources", spec.directory, resourceId),
+				relativeDirectory: `resources/${spec.directory}/${resourceId}`,
+			});
+		}
+		for (const agentId of agentDirectories) {
+			for (const resourceId of await childDirectories(resolve(projectRoot, "agents", agentId, spec.directory))) {
+				locations.push({
+					type,
+					id: resourceId,
+					directory: resolve(projectRoot, "agents", agentId, spec.directory, resourceId),
+					relativeDirectory: `agents/${agentId}/${spec.directory}/${resourceId}`,
+					ownerAgent: agentId,
+				});
+			}
+		}
+	}
+	const resources: LocalDirectoryResource[] = [];
+	for (const location of locations) {
+		const metadataFile = DIRECTORY_RESOURCE_SPECS[location.type].metadataFile;
+		const metadataPath = resolve(location.directory, metadataFile);
+		if (!(await pathExists(metadataPath))) {
+			if (location.type === "file") continue;
+			throw new UserError(`${location.relativeDirectory}/${metadataFile} is required.`);
+		}
+		const metadata = await readJsonObject(metadataPath);
+		if (metadata.id !== location.id) {
+			throw new UserError(`${location.relativeDirectory}/${metadataFile}: id must be '${location.id}'.`);
+		}
+		resources.push({
+			type: location.type,
+			id: location.id,
+			path: metadataPath,
+			directory: location.directory,
+			relative_directory: location.relativeDirectory,
+			...(location.ownerAgent ? { owner_agent: location.ownerAgent } : {}),
+			metadata,
+		});
+	}
+	return resources;
+}
+
+function isDirectoryResourceShared(
+	type: DirectoryResourceType,
+	id: string,
+	ownerAgent: string,
+	agents: Record<string, Record<string, unknown>>,
+	project: Record<string, unknown>,
+): boolean {
+	for (const [agentId, agent] of Object.entries(agents)) {
+		if (agentId !== ownerAgent && agentReferencesDirectoryResource(agent, type, id)) return true;
+	}
+	const deployments = isRecord(project.deployments) ? project.deployments : {};
+	for (const deployment of Object.values(deployments)) {
+		if (isRecord(deployment) && deploymentReferencesDirectoryResource(deployment, type, id)) return true;
+	}
+	return false;
+}
+
+function agentReferencesDirectoryResource(
+	agent: Record<string, unknown>,
+	type: DirectoryResourceType,
+	id: string,
+): boolean {
+	if (type === "environment") return agent.environment === id;
+	if (type === "vault") return agent.vault === id;
+	if (type === "memory_store") return Array.isArray(agent.memory_stores) && agent.memory_stores.includes(id);
+	if (type === "file") {
+		return Array.isArray(agent.files) && agent.files.some((file) => isRecord(file) && file.file === id);
+	}
+	return false;
+}
+
+function deploymentReferencesDirectoryResource(
+	deployment: Record<string, unknown>,
+	type: DirectoryResourceType,
+	id: string,
+): boolean {
+	if (type === "environment") return deployment.environment === id;
+	if (type === "vault") return Array.isArray(deployment.vaults) && deployment.vaults.includes(id);
+	if (type !== "memory_store") return false;
+	if (Array.isArray(deployment.memory_stores) && deployment.memory_stores.includes(id)) return true;
+	return (
+		Array.isArray(deployment.resources) &&
+		deployment.resources.some(
+			(resource) => isRecord(resource) && resource.type === "memory_store" && resource.memory_store === id,
+		)
+	);
 }
 
 async function discoverSkills(projectRoot: string, agentDirectories: string[]): Promise<LocalSkill[]> {
@@ -591,7 +848,7 @@ async function scanProjectSource(projectRoot: string): Promise<ProjectSourceFile
 	async function walk(directory: string, relativeDirectory: string): Promise<void> {
 		const entries = await readdir(directory, { withFileTypes: true });
 		for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-			if (!relativeDirectory && IGNORED_ROOT_NAMES.has(entry.name)) continue;
+			if (IGNORED_SOURCE_NAMES.has(entry.name) || (!relativeDirectory && IGNORED_ROOT_NAMES.has(entry.name))) continue;
 			const absolute = resolve(directory, entry.name);
 			const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
 			const details = await lstat(absolute);
@@ -621,29 +878,129 @@ async function restoreDirectorySnapshot(
 ): Promise<void> {
 	const current = await inspectDirectoryProject(projectRoot);
 	if (current.project_revision !== baseRevision) throw new UserError("Project source changed before Restore.");
-	const staging = resolve(projectRoot, PROJECT_INTERNAL_DIRECTORY, `restore-${randomUUID()}`);
-	await mkdir(staging, { recursive: true });
+	const restoreRoot = resolve(projectRoot, PROJECT_INTERNAL_DIRECTORY, `restore-${randomUUID()}`);
+	const historicalRoot = resolve(restoreRoot, "historical");
+	const backupRoot = resolve(restoreRoot, "backup");
+	const restoredPaths: string[] = [];
+	let mutationStarted = false;
+	await mkdir(restoreRoot, { recursive: true });
 	try {
-		for (const file of snapshot.files) {
-			assertSafeRelative(file.path);
-			const destination = resolve(staging, file.path);
-			await mkdir(dirname(destination), { recursive: true });
-			await writeFile(destination, file.content, { mode: file.mode });
-		}
+		await stageRestoreFiles(historicalRoot, snapshot.files, true);
+		await stageRestoreFiles(backupRoot, current.source_files, false);
+		const checked = await inspectDirectoryProject(projectRoot);
+		if (checked.project_revision !== baseRevision) throw new UserError("Project source changed before Restore.");
+		mutationStarted = true;
 		const currentPaths = new Set(current.source_files.map((file) => file.path));
-		const historicalPaths = new Set(snapshot.files.map((file) => file.path));
-		for (const path of currentPaths)
-			if (!historicalPaths.has(path)) await rm(resolve(projectRoot, path), { force: true });
+		for (const path of currentPaths) await rm(resolve(projectRoot, path), { force: true });
+		await removeEmptyProjectDirectories(projectRoot, currentPaths);
 		for (const file of snapshot.files) {
-			const source = resolve(staging, file.path);
+			const source = resolve(historicalRoot, file.path);
 			const destination = resolve(projectRoot, file.path);
+			await removeEmptyRestoreDestination(destination, file.path);
 			await mkdir(dirname(destination), { recursive: true });
 			await rename(source, destination);
+			restoredPaths.push(file.path);
 			await chmod(destination, file.mode);
 		}
 		await rm(resolve(projectRoot, ".openagentpack/build"), { recursive: true, force: true });
+	} catch (restoreError) {
+		if (mutationStarted) {
+			try {
+				await rollbackDirectoryRestore(projectRoot, backupRoot, current.source_files, restoredPaths);
+			} catch (rollbackError) {
+				throw new UserError(
+					`Restore failed and rollback was incomplete. Restore error: ${errorMessage(restoreError)}. Rollback error: ${errorMessage(rollbackError)}.`,
+				);
+			}
+		}
+		throw restoreError;
 	} finally {
-		await rm(staging, { recursive: true, force: true });
+		await rm(restoreRoot, { recursive: true, force: true });
+	}
+}
+
+async function stageRestoreFiles(
+	stagingRoot: string,
+	files: Array<{ path: string; mode: number; content: Uint8Array }>,
+	rejectIgnoredFiles: boolean,
+): Promise<void> {
+	for (const file of files) {
+		assertSafeRelative(file.path);
+		if (rejectIgnoredFiles && file.path.split("/").some((part) => IGNORED_SOURCE_NAMES.has(part))) {
+			throw new UserError(`Project snapshot contains an ignored source file: ${file.path}`);
+		}
+		const destination = resolve(stagingRoot, file.path);
+		await mkdir(dirname(destination), { recursive: true });
+		await writeFile(destination, file.content, { mode: file.mode });
+	}
+}
+
+async function rollbackDirectoryRestore(
+	projectRoot: string,
+	backupRoot: string,
+	currentFiles: ProjectSourceFile[],
+	restoredPaths: string[],
+): Promise<void> {
+	for (const path of restoredPaths) await rm(resolve(projectRoot, path), { force: true });
+	await removeEmptyProjectDirectories(projectRoot, restoredPaths);
+	for (const file of currentFiles) {
+		const source = resolve(backupRoot, file.path);
+		const destination = resolve(projectRoot, file.path);
+		await clearRollbackDestination(destination);
+		await mkdir(dirname(destination), { recursive: true });
+		await rename(source, destination);
+		await chmod(destination, file.mode);
+	}
+}
+
+async function removeEmptyRestoreDestination(destination: string, relativePath: string): Promise<void> {
+	let details: Awaited<ReturnType<typeof lstat>>;
+	try {
+		details = await lstat(destination);
+	} catch (error) {
+		if (isFsError(error, "ENOENT")) return;
+		throw error;
+	}
+	if (!details.isDirectory()) {
+		throw new UserError(`Cannot restore ${relativePath}: destination is occupied by an unversioned file.`);
+	}
+	try {
+		await rmdir(destination);
+	} catch (error) {
+		if (isFsError(error, "ENOTEMPTY") || isFsError(error, "EEXIST")) {
+			throw new UserError(`Cannot restore ${relativePath}: destination directory contains unversioned files.`);
+		}
+		throw error;
+	}
+}
+
+async function clearRollbackDestination(destination: string): Promise<void> {
+	let details: Awaited<ReturnType<typeof lstat>>;
+	try {
+		details = await lstat(destination);
+	} catch (error) {
+		if (isFsError(error, "ENOENT")) return;
+		throw error;
+	}
+	if (details.isDirectory()) await rmdir(destination);
+	else await rm(destination, { force: true });
+}
+
+async function removeEmptyProjectDirectories(projectRoot: string, paths: Iterable<string>): Promise<void> {
+	const directories = new Set<string>();
+	for (const path of paths) {
+		let directory = dirname(path);
+		while (directory !== ".") {
+			directories.add(directory);
+			directory = dirname(directory);
+		}
+	}
+	for (const directory of [...directories].sort((left, right) => right.split("/").length - left.split("/").length)) {
+		try {
+			await rmdir(resolve(projectRoot, directory));
+		} catch (error) {
+			if (!isFsError(error, "ENOENT") && !isFsError(error, "ENOTEMPTY") && !isFsError(error, "EEXIST")) throw error;
+		}
 	}
 }
 
@@ -659,35 +1016,64 @@ async function applyOrganizationMove(projectRoot: string, move: ProjectOrganizat
 	const source = resolve(projectRoot, move.from);
 	const destination = resolve(projectRoot, move.to);
 	if (await pathExists(destination))
-		throw new UserError(`Cannot move shared skill '${move.skill_id}': ${move.to} already exists.`);
+		throw new UserError(`Cannot move shared ${move.resource_type} '${move.resource_id}': ${move.to} already exists.`);
 	await mkdir(dirname(destination), { recursive: true });
 	await rename(source, destination);
 }
 
-async function scaffoldProject(projectRoot: string, provider: string): Promise<void> {
-	const providerTemplates: Record<string, { config: Record<string, string>; model: string }> = {
-		bailian: {
-			config: { api_key: `\${DASHSCOPE_API_KEY}`, workspace_id: `\${BAILIAN_WORKSPACE_ID}` },
-			model: "qwen3.7-max",
-		},
-		claude: { config: { api_key: `\${ANTHROPIC_API_KEY}` }, model: "claude-sonnet-4-6" },
-		qoder: {
-			config: { api_key: `\${QODER_PAT}`, gateway: "https://api.qoder.com/api/v1/cloud" },
-			model: "ultimate",
-		},
-		ark: { config: { api_key: `\${ARK_API_KEY}` }, model: "doubao-seed-2-1-pro-260628" },
-	};
-	const template = providerTemplates[provider];
-	if (!template) throw new UserError(`Unsupported provider '${provider}'.`);
-	const project = { version: "1", providers: { [provider]: template.config }, defaults: { provider } };
+async function scaffoldProject(projectRoot: string): Promise<void> {
+	const project = { version: "1" };
 	const agentDirectory = resolve(projectRoot, "agents", "assistant");
 	await mkdir(agentDirectory, { recursive: true });
 	await writeTextAtomic(resolve(projectRoot, PROJECT_METADATA_FILE), `${JSON.stringify(project, null, 2)}\n`);
 	await writeTextAtomic(
 		resolve(agentDirectory, "agent.json"),
-		`${JSON.stringify({ name: "Assistant", model: template.model }, null, 2)}\n`,
+		`${JSON.stringify({ name: "Assistant", model: "qwen3.7-max" }, null, 2)}\n`,
 	);
 	await writeTextAtomic(resolve(agentDirectory, "instructions.md"), "You are a helpful assistant.\n");
+}
+
+async function initializeProjectEnvironment(
+	projectRoot: string,
+	environment: Readonly<Record<string, string>> | undefined,
+): Promise<boolean> {
+	const entries = Object.entries(environment ?? {});
+	if (entries.length === 0) return false;
+	for (const [key, value] of entries) {
+		if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new UserError(`Invalid environment variable name '${key}'.`);
+		if (value.includes("\0")) throw new UserError(`Environment variable '${key}' contains a null byte.`);
+	}
+	await ensureEnvironmentIgnored(projectRoot);
+	const environmentPath = resolve(projectRoot, ".env");
+	const handle = await open(environmentPath, "wx", 0o600).catch((error: unknown) => {
+		if (isFsError(error, "EEXIST")) return null;
+		throw error;
+	});
+	if (!handle) return false;
+	try {
+		const content = [
+			"# Local provider credentials for this directory project.",
+			"# Keep this file private; it is excluded from project versions and Git.",
+			...entries.map(([key, value]) => `${key}=${JSON.stringify(value)}`),
+			"",
+		].join("\n");
+		await handle.writeFile(content, "utf8");
+		await handle.sync();
+	} catch (error) {
+		await handle.close();
+		await rm(environmentPath, { force: true });
+		throw error;
+	}
+	await handle.close();
+	return true;
+}
+
+async function ensureEnvironmentIgnored(projectRoot: string): Promise<void> {
+	const gitignorePath = resolve(projectRoot, ".gitignore");
+	const existing = (await pathExists(gitignorePath)) ? await readFile(gitignorePath, "utf8") : "";
+	if (existing.split(/\r?\n/).some((line) => line.trim() === ".env")) return;
+	const separator = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+	await writeTextAtomic(gitignorePath, `${existing}${separator}.env\n`);
 }
 
 async function convertYamlProject(projectRoot: string, yamlPath: string): Promise<void> {
@@ -697,11 +1083,36 @@ async function convertYamlProject(projectRoot: string, yamlPath: string): Promis
 	if (blockingDiagnostic) throw new UserError(blockingDiagnostic.message);
 	const raw = parse(source) as Record<string, unknown>;
 	if (!isRecord(raw)) throw new UserError("agents.yaml must contain an object.");
+	const configuredProviders = isRecord(raw.providers) ? Object.keys(raw.providers) : [];
+	const defaultProvider =
+		isRecord(raw.defaults) && typeof raw.defaults.provider === "string" ? raw.defaults.provider : null;
+	const unsupportedProviders = [
+		...new Set([...configuredProviders, ...(defaultProvider ? [defaultProvider] : [])]),
+	].filter((provider) => provider !== DIRECTORY_PROJECT_PROVIDER);
+	if (unsupportedProviders.length > 0) {
+		throw new UserError(
+			`Directory projects use '${DIRECTORY_PROJECT_PROVIDER}' automatically and cannot convert providers: ${unsupportedProviders.join(", ")}.`,
+		);
+	}
 	const agents = isRecord(raw.agents) ? raw.agents : {};
 	const skills = isRecord(raw.skills) ? raw.skills : {};
+	const directoryResources = Object.fromEntries(
+		DIRECTORY_RESOURCE_TYPES.map((type) => {
+			const section = DIRECTORY_RESOURCE_SPECS[type].section;
+			return [type, isRecord(raw[section]) ? raw[section] : {}];
+		}),
+	) as Record<DirectoryResourceType, Record<string, unknown>>;
 	const project = { ...raw };
+	delete project.providers;
+	if (isRecord(project.defaults)) {
+		const defaults = { ...project.defaults };
+		delete defaults.provider;
+		if (Object.keys(defaults).length > 0) project.defaults = defaults;
+		else delete project.defaults;
+	}
 	delete project.agents;
 	delete project.skills;
+	for (const type of DIRECTORY_RESOURCE_TYPES) delete project[DIRECTORY_RESOURCE_SPECS[type].section];
 	await writeTextAtomic(resolve(projectRoot, PROJECT_METADATA_FILE), `${JSON.stringify(project, null, 2)}\n`);
 	const references = new Map<string, Set<string>>();
 	for (const [agentId, value] of Object.entries(agents)) {
@@ -733,12 +1144,48 @@ async function convertYamlProject(projectRoot: string, yamlPath: string): Promis
 		await writeTextAtomic(resolve(destination, "skill.json"), `${JSON.stringify(metadata, null, 2)}\n`);
 		await materializeSkillSource(projectRoot, value.source, destination);
 	}
+	for (const type of DIRECTORY_RESOURCE_TYPES) {
+		const spec = DIRECTORY_RESOURCE_SPECS[type];
+		for (const [resourceId, value] of Object.entries(directoryResources[type])) {
+			if (!isRecord(value)) throw new UserError(`${spec.section}.${resourceId} must be an object.`);
+			const ownerAgent = convertedResourceOwner(type, resourceId, agents, project);
+			const relativeDirectory = ownerAgent
+				? `agents/${ownerAgent}/${spec.directory}/${resourceId}`
+				: `resources/${spec.directory}/${resourceId}`;
+			const destination = resolve(projectRoot, relativeDirectory);
+			await mkdir(destination, { recursive: true });
+			const metadata: Record<string, unknown> = { id: resourceId, ...value };
+			if (type === "file") await materializeFileSource(projectRoot, metadata, destination);
+			await writeTextAtomic(resolve(destination, spec.metadataFile), `${JSON.stringify(metadata, null, 2)}\n`);
+		}
+	}
+}
+
+function convertedResourceOwner(
+	type: DirectoryResourceType,
+	id: string,
+	agents: Record<string, unknown>,
+	project: Record<string, unknown>,
+): string | undefined {
+	const owners = Object.entries(agents)
+		.filter(([, agent]) => isRecord(agent) && agentReferencesDirectoryResource(agent, type, id))
+		.map(([agentId]) => agentId);
+	if (owners.length !== 1) return undefined;
+	const deployments = isRecord(project.deployments) ? project.deployments : {};
+	if (
+		Object.values(deployments).some(
+			(deployment) => isRecord(deployment) && deploymentReferencesDirectoryResource(deployment, type, id),
+		)
+	) {
+		return undefined;
+	}
+	return owners[0];
 }
 
 async function materializeText(projectRoot: string, value: unknown, fallback: string): Promise<string> {
 	if (typeof value !== "string") return fallback;
 	if (value.startsWith("./") || value.startsWith("../") || isAbsolute(value)) {
-		return readFile(resolve(projectRoot, value), "utf8");
+		return readFile(await resolveProjectOwnedSource(projectRoot, value, "Agent instructions"), "utf8");
 	}
 	return value.endsWith("\n") ? value : `${value}\n`;
 }
@@ -748,7 +1195,7 @@ async function materializeSkillSource(projectRoot: string, source: unknown, dest
 		await writeTextAtomic(resolve(destination, "SKILL.md"), "# Skill\n");
 		return;
 	}
-	const sourcePath = resolve(projectRoot, source);
+	const sourcePath = await resolveProjectOwnedSource(projectRoot, source, "Skill source");
 	const details = await stat(sourcePath);
 	if (details.isDirectory()) {
 		if (sourcePath === destination) return;
@@ -759,6 +1206,44 @@ async function materializeSkillSource(projectRoot: string, source: unknown, dest
 	} else {
 		await cp(sourcePath, resolve(destination, "SKILL.md"), { errorOnExist: true });
 	}
+}
+
+async function materializeFileSource(
+	projectRoot: string,
+	metadata: Record<string, unknown>,
+	destination: string,
+): Promise<void> {
+	const source = metadata.source;
+	if (typeof source !== "string" || /^https?:\/\//i.test(source)) return;
+	const sourcePath = await resolveProjectOwnedSource(projectRoot, source, "File source");
+	const details = await stat(sourcePath);
+	if (!details.isFile()) throw new UserError("File source must reference a file.");
+	const originalName = basename(sourcePath);
+	const fileName = originalName === "file.json" ? "content-file.json" : originalName;
+	const destinationPath = resolve(destination, fileName);
+	if (sourcePath !== destinationPath) await cp(sourcePath, destinationPath, { errorOnExist: true });
+	metadata.source = `./${fileName}`;
+}
+
+async function resolveProjectOwnedSource(projectRoot: string, source: string, label: string): Promise<string> {
+	if (isAbsolute(source)) throw new UserError(`${label} must be a relative path inside the project root.`);
+	const normalizedRoot = resolve(projectRoot);
+	const sourcePath = resolve(normalizedRoot, source);
+	if (!isPathInside(normalizedRoot, sourcePath)) {
+		throw new UserError(`${label} escapes the project root.`);
+	}
+	const [rootRealPath, sourceRealPath] = await Promise.all([realpath(normalizedRoot), realpath(sourcePath)]);
+	if (!isPathInside(rootRealPath, sourceRealPath)) {
+		throw new UserError(`${label} resolves outside the project root.`);
+	}
+	return sourcePath;
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+	const relativePath = relative(root, candidate);
+	return (
+		Boolean(relativePath) && relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath)
+	);
 }
 
 async function childDirectories(path: string): Promise<string[]> {
@@ -881,6 +1366,27 @@ function hash(value: string | Uint8Array): string {
 	return createHash("sha256").update(value).digest("hex");
 }
 
+function projectPublishPlanFingerprint(planned: ResourcePlanResult): string {
+	return hash(
+		stableStringify({
+			actions: planned.plan.actions,
+			diagnostics: planned.plan.diagnostics,
+		}),
+	);
+}
+
+function stableStringify(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+	if (value && typeof value === "object") {
+		return `{${Object.entries(value as Record<string, unknown>)
+			.filter(([, entry]) => entry !== undefined)
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
+			.join(",")}}`;
+	}
+	return JSON.stringify(value);
+}
+
 function sortObjectDeep(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(sortObjectDeep);
 	if (!isRecord(value)) return value;
@@ -901,6 +1407,10 @@ function toDiagnostic(error: unknown): Diagnostic {
 		code: "project.directory.invalid",
 		message: error instanceof Error ? error.message : String(error),
 	};
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function assertSafeRelative(path: string): void {

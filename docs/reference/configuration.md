@@ -252,6 +252,7 @@ agents:
     skills: [ <string> | { type, skill_id, version? } ]
     vault: <string>
     memory_stores: [ <string> ]
+    files: [ { file: <string>, mount_path: <string> } ]
     environment_variables: { <key>: <string> }  # Qoder only
     resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
@@ -265,6 +266,7 @@ agents:
 | `environment` | string | no | Environment name. |
 | `tunnel` | string | no | Qoder BYOC tunnel name from `tunnels`; unsupported for other providers. |
 | `provider` | string | no | Pin the agent to one provider. |
+| `files` | `{ file, mount_path }[]` | no | Mount declared top-level Files into every new Session. `file` is the logical File name; the path is normalized under the provider mount root. |
 | `tools.builtin` | string[] | yes (in `tools`) | Lowercase tool names. |
 | `tools.default_permission` | `"allow"` \| `"ask"` | no | Permission inherited by enabled builtins; defaults to `allow`. |
 | `tools.permissions` | map<string,`"allow"`\|`"ask"`> | no | Case- and separator-insensitive overrides for enabled builtins. Unknown and duplicate normalized names are rejected. |

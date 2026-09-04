@@ -38,7 +38,7 @@ agents init
 
 The init wizard asks two questions — which provider(s) to use and what to name your first agent — then writes a starter `agents.yaml`. This is the compact YAML workflow used by `validate → plan → apply` and `agents playground`.
 
-For a locally managed multi-file project and Workbench, start with `agents project init` instead. It creates `project.json`, `agents/assistant/agent.json`, and `instructions.md`, plus a Git-independent full-tree baseline. Use `agents project validate`, `project build`, `project publish`, `project workbench`, and `project version ...`. The two workflows are intentionally separate: YAML Apply does not create directory versions, while project Publish consumes only `.openagentpack/build/agents.yaml` and never builds implicitly.
+For a locally managed multi-file project and Workbench, start with `agents project init` instead. It creates `project.json`, `agents/assistant/agent.json`, and `instructions.md`, plus a Git-independent full-tree baseline. Directory projects always use Bailian, so `project.json` does not contain Provider configuration. Environment, Vault, Memory Store, File, and Skill declarations belong in the Agent directory (or root shared-resource directories), not in `project.json`. Use `agents project validate`, `project build`, `project publish`, `project workbench`, and `project version ...`. The two workflows are intentionally separate: YAML Apply does not create directory versions, while project Publish consumes only `.openagentpack/build/agents.yaml` and never builds implicitly.
 
 The generated file for the `bailian` provider and an agent named `assistant` looks like this:
 

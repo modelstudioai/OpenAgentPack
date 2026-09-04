@@ -231,6 +231,11 @@ const agentDeliverySchema = z.object({
 	type: z.enum(["managed", "forward"]),
 });
 
+const agentFileMountSchema = z.object({
+	file: z.string().min(1),
+	mount_path: z.string().min(1),
+});
+
 const sessionGithubRepoResourceSchema = z.object({
 	type: z.literal("github_repository"),
 	url: z.string().url(),
@@ -257,6 +262,7 @@ const agentSchema = z.object({
 	skills: z.array(z.union([z.string(), agentSkillRefSchema])).optional(),
 	vault: z.string().optional(),
 	memory_stores: z.array(z.string()).optional(),
+	files: z.array(agentFileMountSchema).optional(),
 	resources: z.array(sessionGithubRepoResourceSchema).optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),

@@ -95,6 +95,45 @@ body {
 	gap: 9px;
 }
 
+.language-switcher {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 34px;
+	padding: 0 8px;
+	border: 1px solid var(--wb-line);
+	border-radius: 9px;
+	background: #fff;
+	color: var(--wb-muted);
+}
+
+.language-switcher svg {
+	width: 15px;
+	height: 15px;
+}
+
+.language-switcher select {
+	padding: 0;
+	border: 0;
+	outline: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 12px;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
 .project-health code,
 .plan-meta code,
 .console-heading code {

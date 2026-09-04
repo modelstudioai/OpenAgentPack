@@ -51,6 +51,7 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 	const skillNames = new Set(Object.keys(config.skills ?? {}));
 	const vaultNames = new Set(Object.keys(config.vaults ?? {}));
 	const memoryNames = new Set(Object.keys(config.memory_stores ?? {}));
+	const fileNames = new Set(Object.keys(config.files ?? {}));
 	const agentNames = new Set(Object.keys(config.agents ?? {}));
 	const identityNames = new Set(Object.keys(config.identities ?? {}));
 
@@ -86,6 +87,11 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 					"config.agent.memory_store.unknown",
 					`agent.${name}: references unknown memory_store '${memory}'`,
 				);
+			}
+		}
+		for (const file of agent.files ?? []) {
+			if (!fileNames.has(file.file)) {
+				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${file.file}'`);
 			}
 		}
 		if (agent.multiagent) {
@@ -276,6 +282,29 @@ export function collectProviderCapabilities(
 					`agent.${name}: provider '${providerName}' cannot enforce interactive tool permission 'ask'.`,
 					address,
 				);
+			}
+			const normalizedFileMountPaths = new Set<string>();
+			for (const file of agent.files ?? []) {
+				let normalizedMountPath: string;
+				try {
+					normalizedMountPath = resolveSandboxMountPath(providerName, file.mount_path);
+				} catch (error) {
+					diagnostics.error(
+						`${providerName}.agent.file.mount_path.invalid`,
+						`agent.${name}: ${error instanceof Error ? error.message : String(error)}`,
+						address,
+					);
+					continue;
+				}
+				if (normalizedFileMountPaths.has(normalizedMountPath)) {
+					diagnostics.error(
+						`${providerName}.agent.file.mount_path.duplicate`,
+						`agent.${name}: file mount_path '${normalizedMountPath}' is duplicated after normalization.`,
+						address,
+					);
+				} else {
+					normalizedFileMountPaths.add(normalizedMountPath);
+				}
 			}
 			for (const resource of agent.resources ?? []) {
 				if (!def.features.session_resources.includes(resource.type)) {

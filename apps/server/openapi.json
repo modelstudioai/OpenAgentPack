@@ -1,7 +1,7 @@
 {
 	"openapi": "3.0.0",
 	"info": {
-		"title": "OpenAgentPack API",
+		"title": "Managed Agents Workbench API",
 		"version": "1.0.0"
 	},
 	"components": {
@@ -533,6 +533,9 @@
 								"id": {
 									"type": "string"
 								},
+								"owner_agent": {
+									"type": "string"
+								},
 								"declaration": {
 									"type": "object",
 									"additionalProperties": {
@@ -1031,7 +1034,11 @@
 						"items": {
 							"type": "object",
 							"properties": {
-								"skill_id": {
+								"resource_type": {
+									"type": "string",
+									"enum": ["skill", "environment", "vault", "memory_store", "file"]
+								},
+								"resource_id": {
 									"type": "string"
 								},
 								"from": {
@@ -1045,7 +1052,7 @@
 									"enum": ["shared"]
 								}
 							},
-							"required": ["skill_id", "from", "to", "reason"]
+							"required": ["resource_type", "resource_id", "from", "to", "reason"]
 						}
 					},
 					"can_build": {
@@ -1954,7 +1961,7 @@
 			"get": {
 				"responses": {
 					"200": {
-						"description": "Editable declarations already present in agents.yaml",
+						"description": "Editable declarations already present in the directory project source",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2231,7 +2238,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Atomically update an existing declaration in agents.yaml",
+						"description": "Atomically update an existing directory project declaration",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2341,7 +2348,7 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Atomically remove an unreferenced declaration from agents.yaml",
+						"description": "Atomically remove an unreferenced directory project declaration",
 						"content": {
 							"application/json": {
 								"schema": {

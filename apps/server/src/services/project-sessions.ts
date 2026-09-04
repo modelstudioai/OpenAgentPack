@@ -50,7 +50,7 @@ export async function startProjectSession(input: {
 		title: input.title,
 		files: attachments.map((attachment) => ({
 			fileId: attachment.remote_file_id,
-			mountPath: `/uploads/${safeFilename(attachment.filename)}`,
+			mountPath: `/mnt/uploads/${safeFilename(attachment.filename)}`,
 		})),
 	};
 	const prompt = input.prompt?.trim();

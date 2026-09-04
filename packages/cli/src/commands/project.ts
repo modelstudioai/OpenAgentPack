@@ -27,8 +27,8 @@ function projectRoot(options: ProjectOptions): string {
 	return options.project ?? ".";
 }
 
-export async function projectInitCommand(options: ProjectOptions & { provider?: string }): Promise<void> {
-	const result = await initializeDirectoryProject({ projectRoot: projectRoot(options), provider: options.provider });
+export async function projectInitCommand(options: ProjectOptions): Promise<void> {
+	const result = await initializeDirectoryProject({ projectRoot: projectRoot(options) });
 	if (options.json) return writeJson(result);
 	log.success(
 		result.converted_from_yaml ? "Converted agents.yaml into a directory project." : "Created directory project.",
@@ -64,7 +64,9 @@ export async function projectBuildCommand(
 		}
 		renderBuildSourcePreview(sourcePreview);
 		for (const move of preview.organization_moves) {
-			console.log(chalk.yellow(`move ${move.from} -> ${move.to} (${move.reason})`));
+			console.log(
+				chalk.yellow(`move ${move.resource_type}.${move.resource_id}: ${move.from} -> ${move.to} (${move.reason})`),
+			);
 		}
 	}
 	if (options.dryRun) return;
@@ -128,6 +130,7 @@ export async function projectPublishCommand(
 		projectRoot: preview.project_root,
 		expectedProjectRevision: preview.project_revision,
 		expectedYamlHash: preview.build_manifest.yaml_hash,
+		expectedPlanFingerprint: preview.plan_fingerprint,
 		provider: options.provider,
 		refresh: options.refresh,
 		concurrency: options.concurrency,

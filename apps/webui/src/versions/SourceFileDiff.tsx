@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ProjectVersionPreview } from "@/lib/project-api";
 import { buildYamlLineDiff } from "@/resources/yaml-diff";
 
@@ -12,6 +13,7 @@ export function SourceFileDiff({
 	version: string;
 	direction: "restore" | "working-tree";
 }) {
+	const { t } = useTranslation();
 	const showingWorkingChanges = direction === "working-tree";
 	const before = showingWorkingChanges ? change.after : change.before;
 	const after = showingWorkingChanges ? change.before : change.after;
@@ -29,14 +31,20 @@ export function SourceFileDiff({
 		<div className="yaml-unified-diff version-yaml-diff">
 			<div className="yaml-diff-file-header">
 				<span>
-					--- {beforeMissing ? "/dev/null" : `${showingWorkingChanges ? version : "working tree"}/${change.path}`}
+					---{" "}
+					{beforeMissing ? "/dev/null" : `${showingWorkingChanges ? version : t("common.workingTree")}/${change.path}`}
 				</span>
 				<span>
-					+++ {afterMissing ? "/dev/null" : `${showingWorkingChanges ? "working tree" : version}/${change.path}`}
+					+++{" "}
+					{afterMissing ? "/dev/null" : `${showingWorkingChanges ? t("common.workingTree") : version}/${change.path}`}
 				</span>
 			</div>
 			{change.binary ? (
-				<div className="yaml-diff-hunk">Binary file {displayedChange}</div>
+				<div className="yaml-diff-hunk">
+					{t("versions.binaryChange", {
+						change: t(`common.actions.${displayedChange}`, { defaultValue: displayedChange }),
+					})}
+				</div>
 			) : (
 				<>
 					<div className="yaml-diff-hunk">

@@ -1,4 +1,5 @@
 import type { PlannedAction, SessionEvent } from "@openagentpack/sdk";
+import type { TFunction } from "i18next";
 import {
 	AlertTriangle,
 	Braces,
@@ -19,6 +20,8 @@ import {
 	Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
 import {
 	type Attachment,
 	applyProject,
@@ -55,16 +58,11 @@ import { VersionsPanel } from "@/versions/VersionsPanel";
 
 type WorkbenchTab = "overview" | "changes" | "versions" | "debug" | "artifacts";
 
-const TAB_LABELS: Array<{ id: WorkbenchTab; label: string }> = [
-	{ id: "overview", label: "Overview" },
-	{ id: "changes", label: "Changes" },
-	{ id: "versions", label: "Versions" },
-	{ id: "debug", label: "Debug" },
-	{ id: "artifacts", label: "Artifacts" },
-];
+const WORKBENCH_TABS: WorkbenchTab[] = ["overview", "changes", "versions", "debug", "artifacts"];
 const ACTIVE_OPERATION_KEY = "openagentpack.playground.activeOperation";
 
 export default function App() {
+	const { t } = useTranslation();
 	const [project, setProject] = useState<ProjectSummary>();
 	const [projectError, setProjectError] = useState<string>();
 	const [reloading, setReloading] = useState(false);
@@ -103,7 +101,7 @@ export default function App() {
 	const sourcePreviewRequestGenerationRef = useRef(0);
 	const projectValid = project?.status === "valid";
 	const writeBlockedReason = project?.active_mutation
-		? `Project ${project.active_mutation.kind.replace(/_/g, " ")} is running. Drafts remain editable, but source and version writes are disabled until it finishes.`
+		? t("app.mutationRunning", { kind: project.active_mutation.kind.replace(/_/g, " ") })
 		: undefined;
 
 	const loadVersioningStatus = useCallback(async () => {
@@ -244,6 +242,7 @@ export default function App() {
 	);
 
 	const selectedAgent = project?.agents.find((entry) => entry.agent.id === selectedAgentId);
+	const projectDirectory = project?.config_file ? directoryProjectPath(project.config_file) : undefined;
 	const providers = useMemo(
 		() => [...new Set((project?.agents ?? []).map((entry) => entry.agent.provider))].sort(),
 		[project?.agents],
@@ -284,20 +283,18 @@ export default function App() {
 				source.close();
 			});
 			source.onerror = () => {
-				setActionError("Publish progress stream disconnected; reconnecting with the same operation ID…");
+				setActionError(t("app.publishStreamDisconnected"));
 				void getOperation(operationId).catch((error) => {
 					if ((error as { status?: number }).status !== 404) return;
 					setApplyBusy(false);
-					setActionError(
-						"The Workbench server restarted and interrupted this Publish. Create a fresh Plan before retrying.",
-					);
+					setActionError(t("app.publishInterrupted"));
 					sessionStorage.removeItem(ACTIVE_OPERATION_KEY);
 					source.close();
 				});
 			};
 			source.onopen = () => setActionError(undefined);
 		},
-		[loadProject],
+		[loadProject, t],
 	);
 
 	useEffect(() => {
@@ -378,7 +375,7 @@ export default function App() {
 		try {
 			preview ??= await previewProjectBuild(project.revision);
 			setBuildPreview(preview);
-			if (!preview.can_build) throw new Error("Project source contains errors and cannot be built.");
+			if (!preview.can_build) throw new Error(t("app.projectCannotBuild"));
 			await buildProject(project.revision);
 			await loadProject(false, !selectedAgentId);
 			setBuildBusy(false);
@@ -387,11 +384,7 @@ export default function App() {
 			const nextPlan = await planProject();
 			setPlan(nextPlan);
 			setPlanBusy(false);
-			if (
-				nextPlan.destructive &&
-				!window.confirm("This Publish deletes remote resources. Continue with the generated plan?")
-			)
-				return;
+			if (nextPlan.destructive && !window.confirm(t("app.confirmDestructivePublish"))) return;
 
 			setApplyBusy(true);
 			const accepted = await applyProject(nextPlan.plan_token, nextPlan.destructive);
@@ -483,7 +476,7 @@ export default function App() {
 			source.close();
 		});
 		source.onerror = () => {
-			setActionError("Session event stream disconnected; reconnecting from the last received event…");
+			setActionError(t("app.sessionStreamDisconnected"));
 		};
 		source.onopen = () => setActionError(undefined);
 	};
@@ -534,20 +527,21 @@ export default function App() {
 			<header className="workbench-header">
 				<div className="brand-mark">
 					<Braces />
-					<span>OpenAgentPack</span>
-					<small>Directory Workbench</small>
+					<span>Managed Agents</span>
+					<small>{t("app.directoryWorkbench")}</small>
 				</div>
 				<div className="project-identity">
-					<strong>{project?.project_name ?? "Loading project"}</strong>
-					<span title={project?.config_file}>{project?.config_file ?? "directory project"}</span>
+					<strong>{project?.project_name ?? t("app.loadingProject")}</strong>
+					<span title={projectDirectory}>{projectDirectory ?? t("app.directoryProject")}</span>
 				</div>
 				<div className="project-health">
 					<StatusPill status={reloading ? "loading" : (project?.status ?? "loading")} />
 					{project?.revision && <code>{project.revision.slice(0, 9)}</code>}
+					<LanguageSwitcher />
 					<button
 						className="icon-button"
 						type="button"
-						title="Refresh readiness"
+						title={t("app.refreshReadiness")}
 						onClick={() => void loadProject(true)}
 					>
 						<RefreshCw className={reloading ? "spin" : ""} />
@@ -557,10 +551,7 @@ export default function App() {
 
 			{projectError && <Banner tone="error" message={projectError} />}
 			{project && project.status !== "valid" && (
-				<Banner
-					tone="warning"
-					message={`Project is ${project.status}. Existing Sessions remain available, but Build, Publish, upload, and new Session operations are disabled.`}
-				/>
+				<Banner tone="warning" message={t("app.projectUnavailable", { status: translateStatus(t, project.status) })} />
 			)}
 			{project?.diagnostics.map((diagnostic) => (
 				<Banner
@@ -574,30 +565,32 @@ export default function App() {
 			<div className="workbench-layout">
 				<aside className="agent-sidebar">
 					<div className="sidebar-heading">
-						<span>Agents</span>
+						<span>{t("app.sidebar.agents")}</span>
 						<b>{project?.agents.length ?? 0}</b>
 					</div>
 					<div className="search-box">
 						<Search />
 						<input
-							aria-label="Search agents"
+							aria-label={t("app.sidebar.search")}
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
-							placeholder="Search agents"
+							placeholder={t("app.sidebar.search")}
 						/>
 					</div>
 					<div className="filter-row">
 						<select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
-							<option value="all">All providers</option>
+							<option value="all">{t("app.sidebar.allProviders")}</option>
 							{providers.map((provider) => (
 								<option key={provider}>{provider}</option>
 							))}
 						</select>
 						<select value={readinessFilter} onChange={(event) => setReadinessFilter(event.target.value)}>
-							<option value="all">All states</option>
+							<option value="all">{t("app.sidebar.allStates")}</option>
 							{["ready", "missing", "creating", "updating", "drifted", "unavailable", "invalid", "error"].map(
 								(status) => (
-									<option key={status}>{status}</option>
+									<option key={status} value={status}>
+										{translateStatus(t, status)}
+									</option>
 								),
 							)}
 						</select>
@@ -614,7 +607,7 @@ export default function App() {
 								<span className="agent-item-copy">
 									<strong>{entry.agent.id}</strong>
 									<small>
-										{entry.agent.provider} · {entry.readiness.status}
+										{entry.agent.provider} · {translateStatus(t, entry.readiness.status)}
 									</small>
 								</span>
 								<ChevronRight />
@@ -644,31 +637,31 @@ export default function App() {
 													rel="noreferrer"
 												>
 													<ExternalLink />
-													Preview
+													{t("app.agent.preview")}
 												</a>
 											</div>
-											<p>{selectedAgent.agent.description ?? "No description declared."}</p>
+											<p>{selectedAgent.agent.description ?? t("app.agent.noDescription")}</p>
 										</div>
 										<ReadinessBadge agent={selectedAgent} />
 									</>
 								) : (
 									<div>
-										<div className="eyebrow">project / runtime</div>
-										<h1>{project?.project_name ?? "Project"}</h1>
-										<p>No Agent is currently selected. Resources and project Changes remain available.</p>
+										<div className="eyebrow">{t("app.agent.projectRuntime")}</div>
+										<h1>{project?.project_name ?? t("app.agent.project")}</h1>
+										<p>{t("app.agent.noSelection")}</p>
 									</div>
 								)}
 							</section>
 							{selectedAgent && <ReadinessDiagnostics agent={selectedAgent} />}
 							<nav className="workspace-tabs">
-								{TAB_LABELS.map((item) => (
+								{WORKBENCH_TABS.map((item) => (
 									<button
-										key={item.id}
+										key={item}
 										type="button"
-										className={tab === item.id ? "active" : ""}
-										onClick={() => setTab(item.id)}
+										className={tab === item ? "active" : ""}
+										onClick={() => setTab(item)}
 									>
-										{item.label}
+										{t(`app.tabs.${item}`)}
 									</button>
 								))}
 							</nav>
@@ -683,7 +676,7 @@ export default function App() {
 										onCommitted={handleDeclarationCommitted}
 									/>
 								) : (
-									<AgentRequiredPanel action="edit its resources" />
+									<AgentRequiredPanel action={t("app.agent.selectToEdit")} />
 								))}
 							{tab === "changes" && (
 								<ChangesPanel
@@ -742,19 +735,16 @@ export default function App() {
 									onCancel={handleCancel}
 								/>
 							)}
-							{tab === "debug" && !selectedAgent && <AgentRequiredPanel action="start a debug Session" />}
+							{tab === "debug" && !selectedAgent && <AgentRequiredPanel action={t("app.agent.selectToDebug")} />}
 							{tab === "artifacts" && (
-								<EventsPanel
-									events={artifactEvents(sessionEvents)}
-									empty="Artifacts and tool outputs will appear here after a run."
-								/>
+								<EventsPanel events={artifactEvents(sessionEvents)} empty={t("app.debug.artifactsEmpty")} />
 							)}
 						</>
 					) : (
 						<div className="empty-state">
 							<ServerCog />
-							<h2>No Agent selected</h2>
-							<p>Fix the directory project or adjust the filters to select an existing Agent.</p>
+							<h2>{t("app.agent.noAgentSelected")}</h2>
+							<p>{t("app.agent.fixOrFilter")}</p>
 						</div>
 					)}
 				</main>
@@ -798,13 +788,14 @@ function ChangesPanel({
 	operationEvents: OperationEvent[];
 	onPublish(): void;
 }) {
+	const { i18n, t } = useTranslation();
 	const impact = plan && baselinePlan ? comparePlanActions(baselinePlan.actions, plan.actions) : undefined;
 	return (
 		<section className="panel-stack">
 			<div className="action-toolbar">
 				<div>
-					<h2>Publish</h2>
-					<p>Publish builds the current directory source, generates a remote plan, and executes it as one operation.</p>
+					<h2>{t("app.changes.title")}</h2>
+					<p>{t("app.changes.description")}</p>
 				</div>
 				<div className="toolbar-buttons">
 					<span
@@ -822,12 +813,12 @@ function ChangesPanel({
 							<RefreshCw />
 						)}
 						{buildBusy
-							? "Checking…"
+							? t("app.changes.checking")
 							: buildPreview?.can_build
-								? "Ready to publish"
+								? t("app.changes.ready")
 								: buildPreview
-									? "Needs attention"
-									: "Automatic checks"}
+									? t("app.changes.attention")
+									: t("app.changes.automaticChecks")}
 					</span>
 					<button
 						type="button"
@@ -836,7 +827,13 @@ function ChangesPanel({
 						onClick={onPublish}
 					>
 						{buildBusy || planBusy || applyBusy ? <LoaderCircle className="spin" /> : <Play />}
-						{buildBusy ? "Preparing…" : planBusy ? "Planning…" : applyBusy ? "Publishing…" : "Publish"}
+						{buildBusy
+							? t("app.changes.preparing")
+							: planBusy
+								? t("app.changes.planning")
+								: applyBusy
+									? t("app.changes.publishing")
+									: t("app.changes.publish")}
 					</button>
 				</div>
 			</div>
@@ -851,21 +848,25 @@ function ChangesPanel({
 			{!versioningEnabled && (
 				<div className="version-notice warning">
 					<AlertTriangle />
-					<span>Project versions are disabled. This Publish will not record a directory snapshot.</span>
+					<span>{t("app.changes.versionsDisabled")}</span>
 				</div>
 			)}
 			{plan && (
 				<div className="plan-card">
 					<div className="plan-meta">
-						<span>{plan.actions.filter((action) => action.action !== "no-op").length} changes</span>
+						<span>
+							{t("app.changes.changeCount", {
+								count: plan.actions.filter((action) => action.action !== "no-op").length,
+							})}
+						</span>
 						<span>
 							{plan.destructive ? (
 								<>
-									<ShieldAlert /> destructive
+									<ShieldAlert /> {t("app.changes.destructive")}
 								</>
 							) : (
 								<>
-									<CheckCircle2 /> non-destructive
+									<CheckCircle2 /> {t("app.changes.nonDestructive")}
 								</>
 							)}
 						</span>
@@ -874,21 +875,19 @@ function ChangesPanel({
 					{impact ? (
 						<>
 							<PlanActionGroup
-								title="This edit"
-								description="Actions introduced or changed by the declaration you just saved."
+								title={t("app.changes.thisEdit")}
+								description={t("app.changes.thisEditDescription")}
 								actions={impact.currentEdit}
-								empty="This edit introduced no Publish action."
+								empty={t("app.changes.thisEditEmpty")}
 							/>
 							{impact.resolvedByEdit.length > 0 && <ResolvedPlanActions actions={impact.resolvedByEdit} />}
 							<PlanActionGroup
-								title="Already pending"
-								description="These actions existed before this edit and are still included in project Publish."
+								title={t("app.changes.alreadyPending")}
+								description={t("app.changes.alreadyPendingDescription")}
 								actions={impact.alreadyPending}
-								empty="No pre-existing project changes remain."
+								empty={t("app.changes.alreadyPendingEmpty")}
 							/>
-							<p className="plan-scope-notice">
-								Publish executes both groups above. Resolved items require no remote action.
-							</p>
+							<p className="plan-scope-notice">{t("app.changes.planScope")}</p>
 						</>
 					) : (
 						plan.actions.map((action) => <PlanActionRow key={planActionKey(action)} action={action} />)
@@ -903,10 +902,10 @@ function ChangesPanel({
 			)}
 			{operationEvents.length > 0 && (
 				<div className="operation-log">
-					<h3>Publish progress</h3>
+					<h3>{t("app.changes.progress")}</h3>
 					{operationEvents.map((event) => (
 						<div key={event.index}>
-							<time>{new Date(event.timestamp).toLocaleTimeString()}</time>
+							<time>{new Date(event.timestamp).toLocaleTimeString(i18n.resolvedLanguage)}</time>
 							<strong>{event.type}</strong>
 							<span>{operationMessage(event.data)}</span>
 						</div>
@@ -930,17 +929,18 @@ function SourceChangesCard({
 	initialized: boolean;
 	headVersion: string | null;
 }) {
+	const { t } = useTranslation();
 	return (
 		<div className="plan-card">
 			<div className="plan-meta">
-				<strong>Source changes</strong>
-				{headVersion && <code>baseline {headVersion.slice(0, 12)}</code>}
-				{preview && <span>{preview.changes.length} changed file(s)</span>}
+				<strong>{t("app.changes.sourceChanges")}</strong>
+				{headVersion && <code>{t("app.changes.baseline", { version: headVersion.slice(0, 12) })}</code>}
+				{preview && <span>{t("app.changes.changedFiles", { count: preview.changes.length })}</span>}
 			</div>
 			{busy ? (
 				<div className="version-preview-empty">
 					<LoaderCircle className="spin" />
-					<p>Comparing the working directory with the latest published version…</p>
+					<p>{t("app.changes.comparing")}</p>
 				</div>
 			) : error ? (
 				<div className="version-notice warning">
@@ -950,7 +950,7 @@ function SourceChangesCard({
 			) : !initialized || !headVersion ? (
 				<div className="version-notice warning">
 					<AlertTriangle />
-					<span>Enable project versions to create a baseline for full directory source changes.</span>
+					<span>{t("app.changes.enableBaseline")}</span>
 				</div>
 			) : preview ? (
 				preview.changes.length > 0 ? (
@@ -963,28 +963,34 @@ function SourceChangesCard({
 						/>
 					))
 				) : (
-					<p className="version-preview-empty">The working directory matches the latest published version.</p>
+					<p className="version-preview-empty">{t("app.changes.matchesLatest")}</p>
 				)
 			) : (
-				<p className="version-preview-empty">Waiting for the latest version comparison.</p>
+				<p className="version-preview-empty">{t("app.changes.waitingComparison")}</p>
 			)}
 		</div>
 	);
 }
 
 function PublishChecks({ preview }: { preview: ProjectBuild }) {
+	const { t } = useTranslation();
 	const diagnostics = [...preview.diagnostics, ...preview.warnings];
 	if (preview.organization_moves.length === 0 && diagnostics.length === 0) return null;
 	return (
 		<div className="plan-card">
 			<div className="plan-meta">
-				<strong>Publish checks</strong>
-				<span>{preview.organization_moves.length} organization move(s)</span>
-				<span>{diagnostics.length} diagnostic(s)</span>
+				<strong>{t("app.changes.publishChecks")}</strong>
+				<span>{t("app.changes.organizationMoves", { count: preview.organization_moves.length })}</span>
+				<span>{t("app.changes.diagnostics", { count: diagnostics.length })}</span>
 			</div>
 			{preview.organization_moves.map((move) => (
 				<div className="plan-diagnostic warning" key={`${move.from}:${move.to}`}>
-					<strong>move shared skill {move.skill_id}</strong>
+					<strong>
+						{t("app.changes.moveSharedResource", {
+							type: t(`resources.kinds.${move.resource_type}`),
+							resource: move.resource_id,
+						})}
+					</strong>
 					<span>
 						{move.from} → {move.to}
 					</span>
@@ -1001,10 +1007,11 @@ function PublishChecks({ preview }: { preview: ProjectBuild }) {
 }
 
 function AgentRequiredPanel({ action }: { action: string }) {
+	const { t } = useTranslation();
 	return (
 		<div className="empty-panel content-empty-panel">
 			<ServerCog />
-			<p>Select an existing Agent to {action}.</p>
+			<p>{t("app.agent.required", { action })}</p>
 		</div>
 	);
 }
@@ -1047,18 +1054,19 @@ function DebugPanel({
 	onFollowupSend(): void;
 	onCancel(): void;
 }) {
+	const { t } = useTranslation();
 	return (
 		<section className="debug-layout">
 			<div className="debug-controls">
 				<div className="panel-card">
 					<div className="panel-heading">
 						<div>
-							<h2>Temporary attachments</h2>
-							<p>Uploaded for Sessions only; never written to directory project source.</p>
+							<h2>{t("app.debug.temporaryAttachments")}</h2>
+							<p>{t("app.debug.attachmentsDescription")}</p>
 						</div>
 						<label className={`upload-button ${!projectValid ? "disabled" : ""}`}>
 							<Upload />
-							{uploadBusy ? "Uploading…" : "Upload"}
+							{uploadBusy ? t("app.debug.uploading") : t("app.debug.upload")}
 							<input
 								type="file"
 								multiple
@@ -1082,26 +1090,28 @@ function DebugPanel({
 								<FileText />
 								<span>
 									<strong>{attachment.filename}</strong>
-									<small>{attachment.status ?? (attachment.available ? "available" : "pending")}</small>
+									<small>
+										{translateStatus(t, attachment.status ?? (attachment.available ? "available" : "pending"))}
+									</small>
 								</span>
 								<button
 									type="button"
-									title="Delete remote attachment"
+									title={t("app.debug.deleteAttachment")}
 									onClick={() => void onDeleteAttachment(attachment.id)}
 								>
 									<Trash2 />
 								</button>
 							</div>
 						))}
-						{attachments.length === 0 && <p className="muted-copy">No temporary attachments.</p>}
+						{attachments.length === 0 && <p className="muted-copy">{t("app.debug.noAttachments")}</p>}
 					</div>
 				</div>
 				<div className="panel-card">
-					<h2>Start a Session</h2>
+					<h2>{t("app.debug.startSession")}</h2>
 					<textarea
 						value={prompt}
 						onChange={(event) => onPrompt(event.target.value)}
-						placeholder="Describe the task to run with this Agent…"
+						placeholder={t("app.debug.taskPlaceholder")}
 						rows={7}
 					/>
 					<button
@@ -1110,33 +1120,31 @@ function DebugPanel({
 						disabled={!projectValid || busy || !prompt.trim()}
 						onClick={onStart}
 					>
-						{busy ? <LoaderCircle className="spin" /> : <Play />}Start Session
+						{busy ? <LoaderCircle className="spin" /> : <Play />}
+						{t("app.debug.startSession")}
 					</button>
 				</div>
 			</div>
 			<div className="session-console">
 				<div className="console-heading">
 					<div>
-						<span>Live Session</span>
-						<code>{session?.session.session_id ?? "not started"}</code>
+						<span>{t("app.debug.liveSession")}</span>
+						<code>{session?.session.session_id ?? t("app.debug.notStarted")}</code>
 					</div>
 					{session && busy && (
 						<button type="button" className="danger-button" onClick={onCancel}>
 							<Square />
-							Cancel
+							{t("app.debug.cancel")}
 						</button>
 					)}
 				</div>
-				<EventsPanel
-					events={events}
-					empty="Start a Session to inspect messages, reasoning, tool calls, and artifacts."
-				/>
+				<EventsPanel events={events} empty={t("app.debug.empty")} />
 				{session && (
 					<div className="followup-box">
 						<textarea
 							value={followup}
 							onChange={(event) => onFollowup(event.target.value)}
-							placeholder="Send a follow-up using the pinned Session runtime…"
+							placeholder={t("app.debug.followupPlaceholder")}
 							rows={3}
 						/>
 						<button
@@ -1146,7 +1154,7 @@ function DebugPanel({
 							onClick={onFollowupSend}
 						>
 							<Send />
-							Send
+							{t("app.debug.send")}
 						</button>
 					</div>
 				)}
@@ -1156,6 +1164,7 @@ function DebugPanel({
 }
 
 function EventsPanel({ events, empty }: { events: SessionEvent[]; empty: string }) {
+	const { i18n } = useTranslation();
 	return (
 		<div className="event-list">
 			{events.length ? (
@@ -1169,7 +1178,9 @@ function EventsPanel({ events, empty }: { events: SessionEvent[]; empty: string 
 							<header>
 								<strong>{event.type}</strong>
 								<span>{event.role}</span>
-								<time>{event.created_at ? new Date(event.created_at).toLocaleTimeString() : ""}</time>
+								<time>
+									{event.created_at ? new Date(event.created_at).toLocaleTimeString(i18n.resolvedLanguage) : ""}
+								</time>
 							</header>
 							{event.message && <p>{event.message}</p>}
 							{event.content?.map((block) => (
@@ -1220,23 +1231,24 @@ function PlanActionGroup({
 }
 
 function ResolvedPlanActions({ actions }: { actions: PlannedAction[] }) {
+	const { t } = useTranslation();
 	return (
 		<section className="plan-action-group resolved">
 			<header className="plan-action-group-heading">
 				<span>
-					<strong>Resolved by this edit</strong>
+					<strong>{t("app.changes.resolved")}</strong>
 					<b>{actions.length}</b>
 				</span>
-				<small>These previously pending actions are no longer part of the project Plan.</small>
+				<small>{t("app.changes.resolvedDescription")}</small>
 			</header>
 			{actions.map((action) => (
 				<div className="plan-action resolved" key={planActionKey(action)}>
-					<span className="action-kind">cleared</span>
+					<span className="action-kind">{t("app.changes.cleared")}</span>
 					<span>
 						<strong>
-							{displayPlanResourceType(action)}.{action.address.name}
+							{displayPlanResourceType(t, action)}.{action.address.name}
 						</strong>
-						<small>Was pending {action.action} · no remote action remains</small>
+						<small>{t("app.changes.wasPending", { action: translatePlanAction(t, action.action) })}</small>
 					</span>
 				</div>
 			))}
@@ -1245,12 +1257,13 @@ function ResolvedPlanActions({ actions }: { actions: PlannedAction[] }) {
 }
 
 function PlanActionRow({ action }: { action: PlannedAction }) {
+	const { t } = useTranslation();
 	return (
 		<div className={`plan-action ${action.action}`}>
-			<span className="action-kind">{action.action}</span>
+			<span className="action-kind">{translatePlanAction(t, action.action)}</span>
 			<span>
 				<strong>
-					{displayPlanResourceType(action)}.{action.address.name}
+					{displayPlanResourceType(t, action)}.{action.address.name}
 				</strong>
 				<small>
 					{action.address.provider} · {action.reason}
@@ -1261,23 +1274,55 @@ function PlanActionRow({ action }: { action: PlannedAction }) {
 	);
 }
 
-function displayPlanResourceType(action: PlannedAction): string {
-	return action.address.type === "agent" || action.address.type === "template" ? "Agent" : action.address.type;
+function displayPlanResourceType(t: TFunction, action: PlannedAction): string {
+	if (action.address.type === "agent" || action.address.type === "template") return t("resources.kinds.agent");
+	return t(`resources.kinds.${action.address.type}`, { defaultValue: action.address.type });
 }
 
 function planActionKey(action: PlannedAction): string {
 	return `${action.action}-${action.address.provider}-${action.address.type}-${action.address.name}`;
 }
 
+function translatePlanAction(t: TFunction, action: PlannedAction["action"]): string {
+	return t(`common.actions.${action.replace("-", "_")}`, { defaultValue: action });
+}
+
+const STATUS_TRANSLATION_KEYS = {
+	loading: "common.loading",
+	valid: "common.valid",
+	invalid: "common.invalid",
+	ready: "common.ready",
+	missing: "common.missing",
+	creating: "common.creating",
+	updating: "common.updating",
+	drifted: "common.drifted",
+	unavailable: "common.unavailable",
+	error: "common.error",
+	available: "common.available",
+	pending: "common.pending",
+} as const;
+
+function translateStatus(t: TFunction, status: string): string {
+	const key = STATUS_TRANSLATION_KEYS[status as keyof typeof STATUS_TRANSLATION_KEYS];
+	return key ? t(key) : status;
+}
+
+function directoryProjectPath(configFile: string): string {
+	return configFile.replace(/[\\/]\.openagentpack[\\/]build[\\/]agents\.yaml$/u, "");
+}
+
 function ReadinessBadge({ agent }: { agent: ProjectAgent }) {
+	const { t } = useTranslation();
 	return (
 		<div className={`readiness-badge ${agent.readiness.status}`}>
 			<span />
 			<div>
-				<strong>{agent.readiness.status}</strong>
+				<strong>{translateStatus(t, agent.readiness.status)}</strong>
 				<small>
 					{agent.readiness.driftSeverity ??
-						`${agent.readiness.plannedActions.filter((action) => action.action !== "no-op").length} planned changes`}
+						t("app.changes.plannedChanges", {
+							count: agent.readiness.plannedActions.filter((action) => action.action !== "no-op").length,
+						})}
 				</small>
 			</div>
 		</div>
@@ -1285,19 +1330,20 @@ function ReadinessBadge({ agent }: { agent: ProjectAgent }) {
 }
 
 function ReadinessDiagnostics({ agent }: { agent: ProjectAgent }) {
+	const { t } = useTranslation();
 	const diagnostics = agent.readiness.diagnostics;
 	if (diagnostics.length === 0) return null;
 	const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
 	return (
 		<section
 			className={`readiness-diagnostics ${hasErrors ? "error" : "warning"}`}
-			aria-label="Agent readiness diagnostics"
+			aria-label={t("app.readiness.aria")}
 		>
 			<header>
 				<AlertTriangle />
 				<div>
-					<strong>Why this Agent is {agent.readiness.status}</strong>
-					<small>Resolve these diagnostics before starting a debug Session.</small>
+					<strong>{t("app.readiness.why", { status: translateStatus(t, agent.readiness.status) })}</strong>
+					<small>{t("app.readiness.resolveBeforeDebug")}</small>
 				</div>
 			</header>
 			<ul>
@@ -1313,6 +1359,7 @@ function ReadinessDiagnostics({ agent }: { agent: ProjectAgent }) {
 }
 
 function StatusPill({ status }: { status: string }) {
+	const { t } = useTranslation();
 	return (
 		<span className={`status-pill ${status}`}>
 			{status === "valid" ? (
@@ -1322,7 +1369,7 @@ function StatusPill({ status }: { status: string }) {
 			) : (
 				<AlertTriangle />
 			)}
-			{status}
+			{translateStatus(t, status)}
 		</span>
 	);
 }

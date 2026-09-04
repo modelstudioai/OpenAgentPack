@@ -84,6 +84,6 @@ export async function startServer(): Promise<void> {
 	root.get("*", (c) => c.html(indexHtml));
 
 	serve({ fetch: root.fetch, port, hostname: "127.0.0.1" }, () => {
-		console.log(`OpenAgentPack Playground running at http://localhost:${port}`);
+		console.log(`Managed Agents Workbench running at http://localhost:${port}`);
 	});
 }

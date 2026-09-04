@@ -88,3 +88,22 @@ test("preserves Agent environment variables from YAML", async () => {
 		RETRY_COUNT: "3",
 	});
 });
+
+test("preserves declared Agent File mounts", () => {
+	const result = projectConfigSchema.safeParse({
+		version: "1",
+		providers: { bailian: {} },
+		files: { input: { source: "./input.txt" } },
+		agents: {
+			assistant: {
+				model: "qwen3.7-max",
+				instructions: "test",
+				files: [{ file: "input", mount_path: "/mnt/input.txt" }],
+			},
+		},
+	});
+
+	expect(result.success).toBe(true);
+	if (result.success)
+		expect(result.data.agents?.assistant?.files).toEqual([{ file: "input", mount_path: "/mnt/input.txt" }]);
+});

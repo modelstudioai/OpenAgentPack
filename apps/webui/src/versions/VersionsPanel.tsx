@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, History, LoaderCircle, Power, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
 	listProjectVersions,
 	type ProjectVersion,
@@ -30,6 +31,7 @@ export function VersionsPanel({
 	onVersioningChange,
 	onRestored,
 }: VersionsPanelProps) {
+	const { i18n, t } = useTranslation();
 	const [versions, setVersions] = useState<ProjectVersion[]>([]);
 	const [nextCursor, setNextCursor] = useState<string | null>(null);
 	const [selected, setSelected] = useState<ProjectVersion>();
@@ -121,11 +123,7 @@ export function VersionsPanel({
 	const handleRestore = async () => {
 		if (!selected || !preview?.can_restore || !previewIsCurrent) return;
 		if (selected.version_id === versioning?.head_version) return;
-		if (
-			!window.confirm(
-				`Restore the full project source from ${preview.version_id.slice(0, 12)} to the working directory? Version history will not move.`,
-			)
-		) {
+		if (!window.confirm(t("versions.confirmRestore", { version: preview.version_id.slice(0, 12) }))) {
 			return;
 		}
 		setWriteBusy(true);
@@ -144,7 +142,7 @@ export function VersionsPanel({
 		return (
 			<div className="empty-panel content-empty-panel">
 				<LoaderCircle className="spin" />
-				<p>Inspecting local version history…</p>
+				<p>{t("versions.loading")}</p>
 			</div>
 		);
 	}
@@ -153,12 +151,8 @@ export function VersionsPanel({
 		<section className="versions-panel panel-stack">
 			<div className="action-toolbar">
 				<div>
-					<h2>Local configuration versions</h2>
-					<p>
-						Workbench and CLI share one project versioning switch. When enabled, successful Publish snapshots the full
-						source tree. Git is not required. Project files, including local Skill content, are included; remote State
-						is never included.
-					</p>
+					<h2>{t("versions.title")}</h2>
+					<p>{t("versions.description")}</p>
 				</div>
 			</div>
 
@@ -169,8 +163,8 @@ export function VersionsPanel({
 				<div className="version-empty-card">
 					<History />
 					<div>
-						<h3>Local versions are not enabled</h3>
-						<p>Enable project versions to create a baseline directory snapshot.</p>
+						<h3>{t("versions.notEnabled")}</h3>
+						<p>{t("versions.enableBaseline")}</p>
 					</div>
 					<button
 						type="button"
@@ -178,38 +172,38 @@ export function VersionsPanel({
 						disabled={!projectRevision || Boolean(writeBlockedReason) || writeBusy}
 						onClick={() => void handleVersioningToggle()}
 					>
-						{writeBusy ? <LoaderCircle className="spin" /> : <Power />} Enable Local Versions
+						{writeBusy ? <LoaderCircle className="spin" /> : <Power />} {t("versions.enableLocalVersions")}
 					</button>
 				</div>
 			) : versioning ? (
 				<>
 					<div className="version-summary-grid">
-						<VersionSummary label="Store" value={versioning.store_root} />
+						<VersionSummary label={t("versions.store")} value={versioning.store_root} />
 						<VersionSummary
-							label="Current version"
-							value={versioning.head_version?.slice(0, 12) ?? "no versions"}
+							label={t("versions.currentVersion")}
+							value={versioning.head_version?.slice(0, 12) ?? t("versions.noVersions")}
 							mono
 						/>
 						<VersionSummary
-							label="Project source"
-							value={versioning.source_versioned ? "versioned" : versioning.source_status}
+							label={t("versions.projectSource")}
+							value={
+								versioning.source_versioned
+									? t("versions.versioned")
+									: t(`versions.${versioning.source_status}`, { defaultValue: versioning.source_status })
+							}
 							tone={versioning.source_versioned ? "good" : "warn"}
 						/>
 						<VersionSummary
-							label="Automatic versions"
-							value={versioning.enabled ? "enabled" : "disabled"}
+							label={t("versions.automaticVersions")}
+							value={versioning.enabled ? t("versions.enabled") : t("versions.disabled")}
 							tone={versioning.enabled ? "good" : "warn"}
 						/>
 					</div>
 
 					<div className="action-toolbar version-toggle-toolbar">
 						<div>
-							<strong>Shared CLI and Workbench switch</strong>
-							<p>
-								{versioning.enabled
-									? "Successful Publish creates a directory snapshot."
-									: "Publish will not create a directory snapshot."}
-							</p>
+							<strong>{t("versions.sharedSwitch")}</strong>
+							<p>{versioning.enabled ? t("versions.publishCreates") : t("versions.publishNoSnapshot")}</p>
 						</div>
 						<button
 							type="button"
@@ -217,7 +211,8 @@ export function VersionsPanel({
 							disabled={!projectRevision || Boolean(writeBlockedReason) || writeBusy}
 							onClick={() => void handleVersioningToggle()}
 						>
-							{writeBusy ? <LoaderCircle className="spin" /> : <Power />} {versioning.enabled ? "Disable" : "Enable"}
+							{writeBusy ? <LoaderCircle className="spin" /> : <Power />}{" "}
+							{versioning.enabled ? t("common.disable") : t("common.enable")}
 						</button>
 					</div>
 
@@ -231,7 +226,7 @@ export function VersionsPanel({
 						<div className="version-list-card">
 							<header>
 								<History />
-								<strong>Local snapshot history</strong>
+								<strong>{t("versions.history")}</strong>
 							</header>
 							<div className="version-list">
 								{versions.map((version) => (
@@ -245,12 +240,12 @@ export function VersionsPanel({
 										<span>
 											<strong>{version.message}</strong>
 											<small>
-												{version.created_by} · {new Date(version.created_at).toLocaleString()}
+												{version.created_by} · {new Date(version.created_at).toLocaleString(i18n.resolvedLanguage)}
 											</small>
 										</span>
 									</button>
 								))}
-								{versions.length === 0 && !historyBusy && <p>No directory project versions have been created.</p>}
+								{versions.length === 0 && !historyBusy && <p>{t("versions.empty")}</p>}
 							</div>
 							{nextCursor && (
 								<button
@@ -259,7 +254,7 @@ export function VersionsPanel({
 									disabled={historyBusy}
 									onClick={() => void loadVersions(nextCursor)}
 								>
-									{historyBusy ? <LoaderCircle className="spin" /> : <History />} Load more
+									{historyBusy ? <LoaderCircle className="spin" /> : <History />} {t("versions.loadMore")}
 								</button>
 							)}
 						</div>
@@ -268,7 +263,7 @@ export function VersionsPanel({
 							{previewBusy ? (
 								<div className="version-preview-empty">
 									<LoaderCircle className="spin" />
-									<p>Validating historical project source…</p>
+									<p>{t("versions.validating")}</p>
 								</div>
 							) : preview && selected && previewIsCurrent ? (
 								<VersionPreview
@@ -282,7 +277,7 @@ export function VersionsPanel({
 							) : (
 								<div className="version-preview-empty">
 									<History />
-									<p>Select a version to preview its redacted working-tree restore.</p>
+									<p>{t("versions.selectPreview")}</p>
 								</div>
 							)}
 						</div>
@@ -308,6 +303,7 @@ function VersionPreview({
 	busy: boolean;
 	onRestore(): Promise<void>;
 }) {
+	const { t } = useTranslation();
 	return (
 		<>
 			<header className="version-preview-heading">
@@ -317,7 +313,7 @@ function VersionPreview({
 				</div>
 				{isCurrentVersion ? (
 					<span className="auto-preview-status ready">
-						<CheckCircle2 /> Latest version
+						<CheckCircle2 /> {t("versions.latest")}
 					</span>
 				) : (
 					<button
@@ -326,7 +322,7 @@ function VersionPreview({
 						disabled={!preview.can_restore || busy || Boolean(writeBlockedReason)}
 						onClick={() => void onRestore()}
 					>
-						{busy ? <LoaderCircle className="spin" /> : <RotateCcw />} Restore to working tree
+						{busy ? <LoaderCircle className="spin" /> : <RotateCcw />} {t("versions.restore")}
 					</button>
 				)}
 			</header>
@@ -335,16 +331,16 @@ function VersionPreview({
 					<SourceFileDiff key={change.path} change={change} version={version.short_version} direction="restore" />
 				))
 			) : (
-				<p className="version-preview-empty">The working directory already matches this version.</p>
+				<p className="version-preview-empty">{t("versions.matches")}</p>
 			)}
 			<div className={`commit-readiness ${isCurrentVersion || preview.can_restore ? "ready" : "blocked"}`}>
 				{isCurrentVersion || preview.can_restore ? <CheckCircle2 /> : <AlertTriangle />}
 				<span>
 					{isCurrentVersion
-						? "Latest version baseline"
+						? t("versions.latestBaseline")
 						: preview.can_restore
-							? "Ready to restore to the working tree"
-							: "Restore blocked"}
+							? t("versions.readyRestore")
+							: t("versions.restoreBlocked")}
 				</span>
 			</div>
 			{preview.blockers.map((blocker) => (

@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
-import { acquireDirectoryProjectMutation, inspectDirectoryProject } from "@openagentpack/project-workspace";
+import {
+	acquireDirectoryProjectMutation,
+	type DirectoryResourceType,
+	inspectDirectoryProject,
+	locateDirectoryProjectResource,
+} from "@openagentpack/project-workspace";
 import {
 	type Diagnostic,
 	type ResolvedProjectConfig,
@@ -30,6 +35,7 @@ export interface DeclarationReference {
 export interface DeclarationResource {
 	type: DeclarationType;
 	id: string;
+	owner_agent?: string;
 	declaration: Record<string, unknown>;
 	read_only_paths: string[][];
 	references: DeclarationReference[];
@@ -55,9 +61,10 @@ interface PreparedDeclarationChange extends DeclarationPreview {
 }
 
 interface SourceTarget {
-	kind: "agent" | "skill" | "project";
+	kind: "agent" | "skill" | "resource" | "project";
 	path: string;
 	contentPath?: string;
+	ownerAgent?: string;
 }
 
 const SECTION_BY_TYPE: Record<DeclarationType, string> = {
@@ -83,6 +90,7 @@ const EDITABLE_FIELDS: Record<DeclarationType, ReadonlySet<string>> = {
 		"skills",
 		"vault",
 		"memory_stores",
+		"files",
 		"resources",
 		"multiagent",
 		"metadata",
@@ -124,6 +132,7 @@ export async function listProjectDeclarations(
 			resources.push({
 				type,
 				id,
+				...(target.ownerAgent ? { owner_agent: target.ownerAgent } : {}),
 				declaration: redactSensitive(declaration) as Record<string, unknown>,
 				read_only_paths: readOnlyPaths(type, declaration),
 				references: findDeclarationReferences(source.config, type, id),
@@ -296,9 +305,17 @@ async function locateSourceTarget(
 			kind: "skill",
 			path: resolve(skillDirectory, "skill.json"),
 			contentPath: resolve(skillDirectory, "SKILL.md"),
+			...ownerAgentFromPath(projectRoot, skillDirectory),
 		};
 	}
-	return { kind: "project", path: resolve(projectRoot, "project.json") };
+	const source = await locateDirectoryProjectResource(projectRoot, type as DirectoryResourceType, id);
+	if (!source) throw new DeclarationProtocolError(`${type}.${id} has no directory source.`, 422);
+	return { kind: "resource", path: source.path, ownerAgent: source.owner_agent };
+}
+
+function ownerAgentFromPath(projectRoot: string, sourceDirectory: string): { ownerAgent?: string } {
+	const parts = relative(projectRoot, sourceDirectory).split(/[\\/]/);
+	return parts[0] === "agents" && parts[1] ? { ownerAgent: parts[1] } : {};
 }
 
 async function declarationForEditor(
@@ -312,6 +329,10 @@ async function declarationForEditor(
 		const project = JSON.parse(await readFile(target.path, "utf8")) as Record<string, unknown>;
 		const authored = recordValue(project[SECTION_BY_TYPE[type]])[id];
 		if (isRecord(authored)) source = authored;
+	} else if (target.kind === "resource") {
+		const authored = JSON.parse(await readFile(target.path, "utf8")) as Record<string, unknown>;
+		source = { ...authored };
+		delete source.id;
 	}
 	const result = structuredClone(source);
 	if (type === "agent" && target.contentPath) result.instructions = await readFile(target.contentPath, "utf8");
@@ -355,6 +376,12 @@ async function sourceContentForTarget(
 		delete metadata.source;
 		return { metadata: `${JSON.stringify(metadata, null, 2)}\n`, contentFile: editor.content };
 	}
+	if (target.kind === "resource") {
+		const existing = JSON.parse(await readFile(target.path, "utf8")) as Record<string, unknown>;
+		const metadata: Record<string, unknown> = { ...editor, id: existing.id };
+		if (type === "file") metadata.source = existing.source;
+		return { metadata: `${JSON.stringify(metadata, null, 2)}\n` };
+	}
 	const project = JSON.parse(await readFile(target.path, "utf8")) as Record<string, unknown>;
 	const section = SECTION_BY_TYPE[type];
 	const entries = recordValue(project[section]);
@@ -383,6 +410,7 @@ async function commitDelete(projectRoot: string, prepared: PreparedDeclarationCh
 function deletePathForTarget(type: DeclarationType, target: SourceTarget): string | undefined {
 	if (type === "agent") return dirname(target.path);
 	if (type === "skill") return dirname(target.path);
+	if (target.kind === "resource") return type === "file" ? target.path : dirname(target.path);
 	return undefined;
 }
 
@@ -467,6 +495,8 @@ function findDeclarationReferences(
 		if (type === "vault" && agent.vault === id) add("agent", agentId, `agents.${agentId}.vault`);
 		if (type === "memory_store" && agent.memory_stores?.includes(id))
 			add("agent", agentId, `agents.${agentId}.memory_stores`);
+		if (type === "file" && agent.files?.some((file) => file.file === id))
+			add("agent", agentId, `agents.${agentId}.files`);
 		if (type === "agent" && agentId !== id && agent.multiagent?.agents.includes(id))
 			add("agent", agentId, `agents.${agentId}.multiagent.agents`);
 	}

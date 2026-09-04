@@ -200,7 +200,7 @@ export interface paths {
 			};
 			requestBody?: never;
 			responses: {
-				/** @description Editable declarations already present in agents.yaml */
+				/** @description Editable declarations already present in the directory project source */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -407,7 +407,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Atomically remove an unreferenced declaration from agents.yaml */
+				/** @description Atomically remove an unreferenced directory project declaration */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -498,7 +498,7 @@ export interface paths {
 				};
 			};
 			responses: {
-				/** @description Atomically update an existing declaration in agents.yaml */
+				/** @description Atomically update an existing directory project declaration */
 				200: {
 					headers: {
 						[name: string]: unknown;
@@ -2983,6 +2983,7 @@ export interface components {
 				/** @enum {string} */
 				type: "agent" | "environment" | "skill" | "vault" | "memory_store" | "file";
 				id: string;
+				owner_agent?: string;
 				declaration: {
 					[key: string]: unknown;
 				};
@@ -3151,7 +3152,9 @@ export interface components {
 				};
 			}[];
 			organization_moves: {
-				skill_id: string;
+				/** @enum {string} */
+				resource_type: "skill" | "environment" | "vault" | "memory_store" | "file";
+				resource_id: string;
 				from: string;
 				to: string;
 				/** @enum {string} */

@@ -136,7 +136,7 @@ const listDeclarationsRoute = createRoute({
 	path: "/project/declarations",
 	responses: {
 		200: {
-			description: "Editable declarations already present in agents.yaml",
+			description: "Editable declarations already present in the directory project source",
 			content: { "application/json": { schema: ProjectDeclarationsResponseSchema } },
 		},
 		...errorResponses,
@@ -176,7 +176,7 @@ const patchDeclarationRoute = createRoute({
 	},
 	responses: {
 		200: {
-			description: "Atomically update an existing declaration in agents.yaml",
+			description: "Atomically update an existing directory project declaration",
 			content: { "application/json": { schema: DeclarationCommitResponseSchema } },
 		},
 		...errorResponses,
@@ -198,7 +198,7 @@ const deleteDeclarationRoute = createRoute({
 	},
 	responses: {
 		200: {
-			description: "Atomically remove an unreferenced declaration from agents.yaml",
+			description: "Atomically remove an unreferenced directory project declaration",
 			content: { "application/json": { schema: DeclarationCommitResponseSchema } },
 		},
 		...errorResponses,

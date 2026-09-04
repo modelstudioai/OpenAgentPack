@@ -71,7 +71,13 @@ export const ProjectBuildResponseSchema = z
 		diagnostics: z.array(DiagnosticSchema),
 		warnings: z.array(DiagnosticSchema),
 		organization_moves: z.array(
-			z.object({ skill_id: z.string(), from: z.string(), to: z.string(), reason: z.literal("shared") }),
+			z.object({
+				resource_type: z.enum(["skill", "environment", "vault", "memory_store", "file"]),
+				resource_id: z.string(),
+				from: z.string(),
+				to: z.string(),
+				reason: z.literal("shared"),
+			}),
 		),
 		can_build: z.boolean(),
 		manifest: z
@@ -168,6 +174,7 @@ export const DeclarationReferenceSchema = z.object({
 export const DeclarationResourceSchema = z.object({
 	type: DeclarationTypeSchema,
 	id: z.string(),
+	owner_agent: z.string().optional(),
 	declaration: z.record(z.string(), z.unknown()),
 	read_only_paths: z.array(z.array(z.string())),
 	references: z.array(DeclarationReferenceSchema),

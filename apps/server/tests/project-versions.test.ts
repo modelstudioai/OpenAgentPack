@@ -17,7 +17,8 @@ import {
 
 const directories: string[] = [];
 const managers: ProjectRuntimeManager[] = [];
-process.env.QODER_PAT ??= "test-qoder-pat";
+process.env.DASHSCOPE_API_KEY ??= "test-bailian-api-key";
+process.env.BAILIAN_BASE_URL ??= "https://example.com/api/v1/agentstudio";
 
 afterEach(async () => {
 	for (const manager of managers.splice(0)) manager.close();
@@ -139,7 +140,7 @@ async function projectFixture(): Promise<{
 }> {
 	const root = await mkdtemp(join(tmpdir(), "openagentpack-versions-"));
 	directories.push(root);
-	await initializeDirectoryProject({ projectRoot: root, provider: "qoder" });
+	await initializeDirectoryProject({ projectRoot: root });
 	const manager = new ProjectRuntimeManager(root);
 	managers.push(manager);
 	await manager.ensureStarted();
