@@ -41,8 +41,8 @@ function configFileArgs(args = process.argv.slice(2)): string[] {
 	return values;
 }
 
-export function configFileOption(): Option {
-	return new Option("-f, --file <path>", "Config file path");
+export function configFileOption(options: { short?: boolean } = {}): Option {
+	return new Option(options.short === false ? "--file <path>" : "-f, --file <path>", "Config file path");
 }
 
 export function resolveConfigFile(command: Command): string {

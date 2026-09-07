@@ -1,5 +1,15 @@
 # @openagentpack/server
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [8c6a767]
+- Updated dependencies [f956bad]
+  - @openagentpack/sdk@0.6.0
+  - @openagentpack/project-versions@0.6.0
+  - @openagentpack/project-workspace@0.6.0
+
 ## 0.0.10
 
 ### Patch Changes

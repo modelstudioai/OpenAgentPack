@@ -18,5 +18,5 @@
 			"@openagentpack/playbooks": ["../../packages/playbooks/src/index.ts"]
 		}
 	},
-	"include": ["src"]
+	"include": ["src/main.tsx", "src/App.tsx", "src/lib/project-api.ts", "src/vite-env.d.ts"]
 }

@@ -222,7 +222,18 @@ vaults:
 | `type` | `"environment_variable"` | yes | |
 | `secret_name` | string | yes | Secret name. |
 | `secret_value` | string | yes | Secret value (string or number, coerced). |
-| `networking.type` | `"unrestricted"` \| `"limited"` | no | |
+| `networking.type` | `"unrestricted"` \| `"limited"` | no | Legacy policy type. Bailian requests use `allowed_hosts` instead. |
+| `networking.allowed_hosts` | string[] | no | Bailian credential injection host allow-list, e.g. `["api.example.com", "*.example.org"]`; `["*"]` allows all hosts. |
+| `injection_location.header` | boolean | no | Bailian: allow secret replacement in request headers. |
+| `injection_location.body` | boolean | no | Bailian: allow secret replacement in request bodies. |
+
+For Bailian, these fields are nested under `auth` in credential create/update requests.
+When omitted, creation uses `networking: { allowed_hosts: ["*"] }` and
+`injection_location: { header: true, body: false }`. Legacy `networking.type: unrestricted`
+maps to `["*"]`; `limited` must include `allowed_hosts` and is never widened implicitly.
+Explicit host lists and injection booleans are preserved, including through sync/export.
+Credential retry adoption compares host sets and injection policy as well as the existing
+identity and metadata fields; a different policy is not treated as an exact match.
 
 ## Memory store
 
@@ -264,6 +275,11 @@ files:
     provider: <string>         # optional
 ```
 
+Declarative uploads use the basename of `source`, preserving its extension.
+`name` is an optional local label, not an upload filename override. For example,
+`source: ./reference.md` with `name: Assistant Reference` uploads as `reference.md`.
+文件上传使用 `source` 的原始文件名（含扩展名）；`name` 仅作为本地名称，不覆盖上传文件名。
+
 ## Agent
 
 ```yaml
@@ -280,6 +296,7 @@ agents:
     skills: [ <string> | { type, skill_id, version? } ]
     vault: <string>
     memory_stores: [ <string> ]
+    files: [ { file: <string>, mount_path: <string> } ]
     default_memory_store:             # Qoder Forward only; requires defaults.identity
       name: <string>                  # 1-255 characters
       description: <string>           # optional; up to 1024 characters
@@ -343,6 +360,7 @@ If the preflight cannot resolve the Identity, Template, or Store lookup, destroy
 | `environment` | string | no | Environment name. |
 | `tunnel` | string | no | Qoder BYOC tunnel name from `tunnels`; unsupported for other providers. |
 | `provider` | string | no | Pin the agent to one provider. |
+| `files` | `(string \| { file, mount_path })[]` | no | String references are inherited by Qoder Forward Templates; objects mount declared top-level Files into every new Session. `file` is the logical File name; the path is normalized under the provider mount root. |
 | `tools.builtin` | string[] | yes (in `tools`) | Lowercase tool names. |
 | `tools.default_permission` | `"allow"` \| `"ask"` | no | Permission inherited by enabled builtins; defaults to `allow`. |
 | `tools.permissions` | map<string,`"allow"`\|`"ask"`> | no | Case- and separator-insensitive overrides for enabled builtins. Unknown and duplicate normalized names are rejected. |

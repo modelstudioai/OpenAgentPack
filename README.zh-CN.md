@@ -81,10 +81,13 @@ agents init            # 交互式向导生成 agents.yaml
 agents validate        # 离线校验，不发起 API 调用
 agents plan            # 预览 create / update / delete
 agents apply -y        # 执行变更
+agents version enable  # 可选：成功 Apply 后版本化 YAML
 agents destroy         # 销毁托管资源
 ```
 
-运行 `agents playground` 可启动本地 WebUI，并通过 `--provider` 指定 `bailian`、`qoder`、`ark` 或 `claude`。你可以在同一份声明上切换 Provider、运行真实 Session，并观察工具调用和 Artifact。
+运行 `agents playground -f agents.yaml` 会直接打开 Agent Preview：单 Agent 项目自动选择，多 Agent 项目可传 `--agent <id>`，未指定时进入 Workbench 选择。使用 `agents workbench -f agents.yaml` 可直接打开项目控制台且不创建 Session。Playground 从 YAML 读取全部 Agent 和 Provider，并监听本地依赖文件。Workbench 的 Resources 页面可以通过服务端生成的 YAML Diff 编辑或移除已有声明；保存更新 `agents.yaml` 并自动刷新项目 Plan。本地版本默认不存在，只有用户在 Versions 页面或通过 `agents version enable` 显式启用后才会创建基线；开关启用时，成功 Apply 后自动版本化有变化的 YAML。Versions 页面与 CLI 共用开关，并浏览和恢复历史。
+
+CLI 也提供 `agents version status|enable|disable|list|preview|restore`。Workbench 与 CLI 按当前 `agents.yaml` 共用一个本地开关：`agents version enable` 会在需要时创建基线并开启两边的成功 Apply 自动版本，`version disable` 会同时关闭两边。`store.json` 只保存开关和 head，`entries/` 保存不可变链式元数据，完整 YAML 保存在内容寻址的 `blobs/` 中，因此不依赖 Git。Restore 只把历史 YAML 写回工作区，不移动版本历史；`agents.state.json` 和外部引用文件始终不进入版本。Deployment 和 Channel 声明继续只读，且不进入 Workbench 项目 Apply。配置缺失或非法时进入诊断 Workbench。
 
 ▶ [观看 Playground 完整演示](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
@@ -172,10 +175,11 @@ Beta 用户可以安装 `@openagentpack/cli@beta`；固定版本及切回稳定�
 
 ## 使用 SDK
 
-CLI 的全部能力都可通过 `@openagentpack/sdk` 以编程方式调用：
+云端项目运行能力可通过 `@openagentpack/sdk` 以编程方式调用；仅限 Node.js 的本地项目版本能力由独立包 `@openagentpack/project-versions` 提供：
 
 ```ts
 import { resolveProjectConfig, planProjectContext } from "@openagentpack/sdk";
+import { createProjectVersionService } from "@openagentpack/project-versions";
 
 const config = await resolveProjectConfig({ configPath: "agents.yaml" });
 const plan = await planProjectContext(config);
@@ -186,14 +190,14 @@ console.log(plan);
 
 ## WebUI
 
-`apps/webui` 是一个 Vite 单页应用，用于浏览 playbook 和驱动 Agent Session；`apps/server` 通过 OpenAPI 暴露 SDK。从仓库根目录同时启动两者：
+`apps/webui` 是一个 Vite 单页项目工作台，用于检查和调试 `agents.yaml` 中声明的 Agent；`apps/server` 通过 OpenAPI 暴露 SDK。从仓库根目录同时启动两者：
 
 ```bash
 bun install
 bun run dev        # 同时启动 server + webui
 ```
 
-或用 `agents playground --provider <bailian|qoder|ark|claude>` 启动打包的本地 UI。
+也可以用 `agents playground -f <path/to/agents.yaml>` 打开打包后的 Preview，或用 `agents workbench -f <path/to/agents.yaml>` 打开项目控制台。Provider、模型、工具、memory、skills 和资源全部来自 YAML，UI 不提供覆盖；Deployment 声明仅只读展示。
 
 ## 参与贡献
 

@@ -61,7 +61,18 @@ const environmentVariableCredentialSchema = z.object({
 	metadata: z.record(z.string(), z.string()).optional(),
 	secret_name: z.string(),
 	secret_value: coerceString,
-	networking: z.object({ type: z.enum(["unrestricted", "limited"]) }).optional(),
+	networking: z
+		.object({
+			type: z.enum(["unrestricted", "limited"]).optional(),
+			allowed_hosts: z.array(z.string()).optional(),
+		})
+		.optional(),
+	injection_location: z
+		.object({
+			header: z.boolean().optional(),
+			body: z.boolean().optional(),
+		})
+		.optional(),
 });
 
 const credentialSchema = z.discriminatedUnion("type", [
@@ -233,6 +244,11 @@ const agentDeliverySchema = z.object({
 	type: z.enum(["managed", "forward"]),
 });
 
+const agentFileMountSchema = z.object({
+	file: z.string().min(1),
+	mount_path: z.string().min(1),
+});
+
 const managedToolConfigSchema = z.object({
 	enabled_tools: z.array(z.string().min(1)),
 });
@@ -262,8 +278,8 @@ const agentSchema = z.object({
 	mcp_servers: z.array(mcpServerSchema).optional(),
 	skills: z.array(z.union([z.string(), agentSkillRefSchema])).optional(),
 	vault: z.string().optional(),
-	files: z.array(z.string()).optional(),
 	memory_stores: z.array(z.string()).optional(),
+	files: z.array(z.union([z.string().min(1), agentFileMountSchema])).optional(),
 	default_memory_store: z
 		.object({
 			name: z.string().trim().min(1).max(255),

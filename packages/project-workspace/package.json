@@ -1,0 +1,42 @@
+{
+	"name": "@openagentpack/project-workspace",
+	"version": "0.6.0",
+	"description": "Directory workspace, build, publish, and version services for OpenAgentPack projects",
+	"license": "Apache-2.0",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"bun": "./dist/index.js",
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
+	"scripts": {
+		"build": "tsup",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@openagentpack/project-versions": "workspace:*",
+		"@openagentpack/sdk": "workspace:*",
+		"yaml": "^2.9.0"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@types/node": "^25.9.3",
+		"typescript": "^6.0.3"
+	}
+}

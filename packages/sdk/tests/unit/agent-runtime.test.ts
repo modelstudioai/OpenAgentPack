@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	type AgentReadiness,
+	computeAgentPlanFingerprint,
 	getAgentReadinessFromPlan,
 	isAgentRunnable,
 	listAgents,
@@ -229,6 +230,110 @@ describe("agent runtime", () => {
 		expect(addresses).not.toContain("agent.unrelated");
 		expect(addresses).not.toContain("environment.unrelated");
 		expect(plan.provider).toBe("bailian");
+	});
+
+	test("runtime scope excludes deployments that consume the selected agent", async () => {
+		const runtime = ctx(
+			baseConfig({
+				deployments: {
+					daily: {
+						agent: "bailian-cli",
+						initial_events: [{ type: "user.message", content: "run" }],
+					},
+				},
+			}),
+			state([]),
+		);
+
+		const plan = await planAgentResources(runtime, "bailian-cli", {
+			refresh: false,
+			scope: "runtime",
+		});
+
+		expect(plan.actions.some((action) => action.address.type === "deployment")).toBe(false);
+		expect(plan.actions.some((action) => action.address.type === "agent")).toBe(true);
+	});
+
+	test("runtime scope includes transitive multi-Agent dependencies but no unrelated Agent", async () => {
+		const runtime = ctx(
+			baseConfig({
+				environments: {
+					"bailian-cli": { config: { type: "cloud" } },
+					worker: { config: { type: "cloud" } },
+					unrelated: { config: { type: "cloud" } },
+				},
+				agents: {
+					"bailian-cli": {
+						...baseConfig().agents!["bailian-cli"]!,
+						multiagent: { type: "coordinator", agents: ["worker"] },
+					},
+					worker: { model: "qwen3", instructions: "work", environment: "worker" },
+					unrelated: { model: "qwen3", instructions: "ignore", environment: "unrelated" },
+				},
+			}),
+			state([]),
+		);
+
+		const plan = await planAgentResources(runtime, "bailian-cli", { refresh: false, scope: "runtime" });
+		const addresses = plan.actions.map((action) => `${action.address.type}.${action.address.name}`);
+		expect(addresses).toContain("agent.bailian-cli");
+		expect(addresses).toContain("agent.worker");
+		expect(addresses).toContain("environment.worker");
+		expect(addresses).not.toContain("agent.unrelated");
+	});
+
+	test("runtime scope includes the default Identity required by a Forward Agent", async () => {
+		const runtime = ctx(
+			{
+				version: "1",
+				providers: { qoder: { api_key: "test" } },
+				defaults: { provider: "qoder", identity: "caller" },
+				identities: { caller: { external_id: "user-caller", name: "Caller" } },
+				agents: {
+					assistant: {
+						model: { qoder: "auto" },
+						instructions: "Help the user.",
+						delivery: { qoder: { type: "forward" } },
+					},
+				},
+			},
+			state([]),
+		);
+
+		const plan = await planAgentResources(runtime, "assistant", { refresh: false, scope: "runtime" });
+		const addresses = plan.actions.map((action) => `${action.address.type}.${action.address.name}`);
+		expect(addresses).toContain("template.assistant");
+		expect(addresses).toContain("identity.caller");
+	});
+
+	test("plan fingerprint is stable across action and dependency ordering", () => {
+		const environment = { type: "environment" as const, name: "env", provider: "bailian" };
+		const agent = { type: "agent" as const, name: "agent", provider: "bailian" };
+		const actions = [
+			{ action: "create" as const, address: agent, reason: "missing", dependencies: [environment] },
+			{ action: "create" as const, address: environment, reason: "missing", dependencies: [] },
+		];
+		expect(computeAgentPlanFingerprint("agent", "bailian", actions, [])).toBe(
+			computeAgentPlanFingerprint("agent", "bailian", [...actions].reverse(), []),
+		);
+		expect(computeAgentPlanFingerprint("agent", "bailian", actions, [])).not.toBe(
+			computeAgentPlanFingerprint("agent", "bailian", [{ ...actions[0]!, reason: "changed" }, actions[1]!], []),
+		);
+	});
+
+	test("agent sync blocks a stale expected fingerprint before provider mutation", async () => {
+		const stateManager = state([{ type: "environment", name: "orphan", provider: "bailian" }]);
+		const stateBeforeSync = structuredClone(stateManager.getStateFile());
+		const run = await syncAgentResources(ctx(baseConfig(), stateManager), "bailian-cli", {
+			refresh: false,
+			scope: "runtime",
+			expectedPlanFingerprint: "outdated-plan",
+		});
+
+		expect(run.status).toBe("blocked");
+		expect(run.reason).toBe("plan_stale");
+		expect(run.results).toEqual([]);
+		expect(stateManager.getStateFile()).toEqual(stateBeforeSync);
 	});
 
 	test("scoped Agent planning excludes unrelated validation errors", async () => {

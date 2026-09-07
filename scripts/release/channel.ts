@@ -11,7 +11,7 @@ export interface ReleaseIdentity {
 }
 
 const root = resolve(import.meta.dirname, "../..");
-const releasePackages = ["sdk", "playground", "cli"] as const;
+const releasePackages = ["sdk", "project-versions", "project-workspace", "playground", "cli"] as const;
 const stableVersion = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 export const betaSnapshotVersion = /^[0-9]+\.[0-9]+\.[0-9]+-beta-[0-9a-f]{7}-([0-9a-f]{8})-\d{8}$/;
 

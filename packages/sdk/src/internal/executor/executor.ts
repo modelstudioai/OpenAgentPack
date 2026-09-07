@@ -1,4 +1,4 @@
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { UserError } from "../errors.ts";
 import { computeComparableDesiredHash } from "../planner/comparable.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
@@ -746,7 +746,16 @@ async function executeActionInner(
 					}
 				}
 			}
-			const info = await provider.uploadFile(filePath, { name: decl.name, purpose: decl.purpose }, apiMode);
+			const info = await provider.uploadFile(
+				filePath,
+				{
+					// Keep the source filename and extension; a declaration label must not
+					// change the multipart filename or the provider's inferred MIME type.
+					name: basename(filePath),
+					purpose: decl.purpose,
+				},
+				apiMode,
+			);
 			result = { id: info.id, type: "file" };
 			break;
 		}
@@ -840,7 +849,7 @@ function resolveResourceApiMode(
 						? agent.vault === name
 						: type === "memory_store"
 							? agent.memory_stores?.includes(name)
-							: agent.files?.includes(name);
+							: agent.files?.some((file) => (typeof file === "string" ? file : file.file) === name);
 		if (!referenced) continue;
 		if (agent.delivery?.qoder?.type === "forward") forward = true;
 		else managed = true;

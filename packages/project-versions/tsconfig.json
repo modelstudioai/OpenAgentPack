@@ -1,0 +1,13 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["node", "bun"],
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noPropertyAccessFromIndexSignature": false
+	},
+	"include": ["src/**/*.ts", "tests/**/*.ts"]
+}

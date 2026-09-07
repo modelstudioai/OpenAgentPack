@@ -33,6 +33,19 @@ import { modelsListCommand } from "./commands/models.ts";
 import { planCommand } from "./commands/plan.ts";
 import { playgroundCommand } from "./commands/playground.ts";
 import {
+	projectBuildCommand,
+	projectInitCommand,
+	projectPublishCommand,
+	projectValidateCommand,
+	projectVersionDisableCommand,
+	projectVersionEnableCommand,
+	projectVersionListCommand,
+	projectVersionPreviewCommand,
+	projectVersionRestoreCommand,
+	projectVersionStatusCommand,
+	projectWorkbenchCommand,
+} from "./commands/project.ts";
+import {
 	sessionCreateCommand,
 	sessionDeleteCommand,
 	sessionEventsCommand,
@@ -111,15 +124,112 @@ export const program = new Command()
 		});
 	});
 
-program.command("init").description("Create a new agents.yaml template").action(initCommand);
+program
+	.command("init")
+	.description("Create an agents.yaml template")
+	.option("--provider <provider>", "Provider to configure (bailian, claude, qoder, ark, or all)")
+	.option("--agent-name <name>", "Name of the first Agent")
+	.action((options: { provider?: string; agentName?: string }) => initCommand(options));
 
 program
 	.command("playground")
-	.description("Launch the local web UI (fetches @openagentpack/playground on demand) and open it in a browser")
+	.description("Launch a Session Preview for an agents.yaml Agent")
+	.addOption(configFileOption())
+	.option("--agent <id>", "Agent to preview (required when the project declares multiple Agents)")
 	.option("--port <n>", "Port to serve on (default 4848)")
-	.addOption(providerOption("Provider the UI targets"))
 	.option("--no-open", "Do not open a browser automatically")
-	.action(playgroundCommand);
+	.action(withResolvedConfigFile(playgroundCommand));
+
+const projectCmd = program.command("project").description("Manage a directory-based Agent project");
+
+projectCmd
+	.command("init")
+	.description("Create or convert a directory-based Agent project")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectInitCommand);
+
+projectCmd
+	.command("validate")
+	.description("Validate all directory project source files")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectValidateCommand);
+
+projectCmd
+	.command("build")
+	.description("Organize project files and generate .openagentpack/build/agents.yaml")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--dry-run", "Preview Build without changing files")
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--json", "Output as JSON")
+	.action(projectBuildCommand);
+
+projectCmd
+	.command("publish")
+	.description("Publish the current immutable Build to the configured provider")
+	.option("--project <directory>", "Project directory", ".")
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--refresh <value>", "Refresh state before planning (true/false)", parseBooleanOption, true)
+	.option("--concurrency <n>", "Max independent resources to publish in parallel", parsePositiveInteger)
+	.addOption(providerOption("Target provider", { allowAll: true, defaultValue: "all" }))
+	.option("--json", "Output as JSON")
+	.action(projectPublishCommand);
+
+projectCmd
+	.command("workbench")
+	.description("Launch the directory project Workbench")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--port <n>", "Port to serve on (default 4848)")
+	.option("--no-open", "Do not open a browser automatically")
+	.action(projectWorkbenchCommand);
+
+const projectVersionCmd = projectCmd.command("version").description("Manage directory project snapshots");
+
+projectVersionCmd
+	.command("enable")
+	.description("Enable Publish-time project versions and create a baseline when needed")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionEnableCommand);
+
+projectVersionCmd
+	.command("disable")
+	.description("Disable Publish-time project versions without removing history")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionDisableCommand);
+
+projectVersionCmd
+	.command("status")
+	.description("Show directory project version status")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionStatusCommand);
+
+projectVersionCmd
+	.command("list")
+	.description("List directory project versions")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--limit <n>", "Maximum versions to return", parsePositiveInteger)
+	.option("--cursor <cursor>", "Pagination cursor")
+	.option("--json", "Output as JSON")
+	.action(projectVersionListCommand);
+
+projectVersionCmd
+	.command("preview <version>")
+	.description("Preview a historical directory project version")
+	.option("--project <directory>", "Project directory", ".")
+	.option("--json", "Output as JSON")
+	.action(projectVersionPreviewCommand);
+
+projectVersionCmd
+	.command("restore <version>")
+	.description("Restore a historical version to the project working directory")
+	.option("--project <directory>", "Project directory", ".")
+	.option("-y, --yes", "Skip confirmation prompt")
+	.option("--json", "Output as JSON")
+	.action(projectVersionRestoreCommand);
 
 program
 	.command("validate")

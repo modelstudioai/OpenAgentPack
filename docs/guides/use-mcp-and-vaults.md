@@ -24,6 +24,7 @@ vaults:
         secret_value: ${DB_TOKEN}
         networking:
           type: limited
+          allowed_hosts: ["api.example.com"]
 ```
 
 | Credential type | Key fields |
@@ -32,6 +33,34 @@ vaults:
 | `environment_variable` | `secret_name`, `secret_value`, optional `networking` |
 
 Secrets are referenced with `${VAR_NAME}` and loaded from `.env`; never inline a real token.
+
+### Bailian credential injection
+
+Bailian supports `environment_variable` credentials. Declare the outbound hosts and
+request locations where the secret may be injected:
+
+```yaml
+vaults:
+  api-credentials:
+    provider: bailian
+    display_name: "API Credentials"
+    credentials:
+      - name: api-token
+        type: environment_variable
+        secret_name: API_TOKEN
+        secret_value: ${API_TOKEN}
+        networking:
+          allowed_hosts: ["api.example.com", "*.example.org"]
+        injection_location:
+          header: true
+          body: false
+```
+
+The API receives both objects under `auth`. You do not need to send `networking.type`.
+Use `["*"]` to explicitly allow all hosts. Existing declarations with no networking
+policy or with `type: unrestricted` retain that scope; an omitted injection location
+defaults to headers enabled and body disabled. Legacy `type: limited` requires an
+explicit `allowed_hosts` list.
 
 ## Attach MCP servers to an agent
 

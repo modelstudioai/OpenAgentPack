@@ -5,7 +5,7 @@ import { type DisplayBucket, displayBucketOf, eventData, eventText } from "./ses
 export type RunTimelineItem =
 	| { kind: "message"; event: SessionEvent; key: string }
 	| { kind: "tool_chain"; events: SessionEvent[]; key: string; isActive: boolean }
-	| { kind: "artifact"; segments: ArtifactSegment[]; key: string };
+	| { kind: "artifact"; segments: ArtifactSegment[]; key: string; createdAt?: string };
 
 /** 工具名 → 统计摘要用的中文类别 */
 const TOOL_SUMMARY_LABELS: Record<string, string> = {
@@ -45,13 +45,15 @@ export interface ToolChainRow {
 	kind: "thinking" | "action";
 	label: string;
 	target?: string;
+	/** Tool arguments, normalized for the expandable input panel. */
+	input?: string;
 	output?: string;
 	durationMs?: number;
 	event: SessionEvent;
 	resultEvent?: SessionEvent;
 }
 
-function toolNameOf(event: SessionEvent): string {
+export function extractToolName(event: SessionEvent): string {
 	const fromMeta = event.metadata?.tool_name;
 	if (typeof fromMeta === "string" && fromMeta) return fromMeta;
 	const data = eventData(event);
@@ -107,6 +109,18 @@ function targetFromInput(input: Record<string, unknown> | null): string | undefi
 function toolInputText(event: SessionEvent): string | undefined {
 	const fromMeta = event.metadata?.tool_input;
 	if (typeof fromMeta === "string" && fromMeta) return fromMeta;
+	const data = eventData(event);
+	if (data && typeof data === "object" && "arguments" in data) {
+		const argumentsValue = (data as { arguments?: unknown }).arguments;
+		if (typeof argumentsValue === "string" && argumentsValue) return argumentsValue;
+		if (argumentsValue !== undefined) {
+			try {
+				return JSON.stringify(argumentsValue);
+			} catch {
+				// Fall through to the visible event text.
+			}
+		}
+	}
 	if (displayBucketOf(event) === "tool_use") {
 		const text = eventText(event);
 		return text || undefined;
@@ -126,7 +140,7 @@ function toolActionLabel(name: string): string {
 }
 
 function actionFromEvent(event: SessionEvent): { label: string; target?: string } {
-	const name = toolNameOf(event);
+	const name = extractToolName(event);
 	return {
 		label: toolActionLabel(name),
 		target: extractToolTarget(event),
@@ -137,7 +151,7 @@ export function summarizeToolUses(events: SessionEvent[]): ToolSummaryStat[] {
 	const counts = new Map<string, number>();
 	for (const row of buildToolChainRows(events)) {
 		if (row.kind !== "action") continue;
-		const name = toolNameOf(row.event);
+		const name = extractToolName(row.event);
 		if (!name) continue;
 		const label = TOOL_SUMMARY_LABELS[name] ?? name;
 		counts.set(label, (counts.get(label) ?? 0) + 1);
@@ -163,9 +177,17 @@ function thinkingDurationMs(event: SessionEvent, next?: SessionEvent): number | 
 	return end - start;
 }
 
-function formatToolOutput(value: unknown): string {
+function formatToolPayload(value: unknown): string {
 	if (value === undefined || value === null) return "";
-	if (typeof value === "string") return value;
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (!trimmed) return "";
+		try {
+			return JSON.stringify(JSON.parse(trimmed), null, 2);
+		} catch {
+			return value;
+		}
+	}
 	try {
 		return JSON.stringify(value, null, 2);
 	} catch {
@@ -173,8 +195,32 @@ function formatToolOutput(value: unknown): string {
 	}
 }
 
+export function extractToolArguments(event: SessionEvent): string | undefined {
+	const raw = toolInputText(event);
+	if (!raw) return undefined;
+	return formatToolPayload(raw) || undefined;
+}
+
+export function extractInvokedSkillName(event: SessionEvent): string | undefined {
+	const toolName = extractToolName(event).toLowerCase();
+	if (toolName !== "skill" && toolName !== "use_skill" && toolName !== "skill_tool") return undefined;
+	const input = parseToolInputText(toolInputText(event) ?? "");
+	if (!input) return undefined;
+	return pickString(input.skill, input.skill_name, input.skillName, input.name);
+}
+
+export function extractToolOutput(event: SessionEvent): string | undefined {
+	const data = eventData(event);
+	if (data && typeof data === "object" && !Array.isArray(data) && "output" in data) {
+		return formatToolPayload((data as { output: unknown }).output) || undefined;
+	}
+	const text = eventText(event);
+	if (text) return formatToolPayload(text) || undefined;
+	return formatToolPayload(data) || undefined;
+}
+
 function toolResultOutput(event: SessionEvent): string {
-	return eventText(event) || formatToolOutput(eventData(event));
+	return extractToolOutput(event) ?? "";
 }
 
 /**
@@ -212,6 +258,7 @@ export function buildToolChainRows(events: SessionEvent[]): ToolChainRow[] {
 				kind: "action",
 				label,
 				target,
+				input: extractToolArguments(event),
 				event,
 			});
 			pendingActionIndex = rows.length - 1;
@@ -228,6 +275,7 @@ export function buildToolChainRows(events: SessionEvent[]): ToolChainRow[] {
 					...pending,
 					label: pending.label !== "已操作" ? pending.label : label,
 					target: pending.target ?? target,
+					input: pending.input ?? extractToolArguments(event),
 					output: output || undefined,
 					resultEvent: event,
 					key: `${pending.key}|${key}`,
@@ -238,6 +286,7 @@ export function buildToolChainRows(events: SessionEvent[]): ToolChainRow[] {
 					kind: "action",
 					label,
 					target,
+					input: extractToolArguments(event),
 					output: output || undefined,
 					event,
 					resultEvent: event,
@@ -259,7 +308,10 @@ function extractMessageArtifacts(event: SessionEvent): ArtifactSegment[] {
 }
 
 /** 将 session events 拆成消息块、工具链块与产物块，供运行轨迹面板渲染。 */
-export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: boolean } = {}): RunTimelineItem[] {
+export function buildRunTimeline(
+	events: SessionEvent[],
+	options: { isRunning?: boolean; includeLeadingUser?: boolean } = {},
+): RunTimelineItem[] {
 	const items: RunTimelineItem[] = [];
 	let chainBuffer: SessionEvent[] = [];
 	let chainStartIndex = 0;
@@ -289,7 +341,7 @@ export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: 
 		if (bucket === "message") {
 			const isLeading = !sawMessage;
 			sawMessage = true;
-			if (isLeading && event.role === "user") continue;
+			if (isLeading && event.role === "user" && !options.includeLeadingUser) continue;
 
 			flushChain(i);
 			items.push({
@@ -306,6 +358,7 @@ export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: 
 						kind: "artifact",
 						segments: artifactSegments,
 						key: `artifact:${timelineEventKey(event, i)}`,
+						createdAt: event.created_at,
 					});
 				}
 			}
@@ -336,10 +389,12 @@ export function buildRunTimeline(events: SessionEvent[], options: { isRunning?: 
 		const deliveredSegments: ArtifactSegment[] = deliveredFiles.map(
 			(file) => ({ type: "delivered_file", file }) as const,
 		);
+		const lastEvent = events[events.length - 1];
 		items.push({
 			kind: "artifact",
 			segments: deliveredSegments,
 			key: `delivered:${deliveredFiles.map((f) => f.file_id).join("|")}`,
+			createdAt: lastEvent?.created_at,
 		});
 	}
 

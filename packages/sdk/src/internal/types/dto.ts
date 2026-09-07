@@ -205,6 +205,9 @@ export type SessionEventType = z.infer<typeof SessionEventTypeSchema>;
 export const AgentSyncStatusSchema = z.enum(["completed", "blocked", "failed"]);
 export type AgentSyncStatus = z.infer<typeof AgentSyncStatusSchema>;
 
+export const AgentSyncReasonSchema = z.enum(["destructive_blocked", "cancelled", "diagnostic_error", "plan_stale"]);
+export type AgentSyncReason = z.infer<typeof AgentSyncReasonSchema>;
+
 export const AgentSyncResultSchema = z.object({
 	action: PlannedActionSchema,
 	status: z.enum(["success", "failed", "skipped"]),
@@ -216,6 +219,7 @@ export const AgentSyncRunSchema = z.object({
 	agentId: z.string(),
 	provider: z.string().optional(),
 	status: AgentSyncStatusSchema,
+	reason: AgentSyncReasonSchema.optional(),
 	actions: z.array(PlannedActionSchema),
 	diagnostics: z.array(DiagnosticSchema),
 	destructiveActions: z.array(PlannedActionSchema),

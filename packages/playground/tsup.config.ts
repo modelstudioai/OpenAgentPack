@@ -13,9 +13,21 @@ export default defineConfig({
 	// Shared singletons must resolve to one runtime instance: @hono/zod-openapi patches zod's
 	// prototype with `.openapi()`, and the external @openagentpack/sdk builds its schemas from the same
 	// zod — bundling a second copy would leave sdk's schemas without the patch.
-	external: ["@openagentpack/sdk", "hono", "@hono/node-server", "@hono/zod-openapi", "zod"],
+	// Server sources also import the public project libraries and YAML. Load these as
+	// declared runtime dependencies: inlining YAML's CommonJS entry into ESM leaves
+	// require("process") without Node's CommonJS loader.
+	external: [
+		"@openagentpack/sdk",
+		"@openagentpack/project-versions",
+		"@openagentpack/project-workspace",
+		"hono",
+		"@hono/node-server",
+		"@hono/zod-openapi",
+		"yaml",
+		"zod",
+	],
 	// Inline the private workspace packages so the published artifact is self-contained.
-	noExternal: [/@openagentpack\/(server|playbooks)/],
+	noExternal: [/@openagentpack\/server/],
 	esbuildOptions(options) {
 		options.alias = { ...(options.alias ?? {}), "@": serverSrc };
 	},

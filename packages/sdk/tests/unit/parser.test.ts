@@ -114,3 +114,22 @@ test("defaults default memory deletion to retain and accepts explicit deletion",
 	});
 	expect(deleted.agents?.assistant?.default_memory_store?.delete_on_destroy).toBe(true);
 });
+
+test("preserves declared Agent File mounts", () => {
+	const result = projectConfigSchema.safeParse({
+		version: "1",
+		providers: { bailian: {} },
+		files: { input: { source: "./input.txt" } },
+		agents: {
+			assistant: {
+				model: "qwen3.7-max",
+				instructions: "test",
+				files: [{ file: "input", mount_path: "/mnt/input.txt" }],
+			},
+		},
+	});
+
+	expect(result.success).toBe(true);
+	if (result.success)
+		expect(result.data.agents?.assistant?.files).toEqual([{ file: "input", mount_path: "/mnt/input.txt" }]);
+});

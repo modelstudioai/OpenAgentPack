@@ -8,6 +8,7 @@ import {
 	uploadApiFile,
 } from "../api/client";
 import { formatApiErrorMessage } from "../api/error-message";
+import { applyAgentsFilePrefix, hasAgentsFilePrefix, stripAgentsFilePrefix } from "../file-name";
 
 export type { FileStatusInfo, UploadedFile };
 
@@ -15,18 +16,16 @@ export type { FileStatusInfo, UploadedFile };
 // (verified against bailian-app-control). So we encode ownership into the stored filename —
 // every Agents upload is named `Agents__<original>`. The list filters by this prefix; display
 // names and mount paths strip it, so the sandbox/user only ever see the clean original name.
-const AGENTS_FILE_PREFIX = "Agents__";
-
 export function hasPrefix(name: string): boolean {
-	return name.startsWith(AGENTS_FILE_PREFIX);
+	return hasAgentsFilePrefix(name);
 }
 
 function applyPrefix(name: string): string {
-	return hasPrefix(name) ? name : `${AGENTS_FILE_PREFIX}${name}`;
+	return applyAgentsFilePrefix(name);
 }
 
 export function stripPrefix(name: string): string {
-	return hasPrefix(name) ? name.slice(AGENTS_FILE_PREFIX.length) : name;
+	return stripAgentsFilePrefix(name);
 }
 
 /**

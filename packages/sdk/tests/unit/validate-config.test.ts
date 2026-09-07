@@ -43,6 +43,46 @@ test("collectConfigReferences omits provider capability checks", () => {
 	expect(diagnostics.some((d) => d.code === "bailian.agent.mcp_toolkit_missing")).toBe(false);
 });
 
+test("validates Agent File references and normalized mount path uniqueness", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		files: { input: { source: "./input.txt" } },
+		agents: {
+			assistant: {
+				model: "qwen3.7-max",
+				instructions: "test",
+				files: [
+					{ file: "input", mount_path: "/mnt/input.txt" },
+					{ file: "missing", mount_path: "input.txt" },
+				],
+			},
+		},
+	});
+
+	expect(diagnostics.some((item) => item.code === "config.agent.file.unknown")).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.agent.file.mount_path.duplicate")).toBe(true);
+});
+
+test("rejects Bailian Agent File mount paths outside /mnt", () => {
+	const diagnostics = validateProjectConfig({
+		version: "1",
+		providers: { bailian: {} },
+		defaults: { provider: "bailian" },
+		files: { input: { source: "./input.txt" } },
+		agents: {
+			assistant: {
+				model: "qwen3.7-max",
+				instructions: "test",
+				files: [{ file: "input", mount_path: "/workspace/input.txt" }],
+			},
+		},
+	});
+
+	expect(diagnostics.some((item) => item.code === "bailian.agent.file.mount_path.invalid")).toBe(true);
+});
+
 test("validates tunnel references and limits tunnels to Qoder", () => {
 	const config: ProjectConfig = {
 		version: "1",

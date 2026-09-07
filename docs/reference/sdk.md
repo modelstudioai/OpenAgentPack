@@ -1,6 +1,6 @@
 # SDK reference
 
-`@openagentpack/sdk` is the Node-compatible TypeScript SDK that powers the `agents` CLI. Everything the CLI does is available programmatically. This page summarizes the public surface re-exported from `packages/sdk/src/index.ts`; the contract is detailed in [`packages/sdk/docs/public-api-layers.md`](../../packages/sdk/docs/public-api-layers.md).
+`@openagentpack/sdk` is the Node-compatible TypeScript project/runtime SDK that powers the `agents` CLI. Node-only local project versioning is published separately as `@openagentpack/project-versions`, which depends on the SDK for project validation and redaction. This page summarizes the public surface re-exported from `packages/sdk/src/index.ts`; the contract is detailed in [`packages/sdk/docs/public-api-layers.md`](../../packages/sdk/docs/public-api-layers.md).
 
 ## Install
 
@@ -35,7 +35,7 @@ The public entry exposes domain workflows that return structured domain results 
 | Area | Functions |
 |------|-----------|
 | Project / resource workflows | `resolveProjectConfig`, `resolveProjectConfigFromObject`, `planProjectContext`, `executePlannedProject`, `decideDestructive`, `importResource`, `syncProjectResourcesWithStateBackend` |
-| Validation | `validateProjectConfig`, `collectConfigReferences` |
+| Validation and safe source previews | `validateProjectConfig`, `collectConfigReferences`, `inspectProjectSource` |
 | Sync & migrate | `resolveSyncProvider`, `syncProviderResourcesFromContext`, `syncProviderResourcesFromEnv`, `migrateConfig` |
 | Destroy | `planDestroyProjectContext`, `destroyPlannedProjectResources` |
 | Agent | `buildAgentDecl`, `getAgent`, `listAgentsWithReadiness`, `listCloudAgents`, `archiveCloudAgent`, `syncAgentResourcesWithStateBackend`, `createCloudEnvironment`, `deleteCloudEnvironment`, `listCloudEnvironments`, `createCloudVault`, `deleteCloudVault`, `listCloudVaults` |
@@ -52,7 +52,7 @@ The public entry exposes domain workflows that return structured domain results 
 
 Cross-boundary data shapes live in `internal/types/dto.ts` and are re-exported wholesale as the single source of truth — both the TypeScript types **and** their Zod schemas (e.g. `SessionSchema`, `PlannedActionSchema`, `AgentWithReadinessSchema`, `DiagnosticSchema`). Use the schemas to validate provider/HTTP payloads at the boundary.
 
-Notable exported types: `ResolvedProjectConfig`, `ResourceState`, `ExecutionPlan`, `PlannedAction`, `Diagnostic`, `Session`, `SessionEvent`, `CloudAgent`, `CloudEnvironment`, `CloudVault`, `ResourceType`, `ResourceAddress`, `ActionType`.
+Notable exported types: `ResolvedProjectConfig`, `ProjectSourceInspection`, `ResourceState`, `ExecutionPlan`, `PlannedAction`, `Diagnostic`, `Session`, `SessionEvent`, `CloudAgent`, `CloudEnvironment`, `CloudVault`, `ResourceType`, `ResourceAddress`, `ActionType`.
 
 ## Consumer rule
 

@@ -5,6 +5,7 @@ import { getProvider } from "../providers/registry.ts";
 import type { IStateManager } from "../state/state-manager.ts";
 import type { AgentDecl, ProjectConfig, SessionResourceDecl } from "../types/config.ts";
 import type { SessionBindings } from "../types/session.ts";
+import { resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 
 export interface SessionCreateOptions {
 	/** Explicit provider Identity id. Overrides the declared defaults.identity reference. */
@@ -73,6 +74,7 @@ export function buildSessionBindings(
 		throw new UserError(`Agent '${agentName}' not found in config. Available agents: ${available || "(none)"}`);
 	}
 	const sessionResources = options.resources ?? agent.resources;
+	const sessionFiles = resolveSessionFiles(agentName, agent, provider, state, options.files ?? []);
 	const environmentVariables = options.environmentVariables ?? agent.environment_variables;
 	if (environmentVariables && provider !== "qoder") {
 		throw new UserError("Session environment variables are supported only by Qoder.");
@@ -105,7 +107,7 @@ export function buildSessionBindings(
 			delivery: "forward",
 			template_id: templateId,
 			identity_id: identityId,
-			files: (options.files ?? []).map((file) => ({ file_id: file.fileId, mount_path: file.mountPath })),
+			files: sessionFiles,
 			title: options.title,
 			metadata: options.metadata,
 			environment_variables: environmentVariables,
@@ -160,12 +162,53 @@ export function buildSessionBindings(
 		tunnel_id: tunnelId,
 		vault_ids: vaultIds,
 		memory_store_ids: memoryStoreIds,
-		files: (options.files ?? []).map((f) => ({ file_id: f.fileId, mount_path: f.mountPath })),
+		files: sessionFiles,
 		resources: sessionResources,
 		title: options.title,
 		metadata: options.metadata,
 		environment_variables: environmentVariables,
 	};
+}
+
+function resolveSessionFiles(
+	agentName: string,
+	agent: AgentDecl,
+	provider: string,
+	state: IStateManager,
+	explicitFiles: Array<{ fileId: string; mountPath: string }>,
+): Array<{ file_id: string; mount_path: string }> {
+	const resolved: Array<{ file_id: string; mount_path: string }> = [];
+	const mountOwners = new Map<string, string>();
+	for (const file of agent.files ?? []) {
+		if (typeof file === "string") continue;
+		const mountPath = resolveSandboxMountPath(provider, file.mount_path);
+		assertUniqueMountPath(mountOwners, mountPath, `declared file '${file.file}'`, agentName);
+		resolved.push({
+			file_id: requireRef(state, { type: "file", name: file.file, provider }),
+			mount_path: mountPath,
+		});
+	}
+	for (const file of explicitFiles) {
+		const mountPath = resolveSandboxMountPath(provider, file.mountPath);
+		assertUniqueMountPath(mountOwners, mountPath, `Session file '${file.fileId}'`, agentName);
+		resolved.push({ file_id: file.fileId, mount_path: mountPath });
+	}
+	return resolved;
+}
+
+function assertUniqueMountPath(
+	mountOwners: Map<string, string>,
+	mountPath: string,
+	owner: string,
+	agentName: string,
+): void {
+	const existing = mountOwners.get(mountPath);
+	if (existing) {
+		throw new UserError(
+			`Agent '${agentName}' cannot mount ${owner} at '${mountPath}'; the path is already used by ${existing}.`,
+		);
+	}
+	mountOwners.set(mountPath, owner);
 }
 
 function resolveTunnelId(

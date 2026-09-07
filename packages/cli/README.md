@@ -13,11 +13,16 @@ The package installs the `agents` command.
 ## Quick start
 
 ```sh
-agents init
-agents validate
-agents plan
-agents apply
+agents project init
+agents project validate
+agents project build --dry-run
+agents project build --yes
+agents project publish --yes
 ```
+
+Directory projects store Agents and Skills as JSON, Markdown, and local files. `project build` previews full directory changes against the current version HEAD, organizes shared Skills, and writes `.openagentpack/build/agents.yaml`; `project publish` consumes only a current Build and records a full source-tree snapshot after complete remote success. Workbench and CLI use the same Git-independent switch under `agents project version ...`; snapshots include local Skill and binary content but exclude `.openagentpack/state.json`.
+
+The legacy `agents init|validate|plan|apply` YAML workflow and `agents playground -f agents.yaml` Session Preview remain available. YAML Apply is independent from directory versions.
 
 Use `agents <command> --help` for command-specific options.
 

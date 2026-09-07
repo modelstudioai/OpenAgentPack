@@ -16,7 +16,7 @@ const getConfigRoute = createRoute({
 	path: "/config",
 	responses: {
 		200: {
-			description: "Read local OpenAgentPack playground config (~/.agents/config.json)",
+			description: "Read local Managed Agents Workbench config (~/.agents/config.json)",
 			content: { "application/json": { schema: AgentsConfigSnapshotSchema } },
 		},
 		...errorResponses,
@@ -55,7 +55,7 @@ const saveConfigRoute = createRoute({
 	},
 	responses: {
 		200: {
-			description: "Save local OpenAgentPack playground config (~/.agents/config.json)",
+			description: "Save local Managed Agents Workbench config (~/.agents/config.json)",
 			content: { "application/json": { schema: AgentsConfigSchema } },
 		},
 		...errorResponses,

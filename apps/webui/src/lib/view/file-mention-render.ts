@@ -1,5 +1,5 @@
-import { stripPrefix } from "@/lib/domain/file-api";
 import { parseFileMountHint } from "@/lib/file-mount-hint";
+import { stripAgentsFilePrefix } from "@/lib/file-name";
 
 export type FileMentionSegment = { kind: "text"; value: string } | { kind: "mention"; path: string; label: string };
 
@@ -12,7 +12,7 @@ function labelFromMountPath(mountPath: string): string {
 	const trimmed = mountPath.trim().replace(/\/+$/, "");
 	const idx = trimmed.lastIndexOf("/");
 	const basename = idx === -1 ? trimmed : trimmed.slice(idx + 1);
-	return stripPrefix(basename);
+	return stripAgentsFilePrefix(basename);
 }
 
 /** 将文本按 ⟦file:mountPath⟧ 切分为 plain / mention 片段（仅展示用） */

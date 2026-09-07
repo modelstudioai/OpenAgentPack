@@ -77,14 +77,21 @@ The mechanics are a single `agents.yaml`, a `validate → plan → apply` workfl
 ## Quick start
 
 ```bash
-agents init            # interactive wizard writes a starter agents.yaml
-agents validate        # offline YAML check, no API calls
-agents plan            # preview create / update / delete
-agents apply -y        # apply changes
-agents destroy         # tear down managed resources
+agents project init             # create a directory project (or convert agents.yaml)
+agents project validate         # validate JSON, Markdown, skills, and local files
+agents project build --dry-run  # preview organization and generated YAML
+agents project build -y         # freeze the current source into a Build
+agents project publish -y       # publish exactly that Build and record a version
+agents project workbench        # edit and debug the same directory project
 ```
 
-Run `agents playground` to launch the local WebUI, and use `--provider` to target `bailian`, `qoder`, `ark`, or `claude`. You can switch providers on the same declaration, run real sessions, and observe tool calls and artifacts.
+Directory projects keep global settings in `project.json`, each Agent under `agents/<id>/`, Agent instructions in `instructions.md`, and local Skill source either beside its Agent or under the shared `skills/` directory. Build promotes a Skill to the shared directory when multiple Agents reference it and deterministically writes `.openagentpack/build/agents.yaml`. Publish never runs Build implicitly.
+
+Fresh Init includes Skill, File, Vault, and Environment examples under each resource directory's `_examples/`, with bilingual configuration instructions. They are not linked in `agent.json`, do not enter generated YAML, and are not published remotely. Copy an example outside `_examples/` and configure its Agent reference to enable it.
+
+Workbench and CLI share `agents project version status|enable|disable|list|preview|restore`. Versions are Git-independent full source-tree snapshots: immutable manifests point to content-addressed text and binary blobs, while `.openagentpack/state.json` is always excluded. Restore writes a historical tree forward into the working directory without moving version history or remote State. Deployment and Channel declarations remain read-only in Workbench but participate in full project Publish.
+
+The original YAML workflow remains available through `agents init`, `validate`, `plan`, `apply`, and `destroy`. `agents playground -f agents.yaml` continues to open a YAML Agent Session Preview, but YAML Apply no longer creates project versions and cannot be used inside a directory-project root.
 
 ▶ [Watch the full Playground demo](https://github.com/user-attachments/assets/bf51b8d8-f2ed-464b-bca9-0709fefcc44d)
 
@@ -172,28 +179,31 @@ The [`examples/`](./examples) directory has runnable configs for every provider,
 
 ## Using the SDK
 
-Everything the CLI does is available programmatically from `@openagentpack/sdk`:
+Cloud runtime capabilities are available from `@openagentpack/sdk`. Directory compilation, Build/Publish, and full-tree versions are exposed by `@openagentpack/project-workspace`, backed by the storage primitives in `@openagentpack/project-versions`:
 
 ```ts
-import { resolveProjectConfig, planProjectContext } from "@openagentpack/sdk";
+import { previewProjectBuild, commitProjectBuild } from "@openagentpack/project-workspace";
 
-const config = await resolveProjectConfig({ configPath: "agents.yaml" });
-const plan = await planProjectContext(config);
-console.log(plan);
+const preview = await previewProjectBuild("./my-agent");
+const build = await commitProjectBuild({
+  projectRoot: preview.project_root,
+  baseRevision: preview.project_revision,
+});
+console.log(build.manifest);
 ```
 
 See the [SDK reference](./docs/reference/sdk.md) for the public API surface.
 
 ## WebUI
 
-`apps/webui` is a Vite single-page app for browsing playbooks and driving agent sessions; `apps/server` exposes the SDK over an OpenAPI surface. Run both from the repo root:
+`apps/webui` is a Vite directory-project Workbench; `apps/server` exposes directory editing, Build/Publish, versions, and Session debugging over an OpenAPI surface. Run both from the repo root with `AGENTS_PROJECT_ROOT` pointing at a project:
 
 ```bash
 bun install
 bun run dev        # server + webui together
 ```
 
-Or launch a packaged local UI with `agents playground --provider <bailian|qoder|ark|claude>`.
+Launch the packaged project console with `agents project workbench --project <directory>`. Use `agents playground -f <path/to/agents.yaml>` only for the legacy YAML Session Preview. Workbench edits directory source, requires an explicit Build, and publishes the reviewed Build; it never edits Provider ownership or pushes Git state.
 
 ## Contributing
 

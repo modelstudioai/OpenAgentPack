@@ -1,22 +1,504 @@
 {
 	"openapi": "3.0.0",
 	"info": {
-		"title": "OpenAgentPack API",
+		"title": "Managed Agents Workbench API",
 		"version": "1.0.0"
 	},
 	"components": {
 		"schemas": {
-			"AgentsConfigSnapshot": {
+			"ProjectSummary": {
 				"type": "object",
 				"properties": {
-					"AGENTS_PROVIDER": {
+					"status": {
 						"type": "string",
-						"enum": ["bailian", "qoder", "ark", "claude"]
+						"enum": ["loading", "valid", "invalid", "missing"]
+					},
+					"config_file": {
+						"type": "string"
+					},
+					"project_name": {
+						"type": "string"
+					},
+					"revision": {
+						"type": "string"
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"agents": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"agent": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"agentName": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"model": {
+											"anyOf": [
+												{
+													"type": "string"
+												},
+												{
+													"type": "object",
+													"additionalProperties": {
+														"nullable": true
+													}
+												}
+											]
+										},
+										"environment": {
+											"type": "string"
+										},
+										"tools": {
+											"nullable": true
+										},
+										"skills": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"type": {
+														"type": "string",
+														"enum": ["custom", "official"]
+													},
+													"id": {
+														"type": "string"
+													},
+													"version": {
+														"type": "string"
+													}
+												},
+												"required": ["type", "id"]
+											}
+										},
+										"mcpServers": {
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										"metadata": {
+											"type": "object",
+											"additionalProperties": {
+												"nullable": true
+											}
+										}
+									},
+									"required": ["id", "agentName", "provider", "skills", "mcpServers"]
+								},
+								"readiness": {
+									"type": "object",
+									"properties": {
+										"status": {
+											"type": "string",
+											"enum": ["ready", "missing", "creating", "updating", "invalid", "drifted", "unavailable", "error"]
+										},
+										"agentId": {
+											"type": "string"
+										},
+										"driftSeverity": {
+											"type": "string",
+											"enum": ["blocking", "non_blocking"]
+										},
+										"diagnostics": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"severity": {
+														"type": "string",
+														"enum": ["error", "warning", "info"]
+													},
+													"code": {
+														"type": "string"
+													},
+													"message": {
+														"type": "string"
+													},
+													"resource": {
+														"type": "object",
+														"properties": {
+															"type": {
+																"type": "string",
+																"enum": [
+																	"environment",
+																	"vault",
+																	"memory_store",
+																	"skill",
+																	"agent",
+																	"template",
+																	"deployment",
+																	"file",
+																	"identity",
+																	"channel"
+																]
+															},
+															"name": {
+																"type": "string"
+															},
+															"provider": {
+																"type": "string"
+															}
+														},
+														"required": ["type", "name", "provider"]
+													}
+												},
+												"required": ["severity", "code", "message"]
+											}
+										},
+										"missing": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"type": {
+														"type": "string",
+														"enum": [
+															"environment",
+															"vault",
+															"memory_store",
+															"skill",
+															"agent",
+															"template",
+															"deployment",
+															"file",
+															"identity",
+															"channel"
+														]
+													},
+													"name": {
+														"type": "string"
+													},
+													"provider": {
+														"type": "string"
+													}
+												},
+												"required": ["type", "name", "provider"]
+											}
+										},
+										"plannedActions": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"action": {
+														"type": "string",
+														"enum": ["create", "update", "delete", "no-op"]
+													},
+													"address": {
+														"type": "object",
+														"properties": {
+															"type": {
+																"type": "string",
+																"enum": [
+																	"environment",
+																	"vault",
+																	"memory_store",
+																	"skill",
+																	"agent",
+																	"template",
+																	"deployment",
+																	"file",
+																	"identity",
+																	"channel"
+																]
+															},
+															"name": {
+																"type": "string"
+															},
+															"provider": {
+																"type": "string"
+															}
+														},
+														"required": ["type", "name", "provider"]
+													},
+													"previousAddress": {
+														"type": "object",
+														"properties": {
+															"type": {
+																"type": "string",
+																"enum": [
+																	"environment",
+																	"vault",
+																	"memory_store",
+																	"skill",
+																	"agent",
+																	"template",
+																	"deployment",
+																	"file",
+																	"identity",
+																	"channel"
+																]
+															},
+															"name": {
+																"type": "string"
+															},
+															"provider": {
+																"type": "string"
+															}
+														},
+														"required": ["type", "name", "provider"]
+													},
+													"reason": {
+														"type": "string"
+													},
+													"driftKind": {
+														"type": "string",
+														"enum": ["none", "local", "remote", "both"]
+													},
+													"readinessImpact": {
+														"type": "string",
+														"enum": ["none", "non_blocking", "blocking"]
+													},
+													"changedPaths": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													"before": {
+														"type": "object",
+														"additionalProperties": {
+															"nullable": true
+														}
+													},
+													"after": {
+														"type": "object",
+														"additionalProperties": {
+															"nullable": true
+														}
+													},
+													"dependencies": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"properties": {
+																"type": {
+																	"type": "string",
+																	"enum": [
+																		"environment",
+																		"vault",
+																		"memory_store",
+																		"skill",
+																		"agent",
+																		"template",
+																		"deployment",
+																		"file",
+																		"identity",
+																		"channel"
+																	]
+																},
+																"name": {
+																	"type": "string"
+																},
+																"provider": {
+																	"type": "string"
+																}
+															},
+															"required": ["type", "name", "provider"]
+														}
+													}
+												},
+												"required": ["action", "address", "reason", "dependencies"]
+											}
+										}
+									},
+									"required": ["status", "agentId", "diagnostics", "missing", "plannedActions"]
+								},
+								"details": {
+									"type": "object",
+									"properties": {
+										"environment": {
+											"type": "string"
+										},
+										"vault": {
+											"type": "string"
+										},
+										"memory_stores": {
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										},
+										"resources": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"type": {
+														"type": "string"
+													},
+													"mount_path": {
+														"type": "string"
+													}
+												},
+												"required": ["type"]
+											}
+										}
+									},
+									"required": ["memory_stores", "resources"]
+								}
+							},
+							"required": ["agent", "readiness", "details"]
+						}
+					},
+					"deployments": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "string"
+								},
+								"agent": {
+									"type": "string"
+								},
+								"provider": {
+									"type": "string"
+								},
+								"description": {
+									"type": "string"
+								},
+								"schedule": {
+									"type": "object",
+									"properties": {
+										"expression": {
+											"type": "string"
+										},
+										"timezone": {
+											"type": "string"
+										}
+									},
+									"required": ["expression", "timezone"]
+								},
+								"initial_event_types": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"resource_types": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								}
+							},
+							"required": ["id", "agent", "initial_event_types", "resource_types"]
+						}
+					},
+					"active_mutation": {
+						"type": "object",
+						"nullable": true,
+						"properties": {
+							"kind": {
+								"type": "string",
+								"enum": [
+									"agent_apply",
+									"project_apply",
+									"project_build",
+									"declaration_write",
+									"version_enable",
+									"version_write",
+									"version_restore"
+								]
+							},
+							"started_at": {
+								"type": "string"
+							},
+							"operation_id": {
+								"type": "string"
+							}
+						},
+						"required": ["kind", "started_at"]
+					},
+					"build": {
+						"type": "object",
+						"properties": {
+							"exists": {
+								"type": "boolean"
+							},
+							"stale": {
+								"type": "boolean"
+							},
+							"reasons": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"yaml_hash": {
+								"type": "string"
+							}
+						},
+						"required": ["exists", "stale", "reasons"]
 					}
 				},
-				"additionalProperties": {
-					"type": "string"
-				}
+				"required": [
+					"status",
+					"config_file",
+					"project_name",
+					"diagnostics",
+					"agents",
+					"deployments",
+					"active_mutation",
+					"build"
+				]
 			},
 			"ErrorResponse": {
 				"type": "object",
@@ -33,107 +515,1024 @@
 				},
 				"required": ["error"]
 			},
-			"AgentsConfigReady": {
+			"ProjectDeclarationsResponse": {
 				"type": "object",
 				"properties": {
-					"ready": {
-						"type": "boolean"
+					"revision": {
+						"type": "string"
 					},
-					"provider": {
-						"type": "string",
-						"enum": ["bailian", "qoder", "ark", "claude"]
-					}
-				},
-				"required": ["ready"]
-			},
-			"AgentsConfig": {
-				"type": "object",
-				"properties": {
-					"AGENTS_PROVIDER": {
-						"type": "string",
-						"enum": ["bailian", "qoder", "ark", "claude"]
-					}
-				},
-				"required": ["AGENTS_PROVIDER"],
-				"additionalProperties": {
-					"type": "string"
-				}
-			},
-			"SaveAgentsConfigBody": {
-				"type": "object",
-				"properties": {
-					"AGENTS_PROVIDER": {
-						"type": "string",
-						"enum": ["bailian", "qoder", "ark", "claude"]
-					}
-				},
-				"required": ["AGENTS_PROVIDER"],
-				"additionalProperties": {
-					"type": "string"
-				}
-			},
-			"SessionListResponse": {
-				"type": "object",
-				"properties": {
-					"data": {
+					"resources": {
 						"type": "array",
 						"items": {
 							"type": "object",
 							"properties": {
-								"session_id": {
+								"type": {
+									"type": "string",
+									"enum": ["agent", "environment", "skill", "vault", "memory_store", "file"]
+								},
+								"id": {
 									"type": "string"
 								},
-								"status": {
+								"owner_agent": {
 									"type": "string"
 								},
-								"title": {
-									"type": "string"
-								},
-								"agent": {
+								"declaration": {
 									"type": "object",
-									"properties": {
-										"agent_id": {
-											"type": "string"
-										},
-										"name": {
-											"type": "string"
-										},
-										"version": {
-											"type": "number"
-										}
-									},
 									"additionalProperties": {
 										"nullable": true
 									}
 								},
-								"environment_id": {
-									"type": "string",
-									"nullable": true
+								"read_only_paths": {
+									"type": "array",
+									"items": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									}
 								},
-								"created_at": {
-									"type": "string"
-								},
-								"updated_at": {
-									"type": "string"
-								},
-								"metadata": {
-									"type": "object",
-									"additionalProperties": {
-										"type": "string"
+								"references": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"type": {
+												"type": "string"
+											},
+											"id": {
+												"type": "string"
+											},
+											"path": {
+												"type": "string"
+											}
+										},
+										"required": ["type", "id", "path"]
 									}
 								}
 							},
-							"required": ["session_id"]
+							"required": ["type", "id", "declaration", "read_only_paths", "references"]
+						}
+					}
+				},
+				"required": ["revision", "resources"]
+			},
+			"DeclarationPreviewResponse": {
+				"type": "object",
+				"properties": {
+					"type": {
+						"type": "string",
+						"enum": ["agent", "environment", "skill", "vault", "memory_store", "file"]
+					},
+					"id": {
+						"type": "string"
+					},
+					"action": {
+						"type": "string",
+						"enum": ["update", "delete"]
+					},
+					"base_revision": {
+						"type": "string"
+					},
+					"before_yaml": {
+						"type": "string"
+					},
+					"after_yaml": {
+						"type": "string"
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
 						}
 					},
-					"next_page_token": {
+					"references": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"type": {
+									"type": "string"
+								},
+								"id": {
+									"type": "string"
+								},
+								"path": {
+									"type": "string"
+								}
+							},
+							"required": ["type", "id", "path"]
+						}
+					},
+					"can_commit": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"type",
+					"id",
+					"action",
+					"base_revision",
+					"before_yaml",
+					"after_yaml",
+					"diagnostics",
+					"references",
+					"can_commit"
+				]
+			},
+			"DeclarationCommitResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/DeclarationPreviewResponse"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"new_revision": {
+								"type": "string"
+							}
+						},
+						"required": ["new_revision"]
+					}
+				]
+			},
+			"ProjectVersioningStatus": {
+				"type": "object",
+				"properties": {
+					"initialized": {
+						"type": "boolean"
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"store_root": {
+						"type": "string"
+					},
+					"config_path": {
+						"type": "string"
+					},
+					"head_version": {
+						"type": "string",
+						"nullable": true
+					},
+					"source_status": {
+						"type": "string",
+						"enum": ["clean", "modified", "unversioned"]
+					},
+					"source_versioned": {
+						"type": "boolean"
+					},
+					"write_blockers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"restore_blockers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": [
+					"initialized",
+					"enabled",
+					"store_root",
+					"config_path",
+					"head_version",
+					"source_status",
+					"source_versioned",
+					"write_blockers",
+					"restore_blockers"
+				]
+			},
+			"ProjectVersionsResponse": {
+				"type": "object",
+				"properties": {
+					"versions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ProjectVersion"
+						}
+					},
+					"next_cursor": {
 						"type": "string",
 						"nullable": true
 					}
 				},
-				"required": ["data"]
+				"required": ["versions", "next_cursor"]
 			},
-			"SessionDetailResponse": {
+			"ProjectVersion": {
+				"type": "object",
+				"properties": {
+					"version_id": {
+						"type": "string"
+					},
+					"short_version": {
+						"type": "string"
+					},
+					"parent_version": {
+						"type": "string",
+						"nullable": true
+					},
+					"source_hash": {
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					},
+					"created_by": {
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"version_id",
+					"short_version",
+					"parent_version",
+					"source_hash",
+					"message",
+					"created_by",
+					"created_at"
+				]
+			},
+			"ProjectVersionPreview": {
+				"type": "object",
+				"properties": {
+					"version_id": {
+						"type": "string"
+					},
+					"base_revision": {
+						"type": "string"
+					},
+					"base_head_version": {
+						"type": "string"
+					},
+					"before_yaml": {
+						"type": "string"
+					},
+					"after_yaml": {
+						"type": "string"
+					},
+					"changes": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"path": {
+									"type": "string"
+								},
+								"change": {
+									"type": "string",
+									"enum": ["create", "update", "delete"]
+								},
+								"binary": {
+									"type": "boolean"
+								},
+								"before": {
+									"type": "string"
+								},
+								"after": {
+									"type": "string"
+								}
+							},
+							"required": ["path", "change", "binary"]
+						}
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"can_restore": {
+						"type": "boolean"
+					},
+					"blockers": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": [
+					"version_id",
+					"base_revision",
+					"base_head_version",
+					"before_yaml",
+					"after_yaml",
+					"changes",
+					"diagnostics",
+					"can_restore",
+					"blockers"
+				]
+			},
+			"ProjectVersionRestoreResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ProjectVersionPreview"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"new_revision": {
+								"type": "string"
+							}
+						},
+						"required": ["new_revision"]
+					}
+				]
+			},
+			"ProjectBuildResponse": {
+				"type": "object",
+				"properties": {
+					"project_revision": {
+						"type": "string"
+					},
+					"before_yaml": {
+						"type": "string"
+					},
+					"after_yaml": {
+						"type": "string"
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"warnings": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"organization_moves": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"resource_type": {
+									"type": "string",
+									"enum": ["skill", "environment", "vault", "memory_store", "file"]
+								},
+								"resource_id": {
+									"type": "string"
+								},
+								"from": {
+									"type": "string"
+								},
+								"to": {
+									"type": "string"
+								},
+								"reason": {
+									"type": "string",
+									"enum": ["shared"]
+								}
+							},
+							"required": ["resource_type", "resource_id", "from", "to", "reason"]
+						}
+					},
+					"can_build": {
+						"type": "boolean"
+					},
+					"manifest": {
+						"type": "object",
+						"properties": {
+							"schema_version": {
+								"type": "number",
+								"enum": [1]
+							},
+							"project_revision": {
+								"type": "string"
+							},
+							"source_manifest_hash": {
+								"type": "string"
+							},
+							"yaml_hash": {
+								"type": "string"
+							},
+							"built_at": {
+								"type": "string"
+							}
+						},
+						"required": ["schema_version", "project_revision", "source_manifest_hash", "yaml_hash", "built_at"]
+					}
+				},
+				"required": [
+					"project_revision",
+					"before_yaml",
+					"after_yaml",
+					"diagnostics",
+					"warnings",
+					"organization_moves",
+					"can_build"
+				]
+			},
+			"ProjectPlanResponse": {
+				"type": "object",
+				"properties": {
+					"scope": {
+						"type": "string",
+						"enum": ["project_runtime"]
+					},
+					"project_revision": {
+						"type": "string"
+					},
+					"plan_token": {
+						"type": "string"
+					},
+					"expires_at": {
+						"type": "string"
+					},
+					"fingerprint": {
+						"type": "string"
+					},
+					"actions": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"action": {
+									"type": "string",
+									"enum": ["create", "update", "delete", "no-op"]
+								},
+								"address": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								},
+								"previousAddress": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								},
+								"reason": {
+									"type": "string"
+								},
+								"driftKind": {
+									"type": "string",
+									"enum": ["none", "local", "remote", "both"]
+								},
+								"readinessImpact": {
+									"type": "string",
+									"enum": ["none", "non_blocking", "blocking"]
+								},
+								"changedPaths": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"before": {
+									"type": "object",
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"after": {
+									"type": "object",
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"dependencies": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"type": {
+												"type": "string",
+												"enum": [
+													"environment",
+													"vault",
+													"memory_store",
+													"skill",
+													"agent",
+													"template",
+													"deployment",
+													"file",
+													"identity",
+													"channel"
+												]
+											},
+											"name": {
+												"type": "string"
+											},
+											"provider": {
+												"type": "string"
+											}
+										},
+										"required": ["type", "name", "provider"]
+									}
+								}
+							},
+							"required": ["action", "address", "reason", "dependencies"]
+						}
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"destructive": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"scope",
+					"project_revision",
+					"plan_token",
+					"expires_at",
+					"fingerprint",
+					"actions",
+					"diagnostics",
+					"destructive"
+				]
+			},
+			"ProjectApplyResponse": {
+				"type": "object",
+				"properties": {
+					"operation_id": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["queued"]
+					}
+				},
+				"required": ["operation_id", "status"]
+			},
+			"AgentPlanResponse": {
+				"type": "object",
+				"properties": {
+					"agent_id": {
+						"type": "string"
+					},
+					"provider": {
+						"type": "string"
+					},
+					"project_revision": {
+						"type": "string"
+					},
+					"plan_token": {
+						"type": "string"
+					},
+					"expires_at": {
+						"type": "string"
+					},
+					"fingerprint": {
+						"type": "string"
+					},
+					"actions": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"action": {
+									"type": "string",
+									"enum": ["create", "update", "delete", "no-op"]
+								},
+								"address": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								},
+								"previousAddress": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								},
+								"reason": {
+									"type": "string"
+								},
+								"driftKind": {
+									"type": "string",
+									"enum": ["none", "local", "remote", "both"]
+								},
+								"readinessImpact": {
+									"type": "string",
+									"enum": ["none", "non_blocking", "blocking"]
+								},
+								"changedPaths": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"before": {
+									"type": "object",
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"after": {
+									"type": "object",
+									"additionalProperties": {
+										"nullable": true
+									}
+								},
+								"dependencies": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"type": {
+												"type": "string",
+												"enum": [
+													"environment",
+													"vault",
+													"memory_store",
+													"skill",
+													"agent",
+													"template",
+													"deployment",
+													"file",
+													"identity",
+													"channel"
+												]
+											},
+											"name": {
+												"type": "string"
+											},
+											"provider": {
+												"type": "string"
+											}
+										},
+										"required": ["type", "name", "provider"]
+									}
+								}
+							},
+							"required": ["action", "address", "reason", "dependencies"]
+						}
+					},
+					"diagnostics": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["error", "warning", "info"]
+								},
+								"code": {
+									"type": "string"
+								},
+								"message": {
+									"type": "string"
+								},
+								"resource": {
+									"type": "object",
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": [
+												"environment",
+												"vault",
+												"memory_store",
+												"skill",
+												"agent",
+												"template",
+												"deployment",
+												"file",
+												"identity",
+												"channel"
+											]
+										},
+										"name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "name", "provider"]
+								}
+							},
+							"required": ["severity", "code", "message"]
+						}
+					},
+					"destructive": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"agent_id",
+					"provider",
+					"project_revision",
+					"plan_token",
+					"expires_at",
+					"fingerprint",
+					"actions",
+					"diagnostics",
+					"destructive"
+				]
+			},
+			"AgentApplyResponse": {
+				"type": "object",
+				"properties": {
+					"operation_id": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string",
+						"enum": ["queued"]
+					}
+				},
+				"required": ["operation_id", "status"]
+			},
+			"CreateProjectSessionResponse": {
 				"type": "object",
 				"properties": {
 					"session": {
@@ -244,568 +1643,408 @@
 							"required": ["type"]
 						}
 					},
-					"events_next_page_token": {
-						"type": "string",
-						"nullable": true
-					}
-				},
-				"required": ["session", "events"]
-			},
-			"SessionDeleteResponse": {
-				"type": "object",
-				"properties": {
-					"session_id": {
+					"provider": {
 						"type": "string"
 					},
-					"deleted": {
-						"type": "boolean"
-					}
-				},
-				"required": ["session_id", "deleted"]
-			},
-			"SessionEventsPageResponse": {
-				"type": "object",
-				"properties": {
-					"events": {
-						"type": "array",
-						"items": {
-							"type": "object",
-							"properties": {
-								"event_id": {
-									"type": "string"
-								},
-								"type": {
-									"type": "string"
-								},
-								"role": {
-									"type": "string"
-								},
-								"created_at": {
-									"type": "string"
-								},
-								"content": {
-									"type": "array",
-									"items": {
+					"agent_id": {
+						"type": "string"
+					},
+					"agent_name": {
+						"type": "string"
+					},
+					"agent_details": {
+						"type": "object",
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"agentName": {
+								"type": "string"
+							},
+							"provider": {
+								"type": "string"
+							},
+							"description": {
+								"type": "string"
+							},
+							"model": {
+								"anyOf": [
+									{
+										"type": "string"
+									},
+									{
 										"type": "object",
-										"properties": {
-											"type": {
-												"type": "string"
-											},
-											"text": {
-												"type": "string"
-											},
-											"data": {
-												"nullable": true
-											}
-										},
-										"required": ["type"],
 										"additionalProperties": {
 											"nullable": true
 										}
 									}
-								},
-								"metadata": {
+								]
+							},
+							"environment": {
+								"type": "string"
+							},
+							"tools": {
+								"nullable": true
+							},
+							"skills": {
+								"type": "array",
+								"items": {
 									"type": "object",
-									"additionalProperties": {
-										"nullable": true
-									}
-								},
-								"is_error": {
-									"type": "boolean",
-									"nullable": true
-								},
-								"code": {
-									"type": "string",
-									"nullable": true
-								},
-								"message": {
-									"type": "string",
-									"nullable": true
+									"properties": {
+										"type": {
+											"type": "string",
+											"enum": ["custom", "official"]
+										},
+										"id": {
+											"type": "string"
+										},
+										"version": {
+											"type": "string"
+										}
+									},
+									"required": ["type", "id"]
 								}
 							},
-							"required": ["type"]
-						}
-					},
-					"events_next_page_token": {
-						"type": "string",
-						"nullable": true
+							"mcpServers": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"metadata": {
+								"type": "object",
+								"additionalProperties": {
+									"nullable": true
+								}
+							}
+						},
+						"required": ["id", "agentName", "provider", "skills", "mcpServers"]
 					}
 				},
-				"required": ["events"]
+				"required": ["session", "events", "provider", "agent_id", "agent_name", "agent_details"]
 			},
-			"ProviderFileInfo": {
+			"ProjectSessionArtifactDownload": {
+				"type": "object",
+				"properties": {
+					"url": {
+						"type": "string",
+						"format": "uri"
+					},
+					"expires_at": {
+						"type": "string"
+					}
+				},
+				"required": ["url"]
+			},
+			"OperationResponse": {
 				"type": "object",
 				"properties": {
 					"id": {
 						"type": "string"
 					},
-					"filename": {
-						"type": "string"
-					},
-					"mime_type": {
-						"type": "string"
-					},
-					"size_bytes": {
-						"type": "number"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"downloadable": {
-						"type": "boolean"
-					},
-					"status": {
-						"type": "string"
-					},
-					"purpose": {
-						"type": "string"
-					},
-					"available": {
-						"type": "boolean"
-					}
-				},
-				"required": ["id", "filename", "mime_type", "size_bytes", "created_at"]
-			},
-			"ProviderSkillInfo": {
-				"type": "object",
-				"properties": {
-					"id": {
-						"type": "string"
-					},
-					"name": {
-						"type": "string"
-					},
-					"description": {
-						"type": "string"
-					},
-					"source": {
+					"type": {
 						"type": "string",
-						"enum": ["custom", "official"]
+						"enum": ["agent.apply", "project.apply"]
+					},
+					"agent_id": {
+						"type": "string"
 					},
 					"status": {
 						"type": "string",
-						"enum": ["checking", "active", "rejected", "deleted"]
-					},
-					"latest_version": {
-						"type": "string"
+						"enum": ["queued", "running", "completed", "failed", "interrupted"]
 					},
 					"created_at": {
 						"type": "string"
 					},
 					"updated_at": {
 						"type": "string"
+					},
+					"events": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"index": {
+									"type": "integer",
+									"minimum": 0
+								},
+								"type": {
+									"type": "string"
+								},
+								"timestamp": {
+									"type": "string"
+								},
+								"data": {
+									"nullable": true
+								}
+							},
+							"required": ["index", "type", "timestamp"]
+						}
+					},
+					"result": {
+						"nullable": true
+					},
+					"error": {
+						"type": "string"
 					}
 				},
-				"required": ["id", "name", "source", "status"]
+				"required": ["id", "type", "status", "created_at", "updated_at", "events"]
 			}
 		},
 		"parameters": {}
 	},
 	"paths": {
-		"/api/config": {
+		"/api/project": {
 			"get": {
-				"responses": {
-					"200": {
-						"description": "Read local OpenAgentPack playground config (~/.agents/config.json)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/AgentsConfigSnapshot"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			},
-			"put": {
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/SaveAgentsConfigBody"
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Save local OpenAgentPack playground config (~/.agents/config.json)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/AgentsConfig"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/config/ready": {
-			"get": {
-				"responses": {
-					"200": {
-						"description": "Whether runtime provider credentials are configured in the server process",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/AgentsConfigReady"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/deployments": {
-			"get": {
-				"responses": {
-					"200": {
-						"description": "List managed deployments",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"deployments": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"id": {
-														"type": "string"
-													},
-													"name": {
-														"type": "string"
-													},
-													"playbookId": {
-														"type": "string"
-													},
-													"provider": {
-														"type": "string"
-													},
-													"prompt": {
-														"type": "string"
-													},
-													"schedule": {
-														"type": "object",
-														"properties": {
-															"expression": {
-																"type": "string"
-															},
-															"timezone": {
-																"type": "string"
-															}
-														},
-														"required": ["expression", "timezone"]
-													},
-													"status": {
-														"type": "string"
-													},
-													"remoteId": {
-														"type": "string",
-														"nullable": true
-													}
-												},
-												"required": ["id", "name", "playbookId", "provider", "prompt", "schedule", "status", "remoteId"]
-											}
-										}
-									},
-									"required": ["deployments"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			},
-			"post": {
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"name": {
-										"type": "string",
-										"minLength": 1
-									},
-									"playbookId": {
-										"type": "string",
-										"minLength": 1
-									},
-									"prompt": {
-										"type": "string",
-										"minLength": 1
-									},
-									"expression": {
-										"type": "string",
-										"minLength": 1
-									},
-									"timezone": {
-										"type": "string",
-										"minLength": 1,
-										"default": "Asia/Shanghai"
-									}
-								},
-								"required": ["name", "playbookId", "prompt", "expression"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"201": {
-						"description": "Create a native deployment",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"id": {
-											"type": "string"
-										},
-										"name": {
-											"type": "string"
-										},
-										"playbookId": {
-											"type": "string"
-										},
-										"provider": {
-											"type": "string"
-										},
-										"prompt": {
-											"type": "string"
-										},
-										"schedule": {
-											"type": "object",
-											"properties": {
-												"expression": {
-													"type": "string"
-												},
-												"timezone": {
-													"type": "string"
-												}
-											},
-											"required": ["expression", "timezone"]
-										},
-										"status": {
-											"type": "string"
-										},
-										"remoteId": {
-											"type": "string",
-											"nullable": true
-										}
-									},
-									"required": ["id", "name", "playbookId", "provider", "prompt", "schedule", "status", "remoteId"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/deployments/{id}/paused": {
-			"put": {
 				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"enum": ["true", "false"]
+						},
+						"required": false,
+						"name": "refresh",
+						"in": "query"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Current directory project, validation, readiness, Build, and deployment declarations",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectSummary"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/events": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "Project reload and validation events",
+						"content": {
+							"text/event-stream": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/declarations": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "Editable declarations already present in the directory project source",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectDeclarationsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/declarations/{type}/{id}/preview": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"enum": ["agent", "environment", "skill", "vault", "memory_store", "file"]
+						},
+						"required": true,
+						"name": "type",
+						"in": "path"
+					},
 					{
 						"schema": {
 							"type": "string",
@@ -822,142 +2061,67 @@
 							"schema": {
 								"type": "object",
 								"properties": {
-									"paused": {
-										"type": "boolean"
-									}
-								},
-								"required": ["paused"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Pause or resume a deployment",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"id": {
-											"type": "string",
-											"nullable": true
-										},
-										"status": {
-											"type": "string"
-										}
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
 									},
-									"required": ["id", "status"],
-									"additionalProperties": {
-										"nullable": true
-									}
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/deployments/{id}/runs": {
-			"post": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string",
-							"minLength": 1
-						},
-						"required": true,
-						"name": "id",
-						"in": "path"
-					}
-				],
-				"responses": {
-					"201": {
-						"description": "Trigger a deployment run",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"name": {
-											"type": "string"
-										},
-										"provider": {
-											"type": "string"
-										},
-										"result": {
+									"action": {
+										"type": "string",
+										"enum": ["update", "delete"]
+									},
+									"operations": {
+										"type": "array",
+										"items": {
 											"type": "object",
 											"properties": {
-												"run_id": {
-													"type": "string"
-												},
-												"session_id": {
+												"op": {
 													"type": "string",
-													"nullable": true
+													"enum": ["set", "remove"]
 												},
-												"error": {
-													"type": "object",
-													"properties": {
-														"type": {
-															"type": "string"
-														},
-														"message": {
-															"type": "string"
-														}
+												"path": {
+													"type": "array",
+													"items": {
+														"type": "string",
+														"minLength": 1
 													},
-													"required": ["type", "message"]
+													"minItems": 1
+												},
+												"value": {
+													"nullable": true
 												}
 											},
-											"required": ["session_id"]
+											"required": ["op", "path"]
 										}
-									},
-									"required": ["name", "provider", "result"]
+									}
+								},
+								"required": ["base_revision", "action"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Validate and preview an in-memory declaration change",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeclarationPreviewResponse"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -986,6 +2150,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -999,12 +2173,156 @@
 				}
 			}
 		},
-		"/api/deployments/{id}": {
+		"/api/project/declarations/{type}/{id}": {
+			"patch": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"enum": ["agent", "environment", "skill", "vault", "memory_store", "file"]
+						},
+						"required": true,
+						"name": "type",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "id",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									},
+									"operations": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"op": {
+													"type": "string",
+													"enum": ["set", "remove"]
+												},
+												"path": {
+													"type": "array",
+													"items": {
+														"type": "string",
+														"minLength": 1
+													},
+													"minItems": 1
+												},
+												"value": {
+													"nullable": true
+												}
+											},
+											"required": ["op", "path"]
+										},
+										"minItems": 1
+									}
+								},
+								"required": ["base_revision", "operations"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Atomically update an existing directory project declaration",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeclarationCommitResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
 			"delete": {
 				"parameters": [
 					{
 						"schema": {
 							"type": "string",
+							"enum": ["agent", "environment", "skill", "vault", "memory_store", "file"]
+						},
+						"required": true,
+						"name": "type",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "string",
 							"minLength": 1
 						},
 						"required": true,
@@ -1012,25 +2330,45 @@
 						"in": "path"
 					}
 				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
 				"responses": {
 					"200": {
-						"description": "Delete a deployment",
+						"description": "Atomically remove an unreferenced directory project declaration",
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"properties": {
-										"deleted": {
-											"type": "boolean"
-										}
-									},
-									"required": ["deleted"]
+									"$ref": "#/components/schemas/DeclarationCommitResponse"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1059,6 +2397,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -1072,7 +2420,267 @@
 				}
 			}
 		},
-		"/api/agents": {
+		"/api/project/versioning": {
+			"get": {
+				"responses": {
+					"200": {
+						"description": "Local directory source snapshot store and versioning status",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersioningStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versioning/enable": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Enable shared automatic agents.yaml versions and create a baseline when needed",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersioningStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versioning/disable": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Disable shared automatic agents.yaml versions without removing snapshots",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersioningStatus"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versions": {
 			"get": {
 				"parameters": [
 					{
@@ -1080,1271 +2688,43 @@
 							"type": "string"
 						},
 						"required": false,
-						"name": "agentId",
+						"name": "cursor",
 						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "List agents with readiness",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"agents": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"agent": {
-														"type": "object",
-														"properties": {
-															"id": {
-																"type": "string"
-															},
-															"agentName": {
-																"type": "string"
-															},
-															"provider": {
-																"type": "string"
-															},
-															"description": {
-																"type": "string"
-															},
-															"model": {
-																"anyOf": [
-																	{
-																		"type": "string"
-																	},
-																	{
-																		"type": "object",
-																		"additionalProperties": {
-																			"nullable": true
-																		}
-																	}
-																]
-															},
-															"environment": {
-																"type": "string"
-															},
-															"tools": {
-																"nullable": true
-															},
-															"skills": {
-																"type": "array",
-																"items": {
-																	"type": "object",
-																	"properties": {
-																		"type": {
-																			"type": "string",
-																			"enum": ["custom", "official"]
-																		},
-																		"id": {
-																			"type": "string"
-																		},
-																		"version": {
-																			"type": "string"
-																		}
-																	},
-																	"required": ["type", "id"]
-																}
-															},
-															"mcpServers": {
-																"type": "array",
-																"items": {
-																	"type": "string"
-																}
-															},
-															"metadata": {
-																"type": "object",
-																"additionalProperties": {
-																	"nullable": true
-																}
-															}
-														},
-														"required": ["id", "agentName", "provider", "skills", "mcpServers"]
-													},
-													"readiness": {
-														"type": "object",
-														"properties": {
-															"status": {
-																"type": "string",
-																"enum": [
-																	"ready",
-																	"missing",
-																	"creating",
-																	"updating",
-																	"invalid",
-																	"drifted",
-																	"unavailable",
-																	"error"
-																]
-															},
-															"agentId": {
-																"type": "string"
-															},
-															"driftSeverity": {
-																"type": "string",
-																"enum": ["blocking", "non_blocking"]
-															},
-															"diagnostics": {
-																"type": "array",
-																"items": {
-																	"type": "object",
-																	"properties": {
-																		"severity": {
-																			"type": "string",
-																			"enum": ["error", "warning", "info"]
-																		},
-																		"code": {
-																			"type": "string"
-																		},
-																		"message": {
-																			"type": "string"
-																		},
-																		"resource": {
-																			"type": "object",
-																			"properties": {
-																				"type": {
-																					"type": "string",
-																					"enum": [
-																						"environment",
-																						"vault",
-																						"memory_store",
-																						"skill",
-																						"agent",
-																						"template",
-																						"deployment",
-																						"file",
-																						"identity",
-																						"channel"
-																					]
-																				},
-																				"name": {
-																					"type": "string"
-																				},
-																				"provider": {
-																					"type": "string"
-																				}
-																			},
-																			"required": ["type", "name", "provider"]
-																		}
-																	},
-																	"required": ["severity", "code", "message"]
-																}
-															},
-															"missing": {
-																"type": "array",
-																"items": {
-																	"type": "object",
-																	"properties": {
-																		"type": {
-																			"type": "string",
-																			"enum": [
-																				"environment",
-																				"vault",
-																				"memory_store",
-																				"skill",
-																				"agent",
-																				"template",
-																				"deployment",
-																				"file",
-																				"identity",
-																				"channel"
-																			]
-																		},
-																		"name": {
-																			"type": "string"
-																		},
-																		"provider": {
-																			"type": "string"
-																		}
-																	},
-																	"required": ["type", "name", "provider"]
-																}
-															},
-															"plannedActions": {
-																"type": "array",
-																"items": {
-																	"type": "object",
-																	"properties": {
-																		"action": {
-																			"type": "string",
-																			"enum": ["create", "update", "delete", "no-op"]
-																		},
-																		"address": {
-																			"type": "object",
-																			"properties": {
-																				"type": {
-																					"type": "string",
-																					"enum": [
-																						"environment",
-																						"vault",
-																						"memory_store",
-																						"skill",
-																						"agent",
-																						"template",
-																						"deployment",
-																						"file",
-																						"identity",
-																						"channel"
-																					]
-																				},
-																				"name": {
-																					"type": "string"
-																				},
-																				"provider": {
-																					"type": "string"
-																				}
-																			},
-																			"required": ["type", "name", "provider"]
-																		},
-																		"previousAddress": {
-																			"type": "object",
-																			"properties": {
-																				"type": {
-																					"type": "string",
-																					"enum": [
-																						"environment",
-																						"vault",
-																						"memory_store",
-																						"skill",
-																						"agent",
-																						"template",
-																						"deployment",
-																						"file",
-																						"identity",
-																						"channel"
-																					]
-																				},
-																				"name": {
-																					"type": "string"
-																				},
-																				"provider": {
-																					"type": "string"
-																				}
-																			},
-																			"required": ["type", "name", "provider"]
-																		},
-																		"reason": {
-																			"type": "string"
-																		},
-																		"driftKind": {
-																			"type": "string",
-																			"enum": ["none", "local", "remote", "both"]
-																		},
-																		"readinessImpact": {
-																			"type": "string",
-																			"enum": ["none", "non_blocking", "blocking"]
-																		},
-																		"changedPaths": {
-																			"type": "array",
-																			"items": {
-																				"type": "string"
-																			}
-																		},
-																		"before": {
-																			"type": "object",
-																			"additionalProperties": {
-																				"nullable": true
-																			}
-																		},
-																		"after": {
-																			"type": "object",
-																			"additionalProperties": {
-																				"nullable": true
-																			}
-																		},
-																		"dependencies": {
-																			"type": "array",
-																			"items": {
-																				"type": "object",
-																				"properties": {
-																					"type": {
-																						"type": "string",
-																						"enum": [
-																							"environment",
-																							"vault",
-																							"memory_store",
-																							"skill",
-																							"agent",
-																							"template",
-																							"deployment",
-																							"file",
-																							"identity",
-																							"channel"
-																						]
-																					},
-																					"name": {
-																						"type": "string"
-																					},
-																					"provider": {
-																						"type": "string"
-																					}
-																				},
-																				"required": ["type", "name", "provider"]
-																			}
-																		}
-																	},
-																	"required": ["action", "address", "reason", "dependencies"]
-																}
-															}
-														},
-														"required": ["status", "agentId", "diagnostics", "missing", "plannedActions"]
-													}
-												},
-												"required": ["agent", "readiness"]
-											}
-										}
-									},
-									"required": ["agents"]
-								}
-							}
-						}
 					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/cloud-agents": {
-			"get": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "prefix",
-						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "List raw cloud agents (the resource center's source of truth)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"agents": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"id": {
-														"type": "string"
-													},
-													"name": {
-														"type": "string"
-													},
-													"description": {
-														"type": "string",
-														"nullable": true
-													},
-													"model": {
-														"nullable": true
-													},
-													"system": {
-														"type": "string"
-													},
-													"tools": {
-														"nullable": true
-													},
-													"skills": {
-														"nullable": true
-													},
-													"mcp_servers": {
-														"nullable": true
-													},
-													"metadata": {
-														"type": "object",
-														"additionalProperties": {
-															"type": "string"
-														}
-													},
-													"version": {
-														"type": "number"
-													},
-													"type": {
-														"type": "string"
-													},
-													"workspace_id": {
-														"type": "string"
-													},
-													"created_at": {
-														"type": "string"
-													},
-													"updated_at": {
-														"type": "string"
-													},
-													"archived_at": {
-														"type": "string",
-														"nullable": true
-													},
-													"attributes": {
-														"type": "object",
-														"additionalProperties": {
-															"nullable": true
-														}
-													}
-												},
-												"required": ["id"]
-											}
-										}
-									},
-									"required": ["agents"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/cloud-agents/{agentId}/archive": {
-			"post": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string",
-							"minLength": 1
-						},
-						"required": true,
-						"name": "agentId",
-						"in": "path"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Archive a cloud agent (soft delete → status=archived)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"ok": {
-											"type": "boolean",
-											"enum": [true]
-										}
-									},
-									"required": ["ok"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/cloud-agents/{agentId}": {
-			"post": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string",
-							"minLength": 1
-						},
-						"required": true,
-						"name": "agentId",
-						"in": "path"
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"model": {
-										"type": "string",
-										"minLength": 1
-									}
-								},
-								"required": ["model"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Update a playbook agent's config (model switch → sync-override)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"ok": {
-											"type": "boolean",
-											"enum": [true]
-										}
-									},
-									"required": ["ok"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/environments": {
-			"get": {
-				"responses": {
-					"200": {
-						"description": "List raw cloud environments (the shared base sandbox resource)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"environments": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"id": {
-														"type": "string"
-													},
-													"name": {
-														"type": "string"
-													},
-													"description": {
-														"type": "string",
-														"nullable": true
-													},
-													"config": {
-														"nullable": true
-													},
-													"metadata": {
-														"type": "object",
-														"additionalProperties": {
-															"type": "string"
-														}
-													},
-													"scope": {
-														"type": "string"
-													},
-													"version": {
-														"type": "number"
-													},
-													"type": {
-														"type": "string"
-													},
-													"workspace_id": {
-														"type": "string"
-													},
-													"created_at": {
-														"type": "string"
-													},
-													"updated_at": {
-														"type": "string"
-													},
-													"archived_at": {
-														"type": "string",
-														"nullable": true
-													},
-													"attributes": {
-														"type": "object",
-														"additionalProperties": {
-															"nullable": true
-														}
-													}
-												},
-												"required": ["id"]
-											}
-										}
-									},
-									"required": ["environments"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			},
-			"post": {
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"name": {
-										"type": "string",
-										"minLength": 1
-									},
-									"description": {
-										"type": "string"
-									},
-									"metadata": {
-										"type": "object",
-										"additionalProperties": {
-											"type": "string"
-										}
-									}
-								},
-								"required": ["name"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Create a base cloud environment (cloud + unrestricted networking)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"environment": {
-											"type": "object",
-											"properties": {
-												"id": {
-													"type": "string",
-													"nullable": true
-												},
-												"type": {
-													"type": "string"
-												},
-												"version": {
-													"type": "number"
-												}
-											},
-											"required": ["id", "type"]
-										}
-									},
-									"required": ["environment"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/environments/{environmentId}": {
-			"delete": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string",
-							"minLength": 1
-						},
-						"required": true,
-						"name": "environmentId",
-						"in": "path"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Delete a cloud environment by remote id",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"id": {
-											"type": "string"
-										},
-										"type": {
-											"type": "string"
-										}
-									},
-									"required": ["id", "type"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/vaults": {
-			"get": {
-				"responses": {
-					"200": {
-						"description": "List raw cloud vaults (the shared credential store resource)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"vaults": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"id": {
-														"type": "string"
-													},
-													"display_name": {
-														"type": "string"
-													},
-													"metadata": {
-														"type": "object",
-														"additionalProperties": {
-															"type": "string"
-														}
-													},
-													"type": {
-														"type": "string"
-													},
-													"created_at": {
-														"type": "string",
-														"nullable": true
-													},
-													"updated_at": {
-														"type": "string",
-														"nullable": true
-													},
-													"archived_at": {
-														"type": "string",
-														"nullable": true
-													},
-													"attributes": {
-														"type": "object",
-														"additionalProperties": {
-															"nullable": true
-														}
-													}
-												},
-												"required": ["id"]
-											}
-										}
-									},
-									"required": ["vaults"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			},
-			"post": {
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"name": {
-										"type": "string",
-										"minLength": 1
-									},
-									"metadata": {
-										"type": "object",
-										"additionalProperties": {
-											"type": "string"
-										}
-									},
-									"key": {
-										"type": "string",
-										"minLength": 1
-									}
-								},
-								"required": ["name"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Create a base cloud vault holding the user-supplied DASHSCOPE_API_KEY",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"id": {
-											"type": "string",
-											"nullable": true
-										},
-										"type": {
-											"type": "string"
-										},
-										"version": {
-											"type": "number"
-										}
-									},
-									"required": ["id", "type"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/vaults/{vaultId}": {
-			"delete": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string",
-							"minLength": 1
-						},
-						"required": true,
-						"name": "vaultId",
-						"in": "path"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Delete a cloud vault by remote id",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"id": {
-											"type": "string"
-										},
-										"type": {
-											"type": "string"
-										}
-									},
-									"required": ["id", "type"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/sessions": {
-			"get": {
-				"parameters": [
 					{
 						"schema": {
 							"type": "integer",
-							"nullable": true
+							"minimum": 1,
+							"maximum": 100
 						},
 						"required": false,
 						"name": "limit",
 						"in": "query"
-					},
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "agentId",
-						"in": "query"
-					},
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "pageToken",
-						"in": "query"
 					}
 				],
 				"responses": {
 					"200": {
-						"description": "List sessions for an agent",
+						"description": "Local directory source snapshots",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/SessionListResponse"
+									"$ref": "#/components/schemas/ProjectVersionsResponse"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2373,6 +2753,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -2384,7 +2774,223 @@
 						}
 					}
 				}
-			},
+			}
+		},
+		"/api/project/versions/{versionId}/preview": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "versionId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									},
+									"base_head_version": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision", "base_head_version"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Validate and preview restoring a historical directory source tree",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersionPreview"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/versions/{versionId}/restore": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "versionId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									},
+									"base_head_version": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision", "base_head_version"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Restore historical directory source without changing version history or remote State",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectVersionRestoreResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/build/preview": {
 			"post": {
 				"requestBody": {
 					"content": {
@@ -2392,63 +2998,633 @@
 							"schema": {
 								"type": "object",
 								"properties": {
-									"agentId": {
-										"type": "string"
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Preview deterministic directory-project Build output and organization moves",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectBuildResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/build": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"base_revision": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["base_revision"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Organize directory source and atomically write the generated Build",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectBuildResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/plan": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"refresh": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Plan every resource in the current project Build",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectPlanResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/apply": {
+			"post": {
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"plan_token": {
+										"type": "string",
+										"minLength": 1
 									},
+									"confirm_destructive": {
+										"type": "boolean"
+									}
+								},
+								"required": ["plan_token"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Accept a full project Publish and version its frozen directory source after success",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectApplyResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/agents/{agentId}/plan": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"refresh": {
+										"type": "boolean"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Scoped plan for one Agent and its runtime dependencies",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentPlanResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/agents/{agentId}/apply": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"plan_token": {
+										"type": "string",
+										"minLength": 1
+									},
+									"confirm_destructive": {
+										"type": "boolean"
+									}
+								},
+								"required": ["plan_token"]
+							}
+						}
+					}
+				},
+				"responses": {
+					"202": {
+						"description": "Accept a compatibility-scoped Agent apply without creating a project version",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AgentApplyResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/project/agents/{agentId}/sessions": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
 									"prompt": {
-										"type": "string",
-										"minLength": 1
-									},
-									"environmentId": {
-										"type": "string",
-										"minLength": 1
-									},
-									"vaultIds": {
-										"type": "array",
-										"items": {
-											"type": "string"
-										}
+										"type": "string"
 									},
 									"title": {
 										"type": "string"
 									},
-									"files": {
+									"attachment_ids": {
 										"type": "array",
 										"items": {
-											"type": "object",
-											"properties": {
-												"fileId": {
-													"type": "string"
-												},
-												"mountPath": {
-													"type": "string"
-												}
-											},
-											"required": ["fileId", "mountPath"]
+											"type": "string"
 										}
-									},
-									"model": {
-										"type": "string"
 									}
-								},
-								"required": ["agentId", "prompt", "environmentId"]
+								}
 							}
 						}
 					}
 				},
 				"responses": {
 					"201": {
-						"description": "Session created",
+						"description": "Session created from the selected agents.yaml Agent",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/SessionDetailResponse"
+									"$ref": "#/components/schemas/CreateProjectSessionResponse"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2477,235 +3653,8 @@
 							}
 						}
 					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/sessions/{sessionId}": {
-			"get": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": true,
-						"name": "sessionId",
-						"in": "path"
-					},
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "agentId",
-						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Session detail with events",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/SessionDetailResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			},
-			"delete": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": true,
-						"name": "sessionId",
-						"in": "path"
-					},
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "agentId",
-						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Session deleted",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/SessionDeleteResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/sessions/{sessionId}/events": {
-			"get": {
-				"parameters": [
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": true,
-						"name": "sessionId",
-						"in": "path"
-					},
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "agentId",
-						"in": "query"
-					},
-					{
-						"schema": {
-							"type": "string"
-						},
-						"required": false,
-						"name": "pageToken",
-						"in": "query"
-					},
-					{
-						"schema": {
-							"type": "integer",
-							"nullable": true
-						},
-						"required": false,
-						"name": "limit",
-						"in": "query"
-					}
-				],
-				"responses": {
-					"200": {
-						"description": "Paginated session events (newest page first; pass pageToken for older pages)",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/SessionEventsPageResponse"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
+					"422": {
+						"description": "Unprocessable entity",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2732,7 +3681,8 @@
 				"parameters": [
 					{
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"minLength": 1
 						},
 						"required": true,
 						"name": "sessionId",
@@ -2745,9 +3695,6 @@
 							"schema": {
 								"type": "object",
 								"properties": {
-									"agentId": {
-										"type": "string"
-									},
 									"message": {
 										"type": "string",
 										"minLength": 1
@@ -2760,17 +3707,27 @@
 				},
 				"responses": {
 					"200": {
-						"description": "Message sent; updated session with events",
+						"description": "Follow up in a project Session using its pinned runtime",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/SessionDetailResponse"
+									"$ref": "#/components/schemas/CreateProjectSessionResponse"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2799,6 +3756,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -2812,12 +3779,293 @@
 				}
 			}
 		},
-		"/api/sessions/{sessionId}/stream": {
+		"/api/sessions/{sessionId}": {
 			"get": {
 				"parameters": [
 					{
 						"schema": {
-							"type": "string"
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Project Session detail, history, and artifacts carried by events",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreateProjectSessionResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}/artifacts/{fileId}/download": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "fileId",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Resolve a short-lived download URL for an artifact delivered by this Session",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProjectSessionArtifactDownload"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}/cancel": {
+			"post": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "sessionId",
+						"in": "path"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Terminate/delete the provider Session",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"session_id": {
+											"type": "string"
+										},
+										"cancelled": {
+											"type": "boolean",
+											"enum": [true]
+										}
+									},
+									"required": ["session_id", "cancelled"]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/sessions/{sessionId}/events": {
+			"get": {
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
 						},
 						"required": true,
 						"name": "sessionId",
@@ -2835,21 +4083,30 @@
 				],
 				"responses": {
 					"200": {
-						"description": "Stream session events as Server-Sent Events",
+						"description": "Replay and stream Session events",
 						"content": {
 							"text/event-stream": {
 								"schema": {
-									"type": "string",
-									"description": "SSE frames with event types \"event\", \"done\", and \"ping\"."
+									"type": "string"
 								}
 							}
 						}
 					},
 					"204": {
-						"description": "No active event buffer; caller should fetch the session detail once"
+						"description": "Session is unavailable"
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2878,6 +4135,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -2891,9 +4158,19 @@
 				}
 			}
 		},
-		"/api/files": {
+		"/api/project/agents/{agentId}/attachments": {
 			"post": {
-				"operationId": "uploadFile",
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -2913,17 +4190,57 @@
 				},
 				"responses": {
 					"201": {
-						"description": "Upload a workspace file",
+						"description": "Ad-hoc Session attachment uploaded",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ProviderFileInfo"
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"agent_id": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										},
+										"remote_file_id": {
+											"type": "string"
+										},
+										"filename": {
+											"type": "string"
+										},
+										"mime_type": {
+											"type": "string"
+										},
+										"status": {
+											"type": "string"
+										},
+										"available": {
+											"type": "boolean"
+										},
+										"created_at": {
+											"type": "string"
+										}
+									},
+									"required": ["id", "agent_id", "provider", "remote_file_id", "filename", "available", "created_at"]
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2953,7 +4270,17 @@
 						}
 					},
 					"413": {
-						"description": "File exceeds the upload size limit",
+						"description": "File exceeds the upload limit",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2975,106 +4302,46 @@
 				}
 			},
 			"get": {
-				"operationId": "listFiles",
+				"parameters": [
+					{
+						"schema": {
+							"type": "string",
+							"minLength": 1
+						},
+						"required": true,
+						"name": "agentId",
+						"in": "path"
+					}
+				],
 				"responses": {
 					"200": {
-						"description": "List workspace files",
+						"description": "List ad-hoc attachments",
 						"content": {
 							"application/json": {
 								"schema": {
 									"type": "object",
 									"properties": {
-										"files": {
-											"type": "array",
-											"items": {
-												"$ref": "#/components/schemas/ProviderFileInfo"
-											}
-										}
-									},
-									"required": ["files"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/files/status": {
-			"post": {
-				"operationId": "getFileStatuses",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"fileIds": {
-										"type": "array",
-										"items": {
-											"type": "string"
-										}
-									}
-								},
-								"required": ["fileIds"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Get file scan statuses",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"files": {
+										"attachments": {
 											"type": "array",
 											"items": {
 												"type": "object",
 												"properties": {
 													"id": {
+														"type": "string"
+													},
+													"agent_id": {
+														"type": "string"
+													},
+													"provider": {
+														"type": "string"
+													},
+													"remote_file_id": {
+														"type": "string"
+													},
+													"filename": {
+														"type": "string"
+													},
+													"mime_type": {
 														"type": "string"
 													},
 													"status": {
@@ -3082,19 +4349,40 @@
 													},
 													"available": {
 														"type": "boolean"
+													},
+													"created_at": {
+														"type": "string"
 													}
 												},
-												"required": ["id"]
+												"required": [
+													"id",
+													"agent_id",
+													"provider",
+													"remote_file_id",
+													"filename",
+													"available",
+													"created_at"
+												]
 											}
 										}
 									},
-									"required": ["files"]
+									"required": ["attachments"]
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3123,6 +4411,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -3136,9 +4434,8 @@
 				}
 			}
 		},
-		"/api/files/{id}/download": {
-			"get": {
-				"operationId": "downloadFile",
+		"/api/attachments/{attachmentId}": {
+			"delete": {
 				"parameters": [
 					{
 						"schema": {
@@ -3146,32 +4443,43 @@
 							"minLength": 1
 						},
 						"required": true,
-						"name": "id",
+						"name": "attachmentId",
 						"in": "path"
 					}
 				],
 				"responses": {
 					"200": {
-						"description": "Resolve a short-lived file download URL",
+						"description": "Remote attachment deleted",
 						"content": {
 							"application/json": {
 								"schema": {
 									"type": "object",
 									"properties": {
-										"url": {
+										"attachment_id": {
 											"type": "string"
 										},
-										"expires_at": {
-											"type": "string"
+										"deleted": {
+											"type": "boolean",
+											"enum": [true]
 										}
 									},
-									"required": ["url"]
+									"required": ["attachment_id", "deleted"]
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3200,6 +4508,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
 					"500": {
 						"description": "Server error",
 						"content": {
@@ -3213,9 +4531,8 @@
 				}
 			}
 		},
-		"/api/files/{id}": {
-			"delete": {
-				"operationId": "deleteFile",
+		"/api/operations/{operationId}": {
+			"get": {
 				"parameters": [
 					{
 						"schema": {
@@ -3223,16 +4540,33 @@
 							"minLength": 1
 						},
 						"required": true,
-						"name": "id",
+						"name": "operationId",
 						"in": "path"
 					}
 				],
 				"responses": {
-					"204": {
-						"description": "File deleted"
+					"200": {
+						"description": "Current asynchronous operation state",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OperationResponse"
+								}
+							}
+						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3253,6 +4587,16 @@
 					},
 					"409": {
 						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3274,198 +4618,51 @@
 				}
 			}
 		},
-		"/api/skills/upload-file": {
-			"post": {
-				"operationId": "uploadSkillFile",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"multipart/form-data": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"file": {
-										"type": "string",
-										"format": "binary"
-									}
-								},
-								"required": ["file"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"201": {
-						"description": "Upload a skill archive as a file pending audit",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProviderFileInfo"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"413": {
-						"description": "Skill archive exceeds the upload size limit",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/skills": {
-			"post": {
-				"operationId": "createSkill",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"fileId": {
-										"type": "string",
-										"minLength": 1
-									}
-								},
-								"required": ["fileId"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"201": {
-						"description": "Create a skill from an audited file",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ProviderSkillInfo"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			},
+		"/api/operations/{operationId}/events": {
 			"get": {
-				"operationId": "listSkills",
 				"parameters": [
 					{
 						"schema": {
 							"type": "string",
-							"enum": ["custom", "official"]
+							"minLength": 1
+						},
+						"required": true,
+						"name": "operationId",
+						"in": "path"
+					},
+					{
+						"schema": {
+							"type": "integer",
+							"nullable": true
 						},
 						"required": false,
-						"name": "source",
+						"name": "after",
 						"in": "query"
 					}
 				],
 				"responses": {
 					"200": {
-						"description": "List custom or official skills",
+						"description": "Replay and stream asynchronous operation events",
 						"content": {
-							"application/json": {
+							"text/event-stream": {
 								"schema": {
-									"type": "object",
-									"properties": {
-										"skills": {
-											"type": "array",
-											"items": {
-												"$ref": "#/components/schemas/ProviderSkillInfo"
-											}
-										}
-									},
-									"required": ["skills"]
+									"type": "string"
 								}
 							}
 						}
 					},
 					"400": {
 						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -3494,319 +4691,8 @@
 							}
 						}
 					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/skills/warm": {
-			"post": {
-				"operationId": "warmSkill",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"name": {
-										"type": "string",
-										"minLength": 1
-									},
-									"url": {
-										"type": "string",
-										"minLength": 1
-									}
-								},
-								"required": ["name", "url"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Warm a custom skill until it is active",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"ok": {
-											"type": "boolean",
-											"enum": [true]
-										}
-									},
-									"required": ["ok"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/skills/status": {
-			"post": {
-				"operationId": "getSkillStatuses",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"type": "object",
-								"properties": {
-									"skillIds": {
-										"type": "array",
-										"items": {
-											"type": "string"
-										}
-									}
-								},
-								"required": ["skillIds"]
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Get skill scan statuses",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"skills": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"id": {
-														"type": "string"
-													},
-													"status": {
-														"type": "string",
-														"enum": ["checking", "active", "rejected", "deleted"]
-													}
-												},
-												"required": ["id"]
-											}
-										}
-									},
-									"required": ["skills"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/skills/{id}": {
-			"delete": {
-				"operationId": "deleteSkill",
-				"parameters": [
-					{
-						"schema": {
-							"type": "string",
-							"minLength": 1
-						},
-						"required": true,
-						"name": "id",
-						"in": "path"
-					}
-				],
-				"responses": {
-					"204": {
-						"description": "Skill deleted"
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/models": {
-			"get": {
-				"responses": {
-					"200": {
-						"description": "List the active provider's available models",
-						"content": {
-							"application/json": {
-								"schema": {
-									"type": "object",
-									"properties": {
-										"models": {
-											"type": "array",
-											"items": {
-												"type": "object",
-												"properties": {
-													"id": {
-														"type": "string"
-													},
-													"display_name": {
-														"type": "string"
-													},
-													"is_enabled": {
-														"type": "boolean"
-													},
-													"is_new": {
-														"type": "boolean"
-													}
-												},
-												"required": ["id", "display_name"]
-											}
-										}
-									},
-									"required": ["models"]
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
+					"422": {
+						"description": "Unprocessable entity",
 						"content": {
 							"application/json": {
 								"schema": {

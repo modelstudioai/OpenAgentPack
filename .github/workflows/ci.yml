@@ -58,13 +58,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Full consumer smoke (sdk + playground + cli) on the repo baseline.
+          # Full consumer smoke (library packages + playground + cli) on the repo baseline.
           - node: 22
             scope: all
           - node: 24
             scope: all
-          # SDK-only smoke on the sdk engines floor (>=18.17.0): cli/playground
-          # require Node >=22, so only the sdk tarball is installed and imported.
+          # Library smoke on the SDK engines floor (>=18.17.0): build and install
+          # sdk, project-versions, and project-workspace; cli/playground require Node >=22.
           - node: 18.17.0
             scope: sdk
           - node: 20
@@ -86,6 +86,8 @@ jobs:
       - if: matrix.scope == 'sdk'
         run: |
           bun run build:sdk
+          bun run build:project-versions
+          bun run build:project-workspace
           bun scripts/release/smoke-packed.ts --sdk-only
 
   gate:
