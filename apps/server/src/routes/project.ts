@@ -1,11 +1,11 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { planAgentResourcesWithStateBackend, syncAgentResourcesWithStateBackend } from "@openagentpack/sdk";
 import {
 	acquireDirectoryProjectMutation,
 	commitProjectBuild,
 	previewProjectBuild,
 	readValidProjectBuild,
-} from "@openagentpack/project-workspace";
-import { planAgentResourcesWithStateBackend, syncAgentResourcesWithStateBackend } from "@openagentpack/sdk";
+} from "@openagentpack/sdk/project-workspace";
 import { errorResponses } from "@/schemas/common";
 import {
 	AgentApplyBodySchema,

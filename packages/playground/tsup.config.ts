@@ -18,8 +18,8 @@ export default defineConfig({
 	// require("process") without Node's CommonJS loader.
 	external: [
 		"@openagentpack/sdk",
-		"@openagentpack/project-versions",
-		"@openagentpack/project-workspace",
+		"@openagentpack/sdk/project-versions",
+		"@openagentpack/sdk/project-workspace",
 		"hono",
 		"@hono/node-server",
 		"@hono/zod-openapi",

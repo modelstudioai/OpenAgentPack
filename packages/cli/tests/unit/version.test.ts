@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createDirectoryWorkspaceVersionService } from "@openagentpack/project-workspace";
+import { createDirectoryWorkspaceVersionService } from "@openagentpack/sdk/project-workspace";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const directories: string[] = [];

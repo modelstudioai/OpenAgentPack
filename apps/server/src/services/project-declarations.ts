@@ -2,18 +2,18 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 import {
-	acquireDirectoryProjectMutation,
-	type DirectoryResourceType,
-	FILE_AUTO_ASSOCIATION_IGNORE_FILE,
-	inspectDirectoryProject,
-	locateDirectoryProjectResource,
-} from "@openagentpack/project-workspace";
-import {
 	type Diagnostic,
 	type ResolvedProjectConfig,
 	resolveProjectConfigFromObject,
 	validateProjectConfig,
 } from "@openagentpack/sdk";
+import {
+	acquireDirectoryProjectMutation,
+	type DirectoryResourceType,
+	FILE_AUTO_ASSOCIATION_IGNORE_FILE,
+	inspectDirectoryProject,
+	locateDirectoryProjectResource,
+} from "@openagentpack/sdk/project-workspace";
 import { parse, stringify } from "yaml";
 import { type ProjectRuntimeManager, projectRuntimeManager } from "@/services/project-manager";
 import { projectMutationCoordinator } from "@/services/project-mutations";

@@ -1,5 +1,11 @@
 # @openagentpack/sdk
 
+## 0.7.0
+
+### Minor Changes
+
+- Include local versions and directory project services in the SDK through the Node-only `./project-versions` and `./project-workspace` exports. Preserve existing snapshots, resource layouts, and shared runtime behavior while removing the two standalone package publication requirements.
+
 ## 0.6.0
 
 ### Minor Changes

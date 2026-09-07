@@ -1,6 +1,6 @@
 {
 	"name": "@openagentpack/sdk",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"description": "OpenAgentPack SDK (Node-compatible runtime)",
 	"license": "Apache-2.0",
 	"keywords": [
@@ -32,6 +32,18 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
+		},
+		"./project-versions": {
+			"bun": "./dist/project-versions.js",
+			"types": "./dist/project-versions.d.ts",
+			"import": "./dist/project-versions.js",
+			"default": "./dist/project-versions.js"
+		},
+		"./project-workspace": {
+			"bun": "./dist/project-workspace.js",
+			"types": "./dist/project-workspace.d.ts",
+			"import": "./dist/project-workspace.js",
+			"default": "./dist/project-workspace.js"
 		},
 		"./session-events": {
 			"bun": "./dist/session-events.js",

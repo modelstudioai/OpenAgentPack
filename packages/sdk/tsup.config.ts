@@ -3,6 +3,8 @@ import { defineConfig } from "tsup";
 export default defineConfig({
 	entry: {
 		index: "src/index.ts",
+		"project-versions": "src/project-versions.ts",
+		"project-workspace": "src/project-workspace.ts",
 		"session-events": "src/session-events.ts",
 		"scan-lifecycle": "src/scan-lifecycle.ts",
 		"file-lifecycle": "src/file-lifecycle.ts",

@@ -6,7 +6,7 @@ import {
 	commitProjectBuild,
 	getProjectBuildStatus,
 	initializeDirectoryProject,
-} from "@openagentpack/project-workspace";
+} from "@openagentpack/sdk/project-workspace";
 import { listProjectDeclarations } from "../src/services/project-declarations";
 import { ProjectRuntimeManager } from "../src/services/project-manager";
 

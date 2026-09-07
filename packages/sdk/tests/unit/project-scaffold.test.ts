@@ -2,8 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
-import { resolveProjectConfigFromObject } from "@openagentpack/sdk";
 import { parse } from "yaml";
+import { resolveProjectConfigFromObject } from "../../src/index.ts";
+import { directoryProjectScaffold } from "../../src/internal/project-workspace/scaffold.ts";
 import {
 	commitProjectBuild,
 	initializeDirectoryProject,
@@ -11,8 +12,7 @@ import {
 	locateDirectoryProjectResource,
 	planProjectPublish,
 	previewProjectBuild,
-} from "../src/index.ts";
-import { directoryProjectScaffold } from "../src/scaffold.ts";
+} from "../../src/project-workspace.ts";
 
 const roots: string[] = [];
 afterEach(async () => {

@@ -24,8 +24,8 @@ describe("published Playground dependency boundary", () => {
 		}
 		for (const name of [
 			"@openagentpack/sdk",
-			"@openagentpack/project-versions",
-			"@openagentpack/project-workspace",
+			"@openagentpack/sdk/project-versions",
+			"@openagentpack/sdk/project-workspace",
 			"yaml",
 		]) {
 			expect(playgroundConfig.external).toContain(name);

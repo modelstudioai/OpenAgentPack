@@ -64,7 +64,7 @@ jobs:
           - node: 24
             scope: all
           # Library smoke on the SDK engines floor (>=18.17.0): build and install
-          # sdk, project-versions, and project-workspace; cli/playground require Node >=22.
+          # SDK and its project subpaths; cli/playground require Node >=22.
           - node: 18.17.0
             scope: sdk
           - node: 20
@@ -86,8 +86,6 @@ jobs:
       - if: matrix.scope == 'sdk'
         run: |
           bun run build:sdk
-          bun run build:project-versions
-          bun run build:project-workspace
           bun scripts/release/smoke-packed.ts --sdk-only
 
   gate:

@@ -1,4 +1,5 @@
 import * as prompts from "@clack/prompts";
+import { UserError } from "@openagentpack/sdk";
 import {
 	commitProjectBuild,
 	createDirectoryWorkspaceVersionService,
@@ -7,8 +8,7 @@ import {
 	planProjectPublish,
 	previewProjectBuild,
 	validateDirectoryProject,
-} from "@openagentpack/project-workspace";
-import { UserError } from "@openagentpack/sdk";
+} from "@openagentpack/sdk/project-workspace";
 import chalk from "chalk";
 import { ensureCredentials } from "../credentials.ts";
 import { log } from "../logger.ts";

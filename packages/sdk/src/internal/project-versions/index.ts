@@ -2,7 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, chmod, mkdir, open, readFile, realpath, rename, rmdir, stat, unlink } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
-import { type Diagnostic, inspectProjectSource, UserError as SdkUserError } from "@openagentpack/sdk";
+import { inspectProjectSource } from "../core/project-source-security.ts";
+import { UserError as SdkUserError } from "../errors.ts";
+import type { Diagnostic } from "../types/dto.ts";
 
 export * from "./directory.ts";
 

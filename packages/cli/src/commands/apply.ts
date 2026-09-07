@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
-import { assertLegacyYamlNotShadowed } from "@openagentpack/project-workspace";
 import { decideDestructive, executePlannedProject, type PlannedAction, UserError } from "@openagentpack/sdk";
+import { assertLegacyYamlNotShadowed } from "@openagentpack/sdk/project-workspace";
 import chalk from "chalk";
 import { assertProviderConfigured, buildCliRuntime } from "../config-loader.ts";
 import { log } from "../logger.ts";

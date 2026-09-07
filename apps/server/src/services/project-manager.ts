@@ -2,14 +2,6 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import {
-	getProjectBuildStatus,
-	inspectDirectoryProject,
-	PROJECT_BUILD_FILE,
-	PROJECT_METADATA_FILE,
-	PROJECT_STATE_FILE,
-	resolveDirectoryProjectRuntime,
-} from "@openagentpack/project-workspace";
-import {
 	type AgentWithReadiness,
 	type BackendRuntimeInput,
 	type Diagnostic,
@@ -18,6 +10,14 @@ import {
 	type ResolvedProjectConfig,
 	readProjectRuntime,
 } from "@openagentpack/sdk";
+import {
+	getProjectBuildStatus,
+	inspectDirectoryProject,
+	PROJECT_BUILD_FILE,
+	PROJECT_METADATA_FILE,
+	PROJECT_STATE_FILE,
+	resolveDirectoryProjectRuntime,
+} from "@openagentpack/sdk/project-workspace";
 import { type FSWatcher, watch } from "chokidar";
 import { type ProjectMutationSnapshot, projectMutationCoordinator } from "@/services/project-mutations";
 

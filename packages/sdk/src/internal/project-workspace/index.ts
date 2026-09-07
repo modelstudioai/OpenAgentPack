@@ -14,30 +14,27 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { parse, stringify } from "yaml";
+import { writeProjectRuntime } from "../core/project-runtime.ts";
+import { inspectProjectSource } from "../core/project-source-security.ts";
+import {
+	executePlannedProject,
+	planProjectContext,
+	planProjectWithStateBackend,
+	type ResourcePlanResult,
+	type ResourceSyncRun,
+} from "../core/resource-runtime.ts";
+import { validateProjectConfig } from "../core/validate-config.ts";
+import { UserError } from "../errors.ts";
+import { type LoadedProjectConfig, resolveProjectConfig, resolveProjectConfigFromObject } from "../parser/index.ts";
 import {
 	createDirectoryProjectVersionService,
 	type DirectoryProjectSnapshot,
 	type DirectoryProjectVersionService,
-} from "@openagentpack/project-versions";
-import {
-	LocalFileStateBackend,
-	type Diagnostic,
-	type LoadedProjectConfig,
-	type PlannedAction,
-	type ResourcePlanResult,
-	type ResourceSyncRun,
-	type RuntimeFeedbackSink,
-	executePlannedProject,
-	inspectProjectSource,
-	planProjectContext,
-	planProjectWithStateBackend,
-	resolveProjectConfigFromObject,
-	resolveProjectConfig,
-	UserError,
-	validateProjectConfig,
-	writeProjectRuntime,
-} from "@openagentpack/sdk";
-import { parse, stringify } from "yaml";
+} from "../project-versions/index.ts";
+import { LocalFileStateBackend } from "../state/local-file-state-backend.ts";
+import type { Diagnostic, PlannedAction } from "../types/dto.ts";
+import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import { directoryProjectScaffold, RESOURCE_EXAMPLES_DIRECTORY } from "./scaffold.ts";
 import {
 	applyVaultSecretMigration,

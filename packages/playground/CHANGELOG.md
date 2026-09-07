@@ -1,5 +1,12 @@
 # @openagentpack/playground
 
+## 0.7.0
+
+### Minor Changes
+
+- Use the SDK's project and version services for Workbench, keeping one shared SDK runtime in the published server bundle.
+- Updated dependencies: `@openagentpack/sdk@0.7.0`.
+
 ## 0.6.0
 
 ### Minor Changes

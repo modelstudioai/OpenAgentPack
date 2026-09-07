@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, lstat, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import * as nodeUtil from "node:util";
-import { UserError } from "@openagentpack/sdk";
+import { UserError } from "../errors.ts";
 import type { ProjectSourceFile } from "./index.ts";
 import { RESOURCE_EXAMPLES_DIRECTORY } from "./scaffold.ts";
 

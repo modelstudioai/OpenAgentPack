@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import type { Diagnostic } from "@openagentpack/sdk";
-import { inspectProjectSource, UserError } from "@openagentpack/sdk";
+import { inspectProjectSource } from "../core/project-source-security.ts";
+import { UserError } from "../errors.ts";
+import type { Diagnostic } from "../types/dto.ts";
 
 const DIRECTORY_STORE_SCHEMA = 1;
 const VERSION_ID = /^[a-f0-9]{64}$/;
