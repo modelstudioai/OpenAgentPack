@@ -6,7 +6,7 @@ import {
 	acquireDirectoryProjectMutation,
 	FILE_AUTO_ASSOCIATION_IGNORE_FILE,
 	previewProjectBuild,
-} from "@openagentpack/project-workspace";
+} from "@openagentpack/sdk/project-workspace";
 import {
 	commitDeclarationChange,
 	listProjectDeclarations,

@@ -179,10 +179,10 @@ The [`examples/`](./examples) directory has runnable configs for every provider,
 
 ## Using the SDK
 
-Cloud runtime capabilities are available from `@openagentpack/sdk`. Directory compilation, Build/Publish, and full-tree versions are exposed by `@openagentpack/project-workspace`, backed by the storage primitives in `@openagentpack/project-versions`:
+Cloud runtime capabilities are available from `@openagentpack/sdk`. The same npm package includes Node-only subpaths: `@openagentpack/sdk/project-workspace` provides directory compilation, Build/Publish, and full-tree versions, backed by the storage primitives in `@openagentpack/sdk/project-versions`:
 
 ```ts
-import { previewProjectBuild, commitProjectBuild } from "@openagentpack/project-workspace";
+import { previewProjectBuild, commitProjectBuild } from "@openagentpack/sdk/project-workspace";
 
 const preview = await previewProjectBuild("./my-agent");
 const build = await commitProjectBuild({

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { resolveProjectConfig } from "@openagentpack/sdk";
+import { resolveProjectConfig } from "../../src/index.ts";
+import {
+	applyVaultSecretMigration,
+	planVaultSecretMigration,
+	readProjectEnvironment,
+} from "../../src/internal/project-workspace/vault-secrets.ts";
 import {
 	commitProjectBuild,
 	createDirectoryWorkspaceVersionService,
@@ -12,8 +17,7 @@ import {
 	planProjectPublish,
 	previewProjectBuild,
 	resolveDirectoryProjectRuntime,
-} from "../src/index.ts";
-import { applyVaultSecretMigration, planVaultSecretMigration, readProjectEnvironment } from "../src/vault-secrets.ts";
+} from "../../src/project-workspace.ts";
 
 const directories: string[] = [];
 afterEach(async () => {

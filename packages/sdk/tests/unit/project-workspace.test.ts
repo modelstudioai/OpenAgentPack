@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { resolveProjectConfigFromObject } from "@openagentpack/sdk";
+import { resolveProjectConfigFromObject } from "../../src/index.ts";
 import {
 	acquireDirectoryProjectMutation,
 	commitProjectBuild,
@@ -12,7 +12,7 @@ import {
 	initializeDirectoryProject,
 	planProjectPublish,
 	previewProjectBuild,
-} from "../src/index.ts";
+} from "../../src/project-workspace.ts";
 
 const temporaryDirectories: string[] = [];
 

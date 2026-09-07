@@ -3,6 +3,13 @@
 `@openagentpack/sdk` is the reusable OpenAgentPack runtime. Its primary package
 entry is `.`, and it also exposes three deliberately narrow, browser-safe
 contracts: `./session-events`, `./scan-lifecycle`, and `./file-lifecycle`.
+The same npm package also provides Node-only domain-service subpaths:
+`./project-versions` for local snapshots and `./project-workspace` for directory
+projects, Build/Publish, and version restoration. These share core SDK services
+but are not re-exported by the default entry. Their implementations remain under
+`src/internal/project-versions/` and `src/internal/project-workspace/`; hosts may
+only import the documented public subpaths. Core SDK modules must not depend on
+these project services, and version storage must not depend on the workspace adapter.
 Everything re-exported from those entries is public SDK surface; the engine
 itself lives under `src/internal/` and is intentionally unreachable from
 outside the package. Parser, state, provider, planner, and executor internals

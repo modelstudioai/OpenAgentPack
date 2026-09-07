@@ -24,7 +24,7 @@ describe("--sdk-only mode", () => {
 	});
 
 	test("restricts the package set to Node 18-compatible libraries when enabled", () => {
-		expect(smokePackages(true)).toEqual(["sdk", "project-versions", "project-workspace"]);
+		expect(smokePackages(true)).toEqual(["sdk"]);
 	});
 
 	test("CI builds every library in dependency order before the SDK-only smoke", () => {
@@ -42,6 +42,6 @@ describe("--sdk-only mode", () => {
 	});
 
 	test("keeps the full package set when disabled", () => {
-		expect(smokePackages(false)).toEqual(["sdk", "project-versions", "project-workspace", "playground", "cli"]);
+		expect(smokePackages(false)).toEqual(["sdk", "playground", "cli"]);
 	});
 });

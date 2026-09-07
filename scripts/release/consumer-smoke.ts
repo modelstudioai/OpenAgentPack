@@ -9,8 +9,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { projectSdkSmokeSource } from "./project-sdk-smoke.ts";
 
-export const REGISTRY_PACKAGES = ["sdk", "project-versions", "project-workspace", "playground", "cli"] as const;
+export const REGISTRY_PACKAGES = ["sdk", "playground", "cli"] as const;
 const REGISTRY = "https://registry.npmjs.org";
 const root = resolve(import.meta.dirname, "../..");
 
@@ -165,7 +166,7 @@ function smokeProjectVersions(directory: string): void {
 			"node",
 			"--input-type=module",
 			"--eval",
-			'import { createProjectVersionService } from "@openagentpack/project-versions"; if (typeof createProjectVersionService !== "function") throw new Error("project-versions export missing");',
+			'import { createProjectVersionService } from "@openagentpack/sdk/project-versions"; if (typeof createProjectVersionService !== "function") throw new Error("project-versions export missing");',
 		],
 		directory,
 	);
@@ -177,7 +178,7 @@ function smokeProjectWorkspace(directory: string): void {
 			"node",
 			"--input-type=module",
 			"--eval",
-			'import { previewProjectBuild } from "@openagentpack/project-workspace"; if (typeof previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
+			'import { previewProjectBuild } from "@openagentpack/sdk/project-workspace"; if (typeof previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
 		],
 		directory,
 	);
@@ -267,17 +268,9 @@ export async function smokePublishedPackages(requested: string): Promise<void> {
 		assertInstalledPackage(sdkDirectory, "@openagentpack/sdk", version);
 		smokeSdk(sdkDirectory);
 
-		const projectVersionsDirectory = join(temporaryRoot, "project-versions-consumer");
-		writeConsumerManifest(projectVersionsDirectory, "openagentpack-project-versions-consumer");
-		installPackage(projectVersionsDirectory, "@openagentpack/project-versions", version);
-		assertInstalledPackage(projectVersionsDirectory, "@openagentpack/project-versions", version);
-		smokeProjectVersions(projectVersionsDirectory);
-
-		const projectWorkspaceDirectory = join(temporaryRoot, "project-workspace-consumer");
-		writeConsumerManifest(projectWorkspaceDirectory, "openagentpack-project-workspace-consumer");
-		installPackage(projectWorkspaceDirectory, "@openagentpack/project-workspace", version);
-		assertInstalledPackage(projectWorkspaceDirectory, "@openagentpack/project-workspace", version);
-		smokeProjectWorkspace(projectWorkspaceDirectory);
+		smokeProjectVersions(sdkDirectory);
+		smokeProjectWorkspace(sdkDirectory);
+		run(["node", "--input-type=module", "--eval", projectSdkSmokeSource], sdkDirectory);
 
 		const cliDirectory = join(temporaryRoot, "cli-consumer");
 		writeConsumerManifest(cliDirectory, "openagentpack-cli-consumer");

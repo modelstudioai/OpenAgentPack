@@ -1,6 +1,6 @@
 # npm releases
 
-OpenAgentPack publishes `@openagentpack/sdk`, `@openagentpack/project-versions`, `@openagentpack/playground`, and `@openagentpack/cli` as one fixed version group. Real publishing happens only in GitHub Actions; local commands can build and dry-run the tarballs but cannot publish them.
+OpenAgentPack publishes `@openagentpack/sdk`, `@openagentpack/playground`, and `@openagentpack/cli` as one fixed version group. Local versions and directory projects ship inside the SDK as `@openagentpack/sdk/project-versions` and `@openagentpack/sdk/project-workspace` subpath exports; they are not separate npm packages. Real publishing happens only in GitHub Actions; local commands can build and dry-run the tarballs but cannot publish them.
 
 ## One-time repository setup
 

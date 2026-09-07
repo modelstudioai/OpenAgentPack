@@ -1,8 +1,8 @@
-# @openagentpack/project-workspace
+# @openagentpack/sdk/project-workspace
 
-Node.js services for OpenAgentPack directory projects. The package scans and
+Node.js services included in the `@openagentpack/sdk` npm package. This subpath scans and
 validates project source files, builds the generated `agents.yaml`, coordinates
-Publish, and adapts directory snapshots to `@openagentpack/project-versions`.
+Publish, and adapts directory snapshots to `@openagentpack/sdk/project-versions`.
 
 Build output, remote state, and local version blobs live below `.openagentpack/`
 and are not project source.

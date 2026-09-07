@@ -1,6 +1,6 @@
 # SDK reference
 
-`@openagentpack/sdk` is the Node-compatible TypeScript project/runtime SDK that powers the `agents` CLI. Node-only local project versioning is published separately as `@openagentpack/project-versions`, which depends on the SDK for project validation and redaction. This page summarizes the public surface re-exported from `packages/sdk/src/index.ts`; the contract is detailed in [`packages/sdk/docs/public-api-layers.md`](../../packages/sdk/docs/public-api-layers.md).
+`@openagentpack/sdk` is the Node-compatible TypeScript project/runtime SDK that powers the `agents` CLI. The same package exports Node-only local snapshots from `@openagentpack/sdk/project-versions` and directory Build/Publish services from `@openagentpack/sdk/project-workspace`. These subpaths share the SDK's validation, transport, and error types without adding project services to the default entry. See [directory projects](../../packages/sdk/docs/project-workspace.md), [local versions](../../packages/sdk/docs/project-versions.md), and the [public API contract](../../packages/sdk/docs/public-api-layers.md).
 
 ## Install
 

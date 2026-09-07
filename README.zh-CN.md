@@ -175,11 +175,11 @@ Beta 用户可以安装 `@openagentpack/cli@beta`；固定版本及切回稳定�
 
 ## 使用 SDK
 
-云端项目运行能力可通过 `@openagentpack/sdk` 以编程方式调用；仅限 Node.js 的本地项目版本能力由独立包 `@openagentpack/project-versions` 提供：
+云端项目运行能力可通过 `@openagentpack/sdk` 以编程方式调用；本地版本和目录项目能力随同一个 SDK 包发布，分别通过仅限 Node.js 的 `@openagentpack/sdk/project-versions`、`@openagentpack/sdk/project-workspace` 子路径调用：
 
 ```ts
 import { resolveProjectConfig, planProjectContext } from "@openagentpack/sdk";
-import { createProjectVersionService } from "@openagentpack/project-versions";
+import { createProjectVersionService } from "@openagentpack/sdk/project-versions";
 
 const config = await resolveProjectConfig({ configPath: "agents.yaml" });
 const plan = await planProjectContext(config);

@@ -4,8 +4,8 @@ import type {
 	DirectoryProjectVersionStatus,
 	DirectoryVersionFileChange,
 	PreparedDirectoryProjectVersion,
-} from "@openagentpack/project-versions";
-import { createDirectoryWorkspaceVersionService, inspectDirectoryProject } from "@openagentpack/project-workspace";
+} from "@openagentpack/sdk/project-versions";
+import { createDirectoryWorkspaceVersionService, inspectDirectoryProject } from "@openagentpack/sdk/project-workspace";
 import { type ProjectRuntimeManager, projectRuntimeManager } from "@/services/project-manager";
 import { projectMutationCoordinator } from "@/services/project-mutations";
 

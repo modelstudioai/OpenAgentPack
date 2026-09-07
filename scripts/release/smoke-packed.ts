@@ -2,15 +2,15 @@
  * Pack the exact publish manifests, install them as an external npm consumer,
  * then exercise every public SDK entry point plus the CLI and Playground bins.
  *
- * `--sdk-only` restricts the run to the Node 18-compatible library packages:
- * SDK, project-versions, and project-workspace. This is the mode CI uses below
- * the CLI/Playground Node floor to enforce the libraries' >=18.17.0 contract.
+ * `--sdk-only` installs just the SDK, including its Node-only project subpaths.
+ * CI uses this below the CLI/Playground Node floor to enforce Node >=18.17.0.
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { projectSdkSmokeSource } from "./project-sdk-smoke.ts";
 import {
 	PACKAGES,
 	restoreLicense,
@@ -27,9 +27,7 @@ export function isSdkOnly(argv: readonly string[]): boolean {
 }
 
 export function smokePackages(sdkOnly: boolean): readonly (typeof PACKAGES)[number][] {
-	return sdkOnly
-		? PACKAGES.filter((pkg) => pkg === "sdk" || pkg === "project-versions" || pkg === "project-workspace")
-		: PACKAGES;
+	return sdkOnly ? PACKAGES.filter((pkg) => pkg === "sdk") : PACKAGES;
 }
 
 type PackedPackage = { filename: string };
@@ -154,10 +152,12 @@ async function main(): Promise<void> {
 				"node",
 				"--input-type=module",
 				"--eval",
-				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const versions = await import("@openagentpack/project-versions"); const workspace = await import("@openagentpack/project-workspace"); if (typeof versions.createProjectVersionService !== "function") throw new Error("project-versions export missing"); if (typeof workspace.previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
+				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const versions = await import("@openagentpack/sdk/project-versions"); const workspace = await import("@openagentpack/sdk/project-workspace"); if (typeof versions.createProjectVersionService !== "function") throw new Error("project-versions export missing"); if (typeof workspace.previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
 			],
 			consumer,
 		);
+
+		run(["node", "--input-type=module", "--eval", projectSdkSmokeSource], consumer);
 
 		if (!sdkOnly) {
 			const expectedVersion = JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")) as {

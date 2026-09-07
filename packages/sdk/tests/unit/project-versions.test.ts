@@ -13,7 +13,7 @@ import {
 	previewProjectVersion,
 	releasePreparedProjectVersion,
 	restoreProjectVersion,
-} from "../src/index";
+} from "../../src/project-versions.ts";
 
 const directories: string[] = [];
 const execFileAsync = promisify(execFile);

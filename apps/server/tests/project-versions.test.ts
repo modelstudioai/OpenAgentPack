@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initializeDirectoryProject } from "@openagentpack/project-workspace";
+import { initializeDirectoryProject } from "@openagentpack/sdk/project-workspace";
 import { ProjectRuntimeManager } from "../src/services/project-manager";
 import {
 	commitProjectVersionAfterApply,

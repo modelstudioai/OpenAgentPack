@@ -1,11 +1,11 @@
 import * as p from "@clack/prompts";
-import { assertLegacyYamlNotShadowed } from "@openagentpack/project-workspace";
 import {
 	type DestroyDefaultMemoryStoreResult,
 	type DestroyResourceResult,
 	destroyPlannedProjectResources,
 	planDestroyProjectContext,
 } from "@openagentpack/sdk";
+import { assertLegacyYamlNotShadowed } from "@openagentpack/sdk/project-workspace";
 import chalk from "chalk";
 import { buildCliRuntime } from "../config-loader.ts";
 import { log } from "../logger.ts";

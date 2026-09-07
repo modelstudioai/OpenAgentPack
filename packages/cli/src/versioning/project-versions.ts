@@ -6,7 +6,7 @@ export type {
 	ProjectVersionService,
 	ProjectVersionStatus,
 	ProjectVersionsPage,
-} from "@openagentpack/project-versions";
+} from "@openagentpack/sdk/project-versions";
 export {
 	commitPreparedProjectVersion,
 	createProjectVersionService,
@@ -19,4 +19,4 @@ export {
 	readProjectVersionSource,
 	releasePreparedProjectVersion,
 	restoreProjectVersion,
-} from "@openagentpack/project-versions";
+} from "@openagentpack/sdk/project-versions";

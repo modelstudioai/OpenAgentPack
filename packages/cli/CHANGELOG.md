@@ -1,5 +1,12 @@
 # @openagentpack/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- Use SDK subpath exports for project and version commands instead of the standalone project packages.
+- Updated dependencies: `@openagentpack/sdk@0.7.0`.
+
 ## 0.6.0
 
 ### Minor Changes
