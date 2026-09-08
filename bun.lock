@@ -67,7 +67,7 @@
     },
     "packages/cli": {
       "name": "@openagentpack/cli",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "bin": {
         "agents": "dist/bin/agents.js",
       },
@@ -94,7 +94,7 @@
     },
     "packages/playground": {
       "name": "@openagentpack/playground",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "bin": {
         "agents-playground": "dist/bin/playground.js",
       },
@@ -117,7 +117,7 @@
     },
     "packages/sdk": {
       "name": "@openagentpack/sdk",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "dependencies": {
         "jszip": "^3.10.1",
         "yaml": "^2.9.0",

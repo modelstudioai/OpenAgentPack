@@ -38,7 +38,9 @@ agents init
 
 init 向导问两个问题 —— 选哪个/哪些 Provider、给第一个 agent 起什么名 —— 然后生成 `agents.yaml`。这是供 `validate → plan → apply` 与 `agents playground` 使用的紧凑 YAML 流程。
 
-如需本地多文件项目和 Workbench，请改用 `agents project init`。它会创建 `project.json`、`agents/assistant/agent.json`、`instructions.md`，并建立不依赖 Git 的全目录基线版本。四类资源目录的 `_examples/` 下会生成完整配置示例和中英文 README；示例不写入 Agent 引用、不进入 Build 或远端 Publish，需要使用时复制到 `_examples/` 外并配置 Agent 引用。目录项目固定使用百炼，因此 `project.json` 不再包含 Provider 配置。Environment、Vault、Memory Store、File 和 Skill 声明放在 Agent 目录（或根共享资源目录），不再写入 `project.json`。对于 Agent 本地内容，Build 会为包含 `SKILL.md` 的目录自动生成 Skill 元数据并写入 Agent 引用；复制到 Agent `files/` 目录的文件可以直接放置，也可以先放入以资源 ID 命名且只含一个内容文件的子目录，Build 都会自动生成 File 元数据和 `/mnt/<文件名>` 挂载。显式 JSON 始终优先。后续使用 `agents project validate`、`project build`、`project publish`、`project workbench` 与 `project version ...`。两套流程明确隔离：传统 YAML Apply 不产生目录版本；project Publish 只使用 `.openagentpack/build/agents.yaml`，且不会隐式执行 Build。
+如需本地多文件项目和 Workbench，请改用 `agents project init`。它会创建 `project.json`、`agents/assistant/agent.json`、`instructions.md`，并建立不依赖 Git 的全目录基线版本。四类资源目录的 `_examples/` 下会生成完整配置示例和中英文 README；示例不写入 Agent 引用、不进入 Build 或远端 Publish，需要使用时复制到所属 Agent 资源目录的 `_examples/` 外，再由 Build 自动关联。目录项目固定使用百炼，因此 `project.json` 不再包含 Provider 配置。Environment、Vault、Memory Store、File 和 Skill 声明放在 Agent 目录（或根共享资源目录），不再写入 `project.json`。Build 会关联所有已启用的 Agent 本地资源，包括已有元数据 JSON 的资源：列表引用只追加缺失项；未指定 Environment、Vault 时自动关联唯一候选，多个候选则要求显式选择。已有引用、Skill 版本和 File 挂载路径均保留；根目录共享资源仍需显式引用。Provider 能力校验不变，百炼目前仍不支持 Memory Store。Build 也会为只有 `SKILL.md` 的目录生成 Skill 元数据，为直接放入 `files/` 或资源 ID 子目录中唯一的内容文件生成 File 元数据，新增挂载默认使用 `/mnt/<源文件名>`。后续使用 `agents project validate`、`project build`、`project publish`、`project workbench` 与 `project version ...`。两套流程明确隔离：传统 YAML Apply 不产生目录版本；project Publish 只使用 `.openagentpack/build/agents.yaml`，且不会隐式执行 Build。
+
+目录 Init 默认在当前工作目录下创建 `managed-agent/` 子目录。后续项目操作请先执行 `cd managed-agent`，或传入 `--project ./managed-agent`。如需在当前目录初始化或转换已有的 `agents.yaml`，请显式执行 `agents project init --project .`。Build 无需确认即可写入本地文件；使用 `--dry-run` 可只读预览。Publish 变更远端资源前仍需确认。
 
 为 `bailian` provider、agent 名为 `assistant` 生成的文件如下：
 

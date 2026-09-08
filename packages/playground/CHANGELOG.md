@@ -1,5 +1,13 @@
 # @openagentpack/playground
 
+## 0.7.1
+
+### Patch Changes
+
+- Default Workbench to English while preserving saved language preferences. Share Build-inferred resource bindings with the project runtime and protect automatically associated Agent-local files from deletion.
+- Updated dependencies
+  - @openagentpack/sdk@0.7.1
+
 ## 0.7.0
 
 ### Minor Changes

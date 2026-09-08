@@ -1,5 +1,11 @@
 # @openagentpack/sdk
 
+## 0.7.1
+
+### Patch Changes
+
+- Automatically associate active Agent-local resources during Build while preserving explicit bindings, Skill versions, and File mount paths. Reject ambiguous Environment or Vault selections before writing, and report actionable project-root hints when commands run from a nested directory.
+
 ## 0.7.0
 
 ### Minor Changes

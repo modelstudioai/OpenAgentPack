@@ -145,7 +145,11 @@ const projectCmd = program.command("project").description("Manage a directory-ba
 projectCmd
 	.command("init")
 	.description("Create or convert a directory-based Agent project")
-	.option("--project <directory>", "Project directory", ".")
+	.option(
+		"--project <directory>",
+		"Project directory (use . to initialize or convert agents.yaml in place)",
+		"./managed-agent",
+	)
 	.option("--json", "Output as JSON")
 	.action(projectInitCommand);
 
@@ -161,7 +165,6 @@ projectCmd
 	.description("Organize project files and generate .openagentpack/build/agents.yaml")
 	.option("--project <directory>", "Project directory", ".")
 	.option("--dry-run", "Preview Build without changing files")
-	.option("-y, --yes", "Skip confirmation prompt")
 	.option("--json", "Output as JSON")
 	.action(projectBuildCommand);
 

@@ -38,11 +38,11 @@ Use this Skill when the user asks to summarize text.
   the directory is the upload source. Do not put secrets in these files.
   \`SKILL.md\` 是 Skill 指令，需要的脚本和素材也放在此目录；整个目录作为上传源，请勿放入密钥。
 - This example is ignored by Build/Publish. Copy it from \`skills/_examples/example-skill/\`
-  to \`skills/example-skill/\`, then add \`"skills": ["example-skill"]\` to \`agent.json\`.
-  此示例不参与构建/发布。复制到 \`skills/example-skill/\` 后，再在 Agent 中添加上述引用。
+  to \`skills/example-skill/\`, then Build adds \`"example-skill"\` to \`agent.json.skills\` automatically.
+  此示例不参与构建/发布。复制到 \`skills/example-skill/\` 后，Build 会自动补齐 Agent 引用。
 - To add another Skill, copy this directory, change the directory name and \`skill.json.id\`,
-  then add its ID to \`agent.json.skills\`. A new directory with only \`SKILL.md\` is also discovered by Build.
-  新增 Skill 时复制此目录、修改目录名和 ID，再在 Agent 中引用；只放 \`SKILL.md\` 的新目录也能由 Build 自动关联。
+  then run Build to add its ID to \`agent.json.skills\`. A new directory with only \`SKILL.md\` is also discovered by Build.
+  新增 Skill 时复制此目录、修改目录名和 ID，再运行 Build 自动关联；只放 \`SKILL.md\` 的新目录也能由 Build 自动关联。
 - Delete this ignored example directory if not needed. For an enabled Skill, also remove its Agent reference.
   不需要时可直接删除本示例目录；若已经启用，还需删除 Agent 引用。
 `,
@@ -67,8 +67,8 @@ at \`/mnt/example.md\` in agent.json.
 - \`source\` is relative to this resource directory. Keep \`id\` equal to the directory name.
   \`source\` 相对此资源目录解析，\`id\` 应与目录名一致。
 - Build/Publish ignore this example. Copy \`files/_examples/example-file/\` to \`files/example-file/\`
-  to enable its declaration; add \`"files": [{"file": "example-file", "mount_path": "/mnt/example.md"}]\` to \`agent.json\`.
-  此示例不参与构建/发布。复制到 \`files/example-file/\` 后启用声明，再添加上述挂载引用；挂载路径必须在 \`/mnt/\` 下。
+  to enable its declaration; Build adds \`{"file": "example-file", "mount_path": "/mnt/example.md"}\` to \`agent.json.files\`.
+  此示例不参与构建/发布。复制到 \`files/example-file/\` 后，Build 自动添加上述挂载引用；已有自定义挂载路径会保留，挂载路径必须在 \`/mnt/\` 下。
 - Uploading a File does not permanently attach it to the remote Agent. These declarations
   supply default mounts for new Sessions; existing Sessions are unchanged.
   上传 File 不等于永久绑定到远端 Agent；这里声明的是新 Session 的默认挂载，不修改已有 Session。
@@ -94,9 +94,10 @@ at \`/mnt/example.md\` in agent.json.
 
 Build/Publish ignore this directory; no example secret is required to open Workbench.
 Copy \`vaults/_examples/example-vault/\` to \`vaults/example-vault/\` to enable the declaration,
-then add \`"vault": "example-vault"\` to \`agent.json\` and supply the secret.
+then supply the secret and run Build. If \`agent.json.vault\` is unset, Build selects the sole local Vault automatically.
+With multiple local Vaults, set \`"vault": "example-vault"\` explicitly; Build never overwrites an existing selection.
 此示例不参与构建/发布，不需要配置密钥即可打开 Workbench。
-启用时，复制到 \`vaults/example-vault/\`，在 Agent 中添加上述引用，并配置密钥。
+启用时，复制到 \`vaults/example-vault/\`，配置密钥后运行 Build。未指定 Vault 时自动关联唯一候选；多个候选需显式选择，已有引用不覆盖。
 
 The example \`vault.json\` contains:
 示例 \`vault.json\` 的完整配置如下：
@@ -145,8 +146,9 @@ ${JSON.stringify(
 		[`${agentRoot}/environments/${RESOURCE_EXAMPLES_DIRECTORY}/example-env/README.md`]: `# Environment example / Environment 配置示例
 
 - This is an ignored managed cloud environment example. Copy \`environments/_examples/example-env/\`
-  to \`environments/example-env/\` to enable it, then add \`"environment": "example-env"\` to \`agent.json\`.
-  这是不参与构建/发布的托管云环境示例。复制到 \`environments/example-env/\` 后启用，再在 Agent 中添加上述引用。
+  to \`environments/example-env/\`, then run Build. An unset \`agent.json.environment\` is linked to the sole local Environment.
+  With multiple local Environments, set \`"environment": "example-env"\` explicitly; existing selections are preserved.
+  这是不参与构建/发布的托管云环境示例。复制到 \`environments/example-env/\` 后运行 Build；未指定环境时自动关联唯一候选，多个候选需显式选择，已有引用不覆盖。
   Keep \`id\` equal to the directory name. / ID 应与目录名一致。
 - Optional \`config\` fields include \`networking\`, \`packages\`, and \`setup_script\`.
   \`config\` 可按需增加网络策略、依赖包和初始化脚本，例如：
@@ -159,8 +161,8 @@ ${JSON.stringify({ type: "cloud", packages: { pip: ["requests"] }, setup_script:
   packages/scripts take effect on the remote platform, not on your computer during Init/Build.
   上面的片段只替换 \`config\`。Init/Build 不会在本机安装依赖或执行脚本；远端是否支持以 Provider 为准。
 - Init leaves \`agent.json\` unchanged and only creates ignored resource examples.
-  Moving a declaration outside \`_examples/\` enables it for Build/Publish, even without an Agent reference.
-  Init 不添加 Agent 资源引用。将声明移到 \`_examples/\` 外即会进入构建/发布范围，即使尚未配置 Agent 引用。
+  Moving a declaration outside \`_examples/\` enables it for Build/Publish; Build also fills in the owning Agent's missing reference.
+  Init 不添加 Agent 资源引用。将声明移到 \`_examples/\` 外后，Build 会补齐所属 Agent 的引用并纳入构建/发布。
 - Delete this ignored example directory if not needed. For an enabled Environment, also remove its Agent reference.
   不需要时可直接删除本示例目录；若已经启用，还需删除 Agent 的 Environment 引用。
 `,

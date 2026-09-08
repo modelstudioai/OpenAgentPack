@@ -28,7 +28,7 @@ function projectRoot(options: ProjectOptions): string {
 }
 
 export async function projectInitCommand(options: ProjectOptions): Promise<void> {
-	const result = await initializeDirectoryProject({ projectRoot: projectRoot(options) });
+	const result = await initializeDirectoryProject({ projectRoot: options.project ?? "./managed-agent" });
 	if (options.json) return writeJson(result);
 	log.success(
 		result.converted_from_yaml ? "Converted agents.yaml into a directory project." : "Created directory project.",
@@ -48,9 +48,7 @@ export async function projectValidateCommand(options: ProjectOptions): Promise<v
 	log.success(`Project is valid (${inspection.project_revision.slice(0, 12)}).`);
 }
 
-export async function projectBuildCommand(
-	options: ProjectOptions & { dryRun?: boolean; yes?: boolean },
-): Promise<void> {
+export async function projectBuildCommand(options: ProjectOptions & { dryRun?: boolean }): Promise<void> {
 	const preview = await previewProjectBuild(projectRoot(options));
 	if (options.json) {
 		if (options.dryRun) return writeJson(preview);
@@ -70,16 +68,6 @@ export async function projectBuildCommand(
 		}
 	}
 	if (options.dryRun) return;
-	if (!options.yes) {
-		const confirmed = await prompts.confirm({
-			message: "Write the Build, inferred resource associations, and Vault secret references (.env)?",
-			output: process.stderr,
-		});
-		if (prompts.isCancel(confirmed) || !confirmed) {
-			prompts.cancel("Build cancelled. Project files were not changed.", { output: process.stderr });
-			return;
-		}
-	}
 	const result = await commitProjectBuild({
 		projectRoot: preview.project_root,
 		baseRevision: preview.project_revision,

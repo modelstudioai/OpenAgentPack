@@ -14,9 +14,10 @@ The package installs the `agents` command.
 
 ```sh
 agents project init
+cd managed-agent
 agents project validate
 agents project build --dry-run
-agents project build --yes
+agents project build
 agents project publish --yes
 ```
 
@@ -25,6 +26,8 @@ Directory projects store Agents and Skills as JSON, Markdown, and local files. `
 The legacy `agents init|validate|plan|apply` YAML workflow and `agents playground -f agents.yaml` Session Preview remain available. YAML Apply is independent from directory versions.
 
 Use `agents <command> --help` for command-specific options.
+
+Init defaults to a new `managed-agent/` subdirectory under the current working directory. Use `agents project init --project .` to initialize in place or convert an existing `agents.yaml`. Other project commands continue to default to the current working directory.
 
 ## Documentation
 

@@ -1,5 +1,13 @@
 # @openagentpack/cli
 
+## 0.7.1
+
+### Patch Changes
+
+- Initialize directory projects in a managed-agent subdirectory by default. Allow local Build without confirmation while retaining Publish confirmation, and keep version-backed Build previews compatible with the updated command options.
+- Updated dependencies
+  - @openagentpack/sdk@0.7.1
+
 ## 0.7.0
 
 ### Minor Changes
