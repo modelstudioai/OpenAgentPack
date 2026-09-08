@@ -77,10 +77,11 @@ The mechanics are a single `agents.yaml`, a `validate → plan → apply` workfl
 ## Quick start
 
 ```bash
-agents project init             # create a directory project (or convert agents.yaml)
+agents project init             # create a managed-agent/ subdirectory
+cd managed-agent
 agents project validate         # validate JSON, Markdown, skills, and local files
 agents project build --dry-run  # preview organization and generated YAML
-agents project build -y         # freeze the current source into a Build
+agents project build            # freeze the current source into a Build (no confirmation)
 agents project publish -y       # publish exactly that Build and record a version
 agents project workbench        # edit and debug the same directory project
 ```
@@ -88,6 +89,8 @@ agents project workbench        # edit and debug the same directory project
 Directory projects keep global settings in `project.json`, each Agent under `agents/<id>/`, Agent instructions in `instructions.md`, and local Skill source either beside its Agent or under the shared `skills/` directory. Build promotes a Skill to the shared directory when multiple Agents reference it and deterministically writes `.openagentpack/build/agents.yaml`. Publish never runs Build implicitly.
 
 Fresh Init includes Skill, File, Vault, and Environment examples under each resource directory's `_examples/`, with bilingual configuration instructions. They are not linked in `agent.json`, do not enter generated YAML, and are not published remotely. Copy an example outside `_examples/` and configure its Agent reference to enable it.
+
+Init defaults to `./managed-agent`. Use `agents project init --project .` to initialize in place or convert an existing `agents.yaml`; other project commands still default to the current working directory.
 
 Workbench and CLI share `agents project version status|enable|disable|list|preview|restore`. Versions are Git-independent full source-tree snapshots: immutable manifests point to content-addressed text and binary blobs, while `.openagentpack/state.json` is always excluded. Restore writes a historical tree forward into the working directory without moving version history or remote State. Deployment and Channel declarations remain read-only in Workbench but participate in full project Publish.
 

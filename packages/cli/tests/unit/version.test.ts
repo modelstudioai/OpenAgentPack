@@ -68,7 +68,7 @@ describe("agents project version", () => {
 
 	test("project build renders directory source changes against the current version head", async () => {
 		const root = await initializedProject();
-		const initialBuild = await runAgents(["project", "build", "--project", root, "--yes"]);
+		const initialBuild = await runAgents(["project", "build", "--project", root]);
 		expect(initialBuild.exitCode).toBe(0);
 
 		await writeFile(join(root, "agents/assistant/instructions.md"), "Changed while offline.\n");

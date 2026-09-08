@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { parse } from "yaml";
 import { resolveProjectConfigFromObject } from "../../src/index.ts";
 import {
 	acquireDirectoryProjectMutation,
@@ -12,6 +13,8 @@ import {
 	initializeDirectoryProject,
 	planProjectPublish,
 	previewProjectBuild,
+	resolveDirectoryProjectRoot,
+	validateDirectoryProject,
 } from "../../src/project-workspace.ts";
 
 const temporaryDirectories: string[] = [];
@@ -27,6 +30,37 @@ async function temporaryProject(): Promise<string> {
 }
 
 describe("directory project build", () => {
+	test("rejects project subdirectories with an actionable root hint before scanning or writing", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		const nested = resolve(root, "agents/assistant/skills");
+		const before = await previewProjectBuild(root);
+		for (const inspect of [previewProjectBuild, validateDirectoryProject]) {
+			await expect(inspect(nested)).rejects.toThrow(`Project root: ${root}`);
+			await expect(inspect(nested)).rejects.toThrow(`cd '${root}'`);
+			await expect(inspect(nested)).rejects.toThrow(`--project '${root}'`);
+		}
+		await expect(stat(resolve(nested, ".openagentpack"))).rejects.toMatchObject({ code: "ENOENT" });
+		expect((await previewProjectBuild(root)).project_revision).toBe(before.project_revision);
+		if (process.platform !== "win32") {
+			await symlink("missing.md", resolve(nested, "CLAUDE.md"));
+			await expect(previewProjectBuild(nested)).rejects.toThrow("Not a project root:");
+		}
+	});
+
+	test("uses the nearest project marker and quotes root paths safely in hints", async () => {
+		const parent = await temporaryProject();
+		await writeFile(resolve(parent, "project.json"), "{}");
+		const root = resolve(parent, "owner's project");
+		const nested = resolve(root, "agents/assistant/skills");
+		await mkdir(nested, { recursive: true });
+		await writeFile(resolve(root, "project.json"), "invalid JSON");
+		await expect(resolveDirectoryProjectRoot(nested)).rejects.toThrow(`Project root: ${root}`);
+		await expect(resolveDirectoryProjectRoot(nested)).rejects.toThrow("owner'\\''s project'");
+		// An existing root retains its own validation errors; do not redirect to its parent.
+		expect(await resolveDirectoryProjectRoot(root)).toBe(root);
+	});
+
 	test("initializes a baseline and creates a revision-bound build", async () => {
 		const root = await temporaryProject();
 		const initialized = await initializeDirectoryProject({ projectRoot: root });
@@ -47,6 +81,201 @@ describe("directory project build", () => {
 
 		await writeFile(resolve(root, "agents/assistant/instructions.md"), "Changed while offline.\n");
 		expect((await getProjectBuildStatus(root)).stale).toBe(true);
+	});
+
+	test("links all declared Agent-local resources without writing during Preview and is idempotent", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		await writeAgentLocalResources(root);
+		const agentPath = resolve(root, "agents/assistant/agent.json");
+		await chmod(agentPath, 0o640);
+		const beforeAgent = await readFile(agentPath, "utf8");
+		const versionPath = resolve(root, ".openagentpack/versions/project/store.json");
+		const beforeVersions = await readFile(versionPath, "utf8");
+		const metadataPath = resolve(root, "agents/assistant/files/input/file.json");
+		const beforeMetadata = await readFile(metadataPath, "utf8");
+		const expected = {
+			environment: "dev",
+			vault: "secrets",
+			skills: ["writer"],
+			files: [{ file: "input", mount_path: "/mnt/input.txt" }],
+		};
+
+		const preview = await previewProjectBuild(root);
+		expect(preview.diagnostics).toEqual([]);
+		expect(preview.can_build).toBe(true);
+		expect(parse(preview.canonical_yaml).agents.assistant).toMatchObject(expected);
+		expect(preview.warnings.map((diagnostic) => diagnostic.code)).toEqual(
+			expect.arrayContaining(
+				["skill", "file", "environment", "vault"].map((type) => `project.${type}.agent_link.inferred`),
+			),
+		);
+		expect(await readFile(agentPath, "utf8")).toBe(beforeAgent);
+		await expect(stat(resolve(root, ".openagentpack/build/agents.yaml"))).rejects.toMatchObject({ code: "ENOENT" });
+
+		const built = await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		expect(JSON.parse(await readFile(agentPath, "utf8"))).toMatchObject(expected);
+		expect(
+			parse(await readFile(resolve(root, ".openagentpack/build/agents.yaml"), "utf8")).agents.assistant,
+		).toMatchObject(expected);
+		expect((await stat(agentPath)).mode & 0o777).toBe(0o640);
+		expect(await readFile(metadataPath, "utf8")).toBe(beforeMetadata);
+		expect(await readFile(versionPath, "utf8")).toBe(beforeVersions);
+		await expect(stat(resolve(root, ".openagentpack/state.json"))).rejects.toMatchObject({ code: "ENOENT" });
+
+		const next = await previewProjectBuild(root);
+		expect(next.warnings.some((diagnostic) => diagnostic.code.endsWith("agent_link.inferred"))).toBe(false);
+		const repeated = await commitProjectBuild({ projectRoot: root, baseRevision: next.project_revision });
+		expect(repeated.project_revision).toBe(built.project_revision);
+		expect(repeated.yaml_hash).toBe(built.yaml_hash);
+	});
+
+	test("preserves explicit single bindings and custom list entries while adding missing local references", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		await writeAgentLocalResources(root);
+		await writeResource(root, "agents/assistant/skills/helper/skill.json", { id: "helper" });
+		await writeFile(resolve(root, "agents/assistant/skills/helper/SKILL.md"), "# Helper\n");
+		await writeResource(root, "agents/assistant/files/extra/file.json", { id: "extra", source: "./extra.txt" });
+		await writeFile(resolve(root, "agents/assistant/files/extra/extra.txt"), "Extra\n");
+		await writeResource(root, "agents/assistant/environments/alternate/environment.json", {
+			id: "alternate",
+			config: { type: "cloud" },
+		});
+		await writeResource(root, "agents/assistant/vaults/alternate/vault.json", {
+			id: "alternate",
+			display_name: "Alternate",
+			credentials: [],
+		});
+		const agentPath = resolve(root, "agents/assistant/agent.json");
+		const explicit = {
+			...JSON.parse(await readFile(agentPath, "utf8")),
+			environment: "alternate",
+			vault: "alternate",
+			skills: [{ type: "custom", skill_id: "writer", version: "7" }],
+			files: [{ file: "input", mount_path: "/mnt/custom.txt" }],
+		};
+		await writeFile(agentPath, `${JSON.stringify(explicit, null, 2)}\n`);
+
+		const preview = await previewProjectBuild(root);
+		expect(preview.can_build).toBe(true);
+		await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		expect(JSON.parse(await readFile(agentPath, "utf8"))).toEqual({
+			...explicit,
+			skills: [...explicit.skills, "helper"],
+			files: [...explicit.files, { file: "extra", mount_path: "/mnt/extra.txt" }],
+		});
+	});
+
+	test("infers Memory Store list references without bypassing Bailian capability validation", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		for (const id of ["facts", "notes"]) {
+			await writeResource(root, `agents/assistant/memory-stores/${id}/memory-store.json`, { id, description: id });
+		}
+		await writeResource(root, "resources/memory-stores/shared/memory-store.json", {
+			id: "shared",
+			description: "Shared",
+		});
+		const agentPath = resolve(root, "agents/assistant/agent.json");
+		const agent = JSON.parse(await readFile(agentPath, "utf8"));
+		await writeFile(agentPath, `${JSON.stringify({ ...agent, memory_stores: ["notes"] })}\n`);
+		const before = await readFile(agentPath, "utf8");
+		const preview = await previewProjectBuild(root);
+		expect(parse(preview.canonical_yaml).agents.assistant.memory_stores).toEqual(["notes", "facts"]);
+		expect(preview.warnings.map((diagnostic) => diagnostic.code)).toContain("project.memory_store.agent_link.inferred");
+		expect(preview.can_build).toBe(false);
+		expect(preview.diagnostics.map((diagnostic) => diagnostic.code)).toContain("bailian.memory_store.unsupported");
+		await expect(commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision })).rejects.toThrow(
+			"Project contains errors",
+		);
+		expect(await readFile(agentPath, "utf8")).toBe(before);
+	});
+
+	for (const type of ["environment", "vault"] as const) {
+		test(`rejects ambiguous ${type} bindings before writing source or Build output`, async () => {
+			const root = await temporaryProject();
+			await initializeDirectoryProject({ projectRoot: root });
+			for (const id of ["first", "second"]) {
+				await writeResource(root, `agents/assistant/${type}s/${id}/${type}.json`, {
+					id,
+					...(type === "environment" ? { config: { type: "cloud" } } : { display_name: id, credentials: [] }),
+				});
+			}
+			await mkdir(resolve(root, "agents/assistant/skills/writer"), { recursive: true });
+			await writeFile(resolve(root, "agents/assistant/skills/writer/SKILL.md"), "# Writer\n");
+			const agentPath = resolve(root, "agents/assistant/agent.json");
+			const before = await readFile(agentPath, "utf8");
+			const preview = await previewProjectBuild(root);
+			expect(preview.can_build).toBe(false);
+			expect(preview.diagnostics[0]?.message).toContain(`multiple local ${type} resources (first, second)`);
+			expect(preview.diagnostics[0]?.message).toContain(`Set '${type}' explicitly`);
+			expect(preview.diagnostics[0]?.message).not.toMatch(/\p{Script=Han}/u);
+			await expect(commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision })).rejects.toThrow(
+				"Project contains errors",
+			);
+			expect(await readFile(agentPath, "utf8")).toBe(before);
+			await expect(stat(resolve(root, "agents/assistant/skills/writer/skill.json"))).rejects.toMatchObject({
+				code: "ENOENT",
+			});
+			await expect(stat(resolve(root, ".openagentpack/build/agents.yaml"))).rejects.toMatchObject({ code: "ENOENT" });
+		});
+	}
+
+	test("excludes examples and shared resources from automatic ownership and keeps other Agents isolated", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		const initial = parse((await previewProjectBuild(root)).canonical_yaml);
+		expect(initial.agents.assistant).not.toHaveProperty("environment");
+		expect(initial.agents.assistant).not.toHaveProperty("vault");
+		expect(initial.agents.assistant).not.toHaveProperty("skills");
+		expect(initial.agents.assistant).not.toHaveProperty("files");
+		await writeAgentLocalResources(root);
+		await writeResource(root, "agents/reviewer/agent.json", { model: "qwen-plus" });
+		await writeFile(resolve(root, "agents/reviewer/instructions.md"), "Review.\n");
+		await writeResource(root, "agents/reviewer/environments/review/environment.json", {
+			id: "review",
+			config: { type: "cloud" },
+		});
+		await writeResource(root, "resources/environments/shared/environment.json", {
+			id: "shared",
+			config: { type: "cloud" },
+		});
+		await writeResource(root, "resources/vaults/shared/vault.json", {
+			id: "shared",
+			display_name: "Shared",
+			credentials: [],
+		});
+		await writeResource(root, "resources/files/shared/file.json", { id: "shared", source: "./shared.txt" });
+		await writeFile(resolve(root, "resources/files/shared/shared.txt"), "Shared\n");
+		await writeResource(root, "skills/shared/skill.json", { id: "shared" });
+		await writeFile(resolve(root, "skills/shared/SKILL.md"), "# Shared\n");
+
+		const preview = await previewProjectBuild(root);
+		expect(preview.can_build).toBe(true);
+		expect(preview.organization_moves).toEqual([]);
+		await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		const assistant = JSON.parse(await readFile(resolve(root, "agents/assistant/agent.json"), "utf8"));
+		expect(JSON.stringify(assistant)).not.toContain("shared");
+		expect(JSON.stringify(assistant)).not.toContain("example");
+		expect(assistant.environment).toBe("dev");
+		expect(JSON.parse(await readFile(resolve(root, "agents/reviewer/agent.json"), "utf8"))).toEqual({
+			model: "qwen-plus",
+			environment: "review",
+		});
+	});
+
+	test("does not replace an invalid explicit environment reference with a local candidate", async () => {
+		const root = await temporaryProject();
+		await initializeDirectoryProject({ projectRoot: root });
+		await writeAgentLocalResources(root);
+		const agentPath = resolve(root, "agents/assistant/agent.json");
+		const agent = JSON.parse(await readFile(agentPath, "utf8"));
+		await writeFile(agentPath, `${JSON.stringify({ ...agent, environment: "missing" })}\n`);
+		const preview = await previewProjectBuild(root);
+		expect(preview.can_build).toBe(false);
+		expect(preview.diagnostics.some((diagnostic) => diagnostic.message.includes("missing"))).toBe(true);
+		expect(JSON.parse(await readFile(agentPath, "utf8")).environment).toBe("missing");
 	});
 
 	test("auto-associates Agent-local Skill and File content during Build", async () => {
@@ -626,6 +855,22 @@ async function writeResource(root: string, path: string, value: Record<string, u
 	const destination = resolve(root, path);
 	await mkdir(resolve(destination, ".."), { recursive: true });
 	await writeFile(destination, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function writeAgentLocalResources(root: string): Promise<void> {
+	await writeResource(root, "agents/assistant/skills/writer/skill.json", { id: "writer" });
+	await writeFile(resolve(root, "agents/assistant/skills/writer/SKILL.md"), "# Writer\n");
+	await writeResource(root, "agents/assistant/files/input/file.json", { id: "input", source: "./input.txt" });
+	await writeFile(resolve(root, "agents/assistant/files/input/input.txt"), "Input\n");
+	await writeResource(root, "agents/assistant/environments/dev/environment.json", {
+		id: "dev",
+		config: { type: "cloud" },
+	});
+	await writeResource(root, "agents/assistant/vaults/secrets/vault.json", {
+		id: "secrets",
+		display_name: "Secrets",
+		credentials: [],
+	});
 }
 
 async function resolvedPublishConfig(projectRoot: string, model: string) {

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { playgroundBrowserTargetFromSummary } from "../../src/commands/playground";
@@ -136,6 +136,60 @@ async function runAgents(args: string[], env: Record<string, string> = {}, cwd =
 
 	return { stdout, stderr, exitCode };
 }
+
+test("project init defaults to an isolated child directory and preserves parent files", async () => {
+	const directory = await realpath(await makeTempDir());
+	await writeFile(join(directory, "agents.yaml"), "invalid parent YAML");
+	if (process.platform !== "win32") await symlink("missing.md", join(directory, "CLAUDE.md"));
+	const result = await runAgents(["project", "init", "--json"], {}, directory);
+	expect(result.exitCode).toBe(0);
+	const initialized = JSON.parse(result.stdout);
+	expect(initialized.project_root).toBe(join(directory, "managed-agent"));
+	expect(initialized.baseline_version).toHaveLength(64);
+	expect(initialized.converted_from_yaml).toBe(false);
+	expect(await stat(join(directory, "project.json")).catch(() => null)).toBeNull();
+	expect(await readFile(join(directory, "agents.yaml"), "utf8")).toBe("invalid parent YAML");
+	const instructions = join(directory, "managed-agent/agents/assistant/instructions.md");
+	await writeFile(instructions, "user changes");
+	const repeated = await runAgents(["project", "init", "--json"], {}, directory);
+	expect(repeated.exitCode).not.toBe(0);
+	expect(await readFile(instructions, "utf8")).toBe("user changes");
+	const validated = await runAgents(["project", "validate", "--json"], {}, join(directory, "managed-agent"));
+	expect(validated.exitCode).toBe(0);
+	const root = join(directory, "managed-agent");
+	const nested = join(root, "agents/assistant/skills");
+	const misplaced = await runAgents(["project", "build", "--dry-run", "--json"], {}, nested);
+	expect(misplaced.exitCode).not.toBe(0);
+	expect(misplaced.stderr).toContain("Not a project root:");
+	expect(misplaced.stderr).not.toMatch(/\p{Script=Han}/u);
+	expect(misplaced.stderr).toContain(`cd '${root}'`);
+	expect(misplaced.stderr).toContain(`--project '${root}'`);
+	await expect(stat(join(nested, ".openagentpack"))).rejects.toMatchObject({ code: "ENOENT" });
+	const preview = await runAgents(["project", "build", "--dry-run", "--json"], {}, root);
+	expect(preview.exitCode).toBe(0);
+	await expect(stat(join(root, ".openagentpack/build"))).rejects.toMatchObject({ code: "ENOENT" });
+	const built = await runAgents(["project", "build", "--json"], {}, root);
+	expect(built.exitCode).toBe(0);
+	expect((await stat(join(root, ".openagentpack/build/agents.yaml"))).isFile()).toBe(true);
+});
+
+test("project build needs no confirmation while publish retains its confirmation option", async () => {
+	const build = await runAgents(["project", "build", "--help"]);
+	expect(build.stdout).not.toContain("--yes");
+	expect(build.stdout).toContain("--dry-run");
+	const publish = await runAgents(["project", "publish", "--help"]);
+	expect(publish.stdout).toContain("--yes");
+});
+
+test("project init respects explicit directories including dot", async () => {
+	for (const target of ["custom-agent", "."]) {
+		const directory = await realpath(await makeTempDir());
+		const result = await runAgents(["project", "init", "--project", target, "--json"], {}, directory);
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout).project_root).toBe(join(directory, target));
+		expect(await stat(join(directory, "managed-agent")).catch(() => null)).toBeNull();
+	}
+});
 
 test("root version output matches package version", async () => {
 	const manifest = (await Bun.file(join(REPO_ROOT, "package.json")).json()) as { version: string };

@@ -68,7 +68,7 @@ describe("directory project resource examples", () => {
 		await expect(stat(resolve(root, ".openagentpack/state.json"))).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
-	test("only activates examples after copying them out and declaring Agent references", async () => {
+	test("automatically links copied examples during Build without requiring manual Agent references", async () => {
 		const root = await fixture();
 		await initializeDirectoryProject({ projectRoot: root });
 		for (const [directory, resourceId] of [
@@ -85,13 +85,12 @@ describe("directory project resource examples", () => {
 		}
 		const agentPath = resolve(root, "agents/assistant/agent.json");
 		const agent = JSON.parse(await readFile(agentPath, "utf8"));
-		Object.assign(agent, {
+		const references = {
 			skills: ["example-skill"],
 			files: [{ file: "example-file", mount_path: "/mnt/example.md" }],
 			environment: "example-env",
 			vault: "example-vault",
-		});
-		await writeFile(agentPath, JSON.stringify(agent));
+		};
 		const preview = await previewProjectBuild(root);
 		expect(preview.can_build).toBe(true);
 		const loaded = (await inspectDirectoryProject(root)).loaded!;
@@ -101,6 +100,10 @@ describe("directory project resource examples", () => {
 		expect(Object.keys(loaded.config.vaults ?? {})).toEqual(["example-vault"]);
 		expect(preview.after_yaml).toContain("mount_path: /mnt/example.md");
 		expect(preview.after_yaml).not.toContain("_examples");
+		expect(loaded.config.agents.assistant).toMatchObject(references);
+		expect(JSON.parse(await readFile(agentPath, "utf8"))).toEqual(agent);
+		await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		expect(JSON.parse(await readFile(agentPath, "utf8"))).toEqual({ ...agent, ...references });
 	});
 
 	test("does not discover or migrate draft examples including reserved-root metadata", async () => {

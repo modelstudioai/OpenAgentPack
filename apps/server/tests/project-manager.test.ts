@@ -29,6 +29,29 @@ describe("ProjectRuntimeManager", () => {
 		const declarations = await listProjectDeclarations(manager);
 		expect(declarations.resources.map((resource) => `${resource.type}.${resource.id}`)).toEqual(["agent.assistant"]);
 	});
+	test("uses Build-inferred Environment and Vault bindings in the Workbench runtime", async () => {
+		const directory = await initializedProject("automatic-bindings");
+		for (const [resourcePath, declaration] of [
+			["environments/dev/environment.json", { id: "dev", config: { type: "cloud" } }],
+			["vaults/secrets/vault.json", { id: "secrets", display_name: "Secrets", credentials: [] }],
+		] as const) {
+			const path = join(directory, "agents/assistant", resourcePath);
+			await mkdir(join(path, ".."), { recursive: true });
+			await writeFile(path, JSON.stringify(declaration));
+		}
+		const manager = trackManager(new ProjectRuntimeManager(directory));
+		await manager.ensureStarted();
+		const snapshot = manager.getSnapshot();
+		expect(snapshot.status).toBe("valid");
+		expect(snapshot.config?.agents.assistant).toMatchObject({ environment: "dev", vault: "secrets" });
+		const agentPath = join(directory, "agents/assistant/agent.json");
+		expect(JSON.parse(await readFile(agentPath, "utf8"))).not.toHaveProperty("environment");
+		await commitProjectBuild({ projectRoot: directory, baseRevision: snapshot.revision! });
+		await manager.refreshAfterSourceMutation();
+		expect(JSON.parse(await readFile(agentPath, "utf8"))).toMatchObject({ environment: "dev", vault: "secrets" });
+		expect(manager.getSnapshot().config?.agents.assistant).toMatchObject({ environment: "dev", vault: "secrets" });
+	});
+
 	test("reloads generated Vault references using the project-local .env after Build", async () => {
 		const directory = await initializedProject("vault-build");
 		const vaultPath = join(directory, "agents/assistant/vaults/secrets/vault.json");

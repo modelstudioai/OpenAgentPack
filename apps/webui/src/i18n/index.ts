@@ -6,7 +6,7 @@ export const LANGUAGE_STORAGE_KEY = "openagentpack.workbench.language";
 
 function detectedLanguage(): SupportedLanguage {
 	if (typeof window === "undefined") return "en-US";
-	return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY) ?? window.navigator.language);
+	return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY) ?? "en-US");
 }
 
 void i18n.use(initReactI18next).init({

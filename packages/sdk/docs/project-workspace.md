@@ -23,8 +23,8 @@ agents/assistant/
 reserved `_examples/` child directory (both Agent-local and shared resources),
 so the examples never become generated YAML declarations or remote Publish
 actions, even when they contain normal `skill.json`, `file.json`, or `SKILL.md`.
-To enable one, copy its resource directory outside `_examples/` and configure
-its Agent reference using the included README. Vault placeholders are only
+To enable one, copy its resource directory outside `_examples/` in the owning
+Agent's resource directory, then run Build to add its Agent reference. Vault placeholders are only
 resolved after enabling. Examples remain local versioned source; never put
 real credentials in them. Init does not inject examples when converting an
 existing YAML project, overwrite an existing project, or run Build/Publish.
@@ -45,8 +45,25 @@ agents/<agent-id>/
 ```
 
 Resources used outside their owning Agent are promoted during Build to
-`resources/<resource-type>/<id>/`. Agent-local File and Skill content supports
-convention-based association during Build:
+`resources/<resource-type>/<id>/` (shared Skills use root `skills/<id>/`).
+Build associates all active Agent-local resource declarations with their owning Agent,
+including resources that already have metadata JSON:
+
+- Skills, Files, and Memory Stores append missing references to `agent.json.skills`,
+  `files`, and `memory_stores` without duplicates. Existing Skill versions and File
+  mount paths are retained; new File mounts default to `/mnt/<source basename>`.
+- Environment and Vault populate `agent.json.environment` and `vault` only when the
+  field is unset and there is exactly one local candidate. Multiple candidates
+  require an explicit selection; Build fails before writing rather than guessing.
+- Explicit selections are never replaced, including invalid references (which still
+  fail validation). Shared root resources are not automatically assigned to every
+  Agent; they require explicit references. `_examples/` is always ignored.
+- Preview/validate/dry-run calculate the same references without changing source.
+  Successful Build persists them to `agent.json`; repeated Build is idempotent.
+- Provider capability validation still applies. Bailian currently rejects Memory
+  Store declarations; inferring a reference does not enable unsupported resources.
+
+Build can also infer missing Skill/File metadata from content:
 
 - A file copied directly to `agents/<agent-id>/files/<name>` is moved to
   `files/<resource-id>/<name>`, receives a generated `file.json`, and is added

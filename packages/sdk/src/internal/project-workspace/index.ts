@@ -187,6 +187,23 @@ export async function resolveDirectoryProjectRoot(input = "."): Promise<string> 
 	const root = resolve(input);
 	const details = await stat(root).catch(() => null);
 	if (!details?.isDirectory()) throw new UserError(`Project directory does not exist: ${root}`);
+	if (!(await pathExists(resolve(root, PROJECT_METADATA_FILE)))) {
+		let ancestor = dirname(root);
+		while (ancestor !== root) {
+			if (await pathExists(resolve(ancestor, PROJECT_METADATA_FILE))) {
+				const quotedRoot = `'${ancestor.replaceAll("'", "'\\''")}'`;
+				throw new UserError(
+					`Not a project root: ${root} (${PROJECT_METADATA_FILE} is missing).\n` +
+						`Project root: ${ancestor}\n` +
+						`Run from the project root: cd ${quotedRoot}\n` +
+						`Or specify the project directory: --project ${quotedRoot}`,
+				);
+			}
+			const parent = dirname(ancestor);
+			if (parent === ancestor) break;
+			ancestor = parent;
+		}
+	}
 	return root;
 }
 
@@ -648,7 +665,7 @@ async function assembleProject(
 	for (const skill of skills) {
 		if (skillById.has(skill.id)) throw new UserError(`Duplicate local skill id: ${skill.id}`);
 		skillById.set(skill.id, skill);
-		if (skill.ownerAgent && skill.inferred) {
+		if (skill.ownerAgent) {
 			autoAssociateSkill(skill, projectRoot, agents, agentSources, autoAssociations);
 		}
 	}
@@ -696,9 +713,7 @@ async function assembleProject(
 		const key = `${resource.type}:${resource.id}`;
 		if (resourceKeys.has(key)) throw new UserError(`Duplicate ${resource.type} id: ${resource.id}`);
 		resourceKeys.add(key);
-		if (resource.type === "file" && resource.owner_agent && resource.inferred) {
-			autoAssociateFile(resource, projectRoot, agents, agentSources, autoAssociations);
-		}
+		autoAssociateDirectoryResource(resource, resources, projectRoot, agents, agentSources, autoAssociations);
 		if (
 			resource.owner_agent &&
 			isDirectoryResourceShared(resource.type, resource.id, resource.owner_agent, agents, project)
@@ -1031,6 +1046,54 @@ function autoAssociateSkill(
 		severity: "warning",
 		code: "project.skill.agent_link.inferred",
 		message: `Skill '${skill.id}' will be added to agents/${ownerAgent}/agent.json.`,
+	});
+}
+
+function autoAssociateDirectoryResource(
+	resource: LocalDirectoryResource,
+	resources: LocalDirectoryResource[],
+	projectRoot: string,
+	agents: Record<string, Record<string, unknown>>,
+	agentSources: Map<string, Record<string, unknown>>,
+	autoAssociations: ProjectAutoAssociationPlan,
+): void {
+	if (resource.type === "file") {
+		autoAssociateFile(resource, projectRoot, agents, agentSources, autoAssociations);
+		return;
+	}
+	const ownerAgent = resource.owner_agent;
+	if (!ownerAgent) return;
+	const agent = agents[ownerAgent];
+	const agentSource = agentSources.get(ownerAgent);
+	if (!agent || !agentSource) return;
+	const agentPath = `agents/${ownerAgent}/agent.json`;
+	if (resource.type === "memory_store") {
+		if (agent.memory_stores !== undefined && !Array.isArray(agent.memory_stores)) return;
+		const references = Array.isArray(agent.memory_stores) ? agent.memory_stores : [];
+		if (references.includes(resource.id)) return;
+		agent.memory_stores = [...references, resource.id];
+		agentSource.memory_stores = structuredClone(agent.memory_stores);
+	} else {
+		// Environment and Vault are single bindings. Never overwrite an explicit
+		// selection or silently choose the first of multiple local candidates.
+		if (agent[resource.type] !== undefined) return;
+		const candidates = resources.filter(
+			(candidate) => candidate.owner_agent === ownerAgent && candidate.type === resource.type,
+		);
+		if (candidates.length > 1) {
+			throw new UserError(
+				`${agentPath}: multiple local ${resource.type} resources (${candidates.map((candidate) => candidate.id).join(", ")}). ` +
+					`Set '${resource.type}' explicitly to choose one.`,
+			);
+		}
+		agent[resource.type] = resource.id;
+		agentSource[resource.type] = resource.id;
+	}
+	planJsonWrite(autoAssociations, projectRoot, resolve(projectRoot, agentPath), agentSource);
+	autoAssociations.warnings.push({
+		severity: "warning",
+		code: `project.${resource.type}.agent_link.inferred`,
+		message: `${resource.type} '${resource.id}' will be added to ${agentPath}.`,
 	});
 }
 

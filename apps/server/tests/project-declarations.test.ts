@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -217,18 +217,36 @@ describe("directory project declaration editing", () => {
 		expect(await readFile(statePath, "utf8")).toBe('{"remote":"latest"}\n');
 	});
 
-	test("removes a File declaration without deleting its local source", async () => {
+	test("protects an automatically associated Agent-local File even without an authored mount", async () => {
 		const { directory, manager } = await projectFixture({ fileMount: false });
+		const listed = await listProjectDeclarations(manager);
+		expect(resource(listed.resources, "file", "input").references.map((reference) => reference.path)).toEqual([
+			"agents.assistant.files",
+		]);
+		const preview = await previewDeclarationChange(
+			{ type: "file", id: "input", baseRevision: listed.revision, action: "delete" },
+			manager,
+		);
+		expect(preview.can_commit).toBe(false);
+		expect((await stat(join(directory, "agents/assistant/files/input/file.json"))).isFile()).toBe(true);
+	});
+
+	test("removes an unreferenced shared File declaration without deleting its local source", async () => {
+		const { directory, manager } = await projectFixture({ fileMount: false });
+		await mkdir(join(directory, "resources/files"), { recursive: true });
+		const fileDirectory = join(directory, "resources/files/input");
+		await rename(join(directory, "agents/assistant/files/input"), fileDirectory);
+		await manager.refreshAfterSourceMutation();
 		const listed = await listProjectDeclarations(manager);
 		await commitDeclarationChange(
 			{ type: "file", id: "input", baseRevision: listed.revision, action: "delete" },
 			manager,
 		);
 
-		expect(await stat(join(directory, "agents/assistant/files/input/file.json")).catch(() => null)).toBeNull();
-		expect(await readFile(join(directory, "agents/assistant/files/input/input.txt"), "utf8")).toBe("Keep local file\n");
+		expect(await stat(join(fileDirectory, "file.json")).catch(() => null)).toBeNull();
+		expect(await readFile(join(fileDirectory, "input.txt"), "utf8")).toBe("Keep local file\n");
 		expect(
-			await stat(join(directory, "agents/assistant/files/input", FILE_AUTO_ASSOCIATION_IGNORE_FILE)).then(
+			await stat(join(fileDirectory, FILE_AUTO_ASSOCIATION_IGNORE_FILE)).then(
 				() => true,
 				() => false,
 			),
