@@ -157,7 +157,15 @@ export async function importResource(
 	// comparable and report a one-time phantom "Remote drift detected" — most
 	// visibly for external-reference environments OpenCMA never configured.
 	const provider = ctx.providers.get(address.provider);
-	const remote = provider ? await readComparableIfSupported(provider, address.type, remoteId, address.name) : null;
+	const remote = provider
+		? await readComparableIfSupported(
+				provider,
+				address.type,
+				remoteId,
+				address.name,
+				getResourceDeclaration(address, ctx.config) ?? undefined,
+			)
+		: null;
 	const remoteHash = remote ? stableContentHash(remote.comparable) : undefined;
 
 	const resource: ResourceState = {

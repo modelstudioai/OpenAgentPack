@@ -17,6 +17,18 @@ export function injectMetadata(
 	return { ...injected, ...userMetadata };
 }
 
+export function injectManagedResourceMetadata(
+	userMetadata: Record<string, string> | undefined,
+	projectName: string,
+	resourceName: string,
+): Record<string, string> {
+	return {
+		...userMetadata,
+		"agents.project": projectName,
+		"agents.resource": resourceName,
+	};
+}
+
 /** Lowercase slug suitable for a yaml key. Falls back to `fallback` when empty. */
 export function slug(value: string | undefined, fallback: string): string {
 	const out = (value ?? "")

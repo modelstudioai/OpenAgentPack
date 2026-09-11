@@ -292,6 +292,7 @@ export class QoderAdapter implements ProviderAdapter {
 		type: ResourceType,
 		id: string | null,
 		name: string,
+		decl?: unknown,
 	): Promise<ComparableRemoteResource | null> {
 		if (type !== "agent" && type !== "environment" && type !== "template" && type !== "identity" && type !== "channel")
 			return null;
@@ -304,15 +305,23 @@ export class QoderAdapter implements ProviderAdapter {
 			const comparable = this.normalizeRemote(type, raw);
 			return { id: remote.id, type, comparable, snapshot: comparable };
 		}
-		const isTemplate = type === "template";
-		const endpoint = type === "agent" ? "/agents" : type === "environment" ? "/environments" : "/templates";
-		const raw = await locateRemote(
-			isTemplate ? this.forwardClient : this.client,
-			endpoint,
-			name,
-			id,
-			isTemplate ? (item) => item.status !== "archived" : notArchived,
-		);
+
+		let raw: Record<string, unknown> | null;
+		if ((type === "agent" || type === "environment") && decl !== undefined && this.projectName) {
+			const declaredName = (decl as { name?: unknown }).name;
+			const displayName = typeof declaredName === "string" ? declaredName : name;
+			raw = await this.readManagedResourceByIdentity(type, id, displayName);
+		} else {
+			const isTemplate = type === "template";
+			const endpoint = type === "agent" ? "/agents" : type === "environment" ? "/environments" : "/templates";
+			raw = await locateRemote(
+				isTemplate ? this.forwardClient : this.client,
+				endpoint,
+				name,
+				id,
+				isTemplate ? (item) => item.status !== "archived" : notArchived,
+			);
+		}
 		if (!raw) return null;
 
 		const comparable = this.normalizeRemote(type, raw);
@@ -323,6 +332,52 @@ export class QoderAdapter implements ProviderAdapter {
 			comparable,
 			snapshot: comparable,
 		};
+	}
+
+	private async readManagedResourceByIdentity(
+		type: "agent" | "environment",
+		id: string | null,
+		displayName: string,
+	): Promise<Record<string, unknown> | null> {
+		const endpoint = type === "agent" ? "/agents" : "/environments";
+		if (id) {
+			try {
+				const raw = (await this.client.get(`${endpoint}/${id}`)) as Record<string, unknown>;
+				return this.matchesManagedResourceIdentity(type, raw, displayName) ? raw : null;
+			} catch (error) {
+				if (ApiError.isNotFound(error)) return null;
+				throw error;
+			}
+		}
+
+		const matches = (await this.client.getAllPaged(endpoint)).filter((raw) =>
+			this.matchesManagedResourceIdentity(type, raw, displayName),
+		);
+		if (matches.length !== 1) return null;
+		const matchedId = matches[0]?.id;
+		if (typeof matchedId !== "string") return null;
+		try {
+			const raw = (await this.client.get(`${endpoint}/${matchedId}`)) as Record<string, unknown>;
+			return this.matchesManagedResourceIdentity(type, raw, displayName) ? raw : null;
+		} catch (error) {
+			if (ApiError.isNotFound(error)) return null;
+			throw error;
+		}
+	}
+
+	private matchesManagedResourceIdentity(
+		type: "agent" | "environment",
+		raw: Record<string, unknown>,
+		displayName: string,
+	): boolean {
+		if (!notArchived(raw) || raw.name !== displayName) return false;
+		if (typeof raw.type === "string" && raw.type !== type) return false;
+		const metadata = raw.metadata;
+		if (!metadata || typeof metadata !== "object") return false;
+		return (
+			(metadata as Record<string, unknown>)["agents.project"] === this.projectName &&
+			(metadata as Record<string, unknown>)["agents.resource"] === displayName
+		);
 	}
 
 	normalizeDesiredResource(type: ResourceType, name: string, decl: unknown): unknown | null {
@@ -410,7 +465,7 @@ export class QoderAdapter implements ProviderAdapter {
 
 		return compactDeep({
 			name: raw.name,
-			description: raw.description,
+			description: raw.description === "" ? undefined : raw.description,
 			model: normalizeModel(raw.model),
 			instructions: raw.system,
 			tools: normalizeQoderTools(raw.tools),

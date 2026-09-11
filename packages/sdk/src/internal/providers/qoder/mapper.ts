@@ -17,7 +17,7 @@ import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
 import { permissionOverridesFromWire, resolveBuiltinTools, toPermissionPolicy } from "../../utils/tool-permissions.ts";
 import type { ResolvedAgentRefs, ResolvedDeploymentRefs, ResolvedTemplateRefs } from "../interface.ts";
 import { mapGithubRepositorySessionResource, resolveGithubRepositoryMountPath } from "../session-resource-mapper.ts";
-import { injectMetadata, secretPlaceholder, slug } from "../sync-mapping.ts";
+import { injectManagedResourceMetadata, injectMetadata, secretPlaceholder, slug } from "../sync-mapping.ts";
 
 // Qoder's API expects builtin tool names in PascalCase. The configuration layer
 // (agents.yaml / playbook JSON) uses snake_case or lowercase aliases and is
@@ -54,6 +54,7 @@ function normalizeEnvironmentPackages(value: unknown): Record<string, string[]> 
 }
 
 export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName: string): unknown {
+	const displayName = decl.name ?? name;
 	const envType = decl.config.type ?? "cloud";
 	const config: Record<string, unknown> = { type: envType };
 	if (decl.config.networking) config.networking = decl.config.networking;
@@ -62,10 +63,10 @@ export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName:
 	if (packages) config.packages = packages;
 	if (decl.config.setup_script !== undefined) config.setup_script = decl.config.setup_script;
 	return {
-		name,
+		name: displayName,
 		description: decl.description ?? "",
 		config,
-		metadata: injectMetadata(decl.metadata, projectName, name),
+		metadata: injectManagedResourceMetadata(decl.metadata, projectName, displayName),
 	};
 }
 
@@ -410,8 +411,9 @@ export function mapAgent(
 		model = typeof qoderModel === "string" ? qoderModel : qoderModel.id;
 	}
 
+	const displayName = decl.name ?? name;
 	const body: Record<string, unknown> = {
-		name: decl.name ?? name,
+		name: displayName,
 		model,
 		system: decl.instructions,
 	};
@@ -419,7 +421,7 @@ export function mapAgent(
 	if (version !== undefined) body.version = version;
 	if (decl.description) body.description = decl.description;
 	if (projectName) {
-		body.metadata = injectMetadata(decl.metadata, projectName, name);
+		body.metadata = injectManagedResourceMetadata(decl.metadata, projectName, displayName);
 	} else if (decl.metadata) {
 		body.metadata = decl.metadata;
 	}

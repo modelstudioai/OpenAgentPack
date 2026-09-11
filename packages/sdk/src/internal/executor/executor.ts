@@ -772,7 +772,13 @@ async function executeActionInner(
 	// hash avoids false "Remote drift detected" on the next plan.
 	let remoteHash = comparableHash;
 	let remoteSnapshot: unknown;
-	const remote = await readComparableIfSupported(provider, type, result.id, name);
+	const remote = await readComparableIfSupported(
+		provider,
+		type,
+		result.id,
+		name,
+		getResourceDeclaration(address, ctx.config) ?? undefined,
+	);
 	if (remote) {
 		remoteHash = contentHash(remote.comparable);
 		remoteSnapshot = remote.snapshot ?? remote.comparable;
