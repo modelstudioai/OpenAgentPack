@@ -57,7 +57,13 @@ export async function refreshState(
 			const support = provider.getDriftSupport?.(res.address.type) ?? "existence";
 
 			if (supportsFullDrift(provider, res.address.type) && provider.normalizeDesiredResource) {
-				const remote = await provider.readComparableResource?.(res.address.type, res.remote_id, res.address.name);
+				const decl = options.config ? getResourceDeclaration(res.address, options.config) : null;
+				const remote = await provider.readComparableResource?.(
+					res.address.type,
+					res.remote_id,
+					res.address.name,
+					decl ?? undefined,
+				);
 				if (!remote) {
 					if (!options.quiet) {
 						emitRuntimeFeedback(options.onFeedback, {
@@ -74,7 +80,6 @@ export async function refreshState(
 				}
 
 				const remoteHash = contentHash(remote.comparable);
-				const decl = options.config ? getResourceDeclaration(res.address, options.config) : null;
 				const desiredComparable = decl
 					? provider.normalizeDesiredResource(res.address.type, res.address.name, decl)
 					: null;

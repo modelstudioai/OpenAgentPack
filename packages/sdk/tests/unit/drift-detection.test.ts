@@ -90,6 +90,27 @@ describe("drift-aware refresh", () => {
 
 		expect(state.getResource({ type: "agent", name: "assistant", provider: "qoder" })).toBeDefined();
 	});
+
+	test("passes the declared resource to comparable reads", async () => {
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({
+			address: { type: "agent", name: "assistant", provider: "qoder" },
+			remote_id: "agent_1",
+			content_hash: "h",
+			desired_hash: "h",
+		});
+		const provider = fakeProvider(config.agents!.assistant!);
+		const readComparableResource = provider.readComparableResource!;
+		let receivedDeclaration: unknown;
+		provider.readComparableResource = async (type, id, name, declaration) => {
+			receivedDeclaration = declaration;
+			return readComparableResource(type, id, name, declaration);
+		};
+
+		await refreshState(state, new Map([["qoder", provider]]), { config });
+
+		expect(receivedDeclaration).toEqual(config.agents!.assistant!);
+	});
 });
 
 describe("Qoder comparable fixtures", () => {
@@ -143,6 +164,24 @@ describe("Qoder comparable fixtures", () => {
 		expect(matching).toEqual(desired);
 		expect(changed).not.toEqual(desired);
 		expect(removed).not.toEqual(matching);
+	});
+
+	test("treats an empty Agent description as omitted while preserving non-empty description drift", () => {
+		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+		const desired = adapter.normalizeDesiredResource("agent", "assistant", {
+			model: "auto",
+			instructions: "Reply only with the marker.",
+		});
+		const remote = {
+			name: "assistant",
+			model: "auto",
+			system: "Reply only with the marker.",
+			tools: [{ type: "agent_toolset_20260401" }],
+			metadata: { "agents.project": "tmp", "agents.resource": "assistant" },
+		};
+
+		expect(adapter.normalizeRemote("agent", { ...remote, description: "" })).toEqual(desired);
+		expect(adapter.normalizeRemote("agent", { ...remote, description: "remote description" })).not.toEqual(desired);
 	});
 });
 
@@ -298,5 +337,81 @@ describe("Qoder archived resources are treated as gone", () => {
 			{ id: "agent_active", name: "a", archived_at: null },
 		]);
 		expect((await adapter.findResource("agent", "a"))?.id).toBe("agent_active");
+	});
+});
+
+describe("Qoder managed comparable identity", () => {
+	const declaration = { name: "display-name", model: "auto", instructions: "test" };
+	const identity = {
+		id: "agent_1",
+		type: "agent",
+		name: "display-name",
+		metadata: { "agents.project": "tmp", "agents.resource": "display-name" },
+		model: "auto",
+		system: "test",
+	};
+
+	test("accepts a matching detail resource when the logical key differs from its display name", async () => {
+		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+		adapter.client = {
+			get: async (path: string) => {
+				expect(path).toBe("/agents/agent_1");
+				return identity;
+			},
+		};
+
+		const remote = await adapter.readComparableResource("agent", "agent_1", "logical-key", declaration);
+
+		expect(remote?.id).toBe("agent_1");
+	});
+
+	test("rejects an ID detail response whose type or managed metadata is not the declared identity", async () => {
+		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+		adapter.client = {
+			get: async () => ({
+				...identity,
+				type: "environment",
+				metadata: { "agents.project": "tmp", "agents.resource": "other" },
+			}),
+		};
+
+		expect(await adapter.readComparableResource("agent", "agent_1", "logical-key", declaration)).toBeNull();
+	});
+
+	test("claims only one full-identity match from paginated discovery and verifies its detail", async () => {
+		const calls: string[] = [];
+		const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+		adapter.client = {
+			getAllPaged: async (path: string) => {
+				calls.push(path);
+				return [{ ...identity, id: "agent_1" }];
+			},
+			get: async (path: string) => {
+				calls.push(path);
+				return identity;
+			},
+		};
+
+		const remote = await adapter.readComparableResource("agent", null, "logical-key", declaration);
+
+		expect(remote?.id).toBe("agent_1");
+		expect(calls).toEqual(["/agents", "/agents/agent_1"]);
+	});
+
+	test("fails closed for zero or multiple full-identity matches", async () => {
+		for (const candidates of [[], [{ ...identity }, { ...identity, id: "agent_2" }]]) {
+			const adapter = new QoderAdapter("pt-test", undefined, "tmp") as any;
+			let detailRead = false;
+			adapter.client = {
+				getAllPaged: async () => candidates,
+				get: async () => {
+					detailRead = true;
+					return identity;
+				},
+			};
+
+			expect(await adapter.readComparableResource("agent", null, "logical-key", declaration)).toBeNull();
+			expect(detailRead).toBe(false);
+		}
 	});
 });

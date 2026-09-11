@@ -179,14 +179,29 @@ describe("User metadata precedence", () => {
 		expect(body.metadata["agents.project"]).toBe("user-override");
 	});
 
-	test("user-declared agents.project is not overwritten (Qoder)", () => {
+	test("Qoder managed identity overrides user metadata and follows the Agent display name", () => {
 		const decl: AgentDecl = {
+			name: "display-agent",
 			model: { qoder: "gpt-4" },
 			instructions: "test",
-			metadata: { "agents.project": "user-override" },
+			metadata: { "agents.project": "user-override", "agents.resource": "other-resource" },
 		};
-		const body = mapQoderAgent("a1", decl, emptyRefs, undefined, "infra-project") as Record<string, any>;
-		expect(body.metadata["agents.project"]).toBe("user-override");
+		const body = mapQoderAgent("logical-agent", decl, emptyRefs, undefined, "infra-project") as Record<string, any>;
+		expect(body.name).toBe("display-agent");
+		expect(body.metadata["agents.project"]).toBe("infra-project");
+		expect(body.metadata["agents.resource"]).toBe("display-agent");
+	});
+
+	test("Qoder Environment uses its display name as protected managed identity", () => {
+		const decl: EnvironmentDecl = {
+			name: "display-environment",
+			config: { type: "cloud" },
+			metadata: { "agents.project": "user-override", "agents.resource": "other-resource" },
+		};
+		const body = mapQoderEnv("logical-environment", decl, "infra-project") as Record<string, any>;
+		expect(body.name).toBe("display-environment");
+		expect(body.metadata["agents.project"]).toBe("infra-project");
+		expect(body.metadata["agents.resource"]).toBe("display-environment");
 	});
 
 	test("user-declared agents.resource is not overwritten (Claude env)", () => {

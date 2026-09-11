@@ -1,6 +1,6 @@
 {
 	"name": "@openagentpack/playground",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"description": "OpenAgentPack Playground — one-command local web UI for OpenAgentPack",
 	"license": "Apache-2.0",
 	"keywords": [
@@ -44,7 +44,7 @@
 		"@hono/zod-openapi": "^1.4.0",
 		"@openagentpack/sdk": "workspace:*",
 		"chokidar": "^4.0.3",
-		"hono": "^4.12.28",
+		"hono": "^4.13.5",
 		"yaml": "^2.9.0",
 		"zod": "^4.4.3"
 	},

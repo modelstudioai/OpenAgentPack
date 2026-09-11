@@ -1,5 +1,11 @@
 # @openagentpack/sdk
 
+## 0.7.2
+
+### Patch Changes
+
+- fd62da0: Fix Qoder managed resource identity matching during drift detection by passing declarations to comparable reads and matching on protected metadata.
+
 ## 0.7.1
 
 ### Patch Changes

@@ -225,6 +225,7 @@ export interface ProviderAdapter {
 		type: ResourceType,
 		id: string | null,
 		name: string,
+		decl?: unknown,
 	): Promise<ComparableRemoteResource | null>;
 	normalizeDesiredResource?(type: ResourceType, name: string, decl: unknown): unknown | null;
 
