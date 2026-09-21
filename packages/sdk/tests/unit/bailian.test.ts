@@ -222,6 +222,11 @@ describe("Bailian mapAgent", () => {
 		expect(body.skills).toEqual([{ type: "customer", skill_id: "skill_abc", version: "1.0" }]);
 	});
 
+	test("keeps an explicit empty skill replacement set", () => {
+		const body = mapAgent("helper", minimalDecl, emptyRefs) as Record<string, unknown>;
+		expect(body.skills).toEqual([]);
+	});
+
 	test("injects agents metadata when projectName provided", () => {
 		const body = mapAgent("helper", minimalDecl, emptyRefs, undefined, "my-project") as Record<string, unknown>;
 		const meta = body.metadata as Record<string, string>;

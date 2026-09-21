@@ -466,13 +466,12 @@ export function mapAgent(
 		}
 	}
 
-	// Skills
-	if (refs.skill_ids.length) {
-		body.skills = refs.skill_ids.map((s) => ({
-			type: s.type === "official" ? "qoder" : s.type,
-			skill_id: s.skill_id,
-		}));
-	}
+	// Skills are an explicit replacement set. Qoder agent updates use merge semantics,
+	// so omitting this field would retain remote bindings when the declaration is `skills: []`.
+	body.skills = refs.skill_ids.map((s) => ({
+		type: s.type === "official" ? "qoder" : s.type,
+		skill_id: s.skill_id,
+	}));
 
 	return body;
 }
