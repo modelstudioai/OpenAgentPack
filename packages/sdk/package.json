@@ -1,6 +1,6 @@
 {
 	"name": "@openagentpack/sdk",
-	"version": "0.7.2",
+	"version": "0.7.3",
 	"description": "OpenAgentPack SDK (Node-compatible runtime)",
 	"license": "Apache-2.0",
 	"keywords": [

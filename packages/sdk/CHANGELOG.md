@@ -1,5 +1,11 @@
 # @openagentpack/sdk
 
+## 0.7.3
+
+### Patch Changes
+
+- bc4edea: Clear stale Bailian and Qoder agent skill bindings when the last declared skill is removed.
+
 ## 0.7.2
 
 ### Patch Changes
