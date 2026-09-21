@@ -97,6 +97,7 @@ test("qoder agent mapper preserves declared tool permission policies", () => {
 			],
 		},
 	]);
+	expect(body.skills).toEqual([]);
 });
 
 test("qoder permission overrides are case- and separator-insensitive", () => {

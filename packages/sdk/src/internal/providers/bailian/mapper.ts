@@ -290,19 +290,18 @@ export function mapAgent(
 		}
 	}
 
-	// Skills
-	if (refs.skill_ids.length) {
-		body.skills = refs.skill_ids.map((s) => ({
-			// Bailian's SkillType enum is "customer" | "official"; map the
-			// resolver's generic "custom" sentinel to "customer".
-			type: s.type === "custom" ? "customer" : s.type,
-			skill_id: s.skill_id,
-			// Bailian composes `{skill_id}@{version}` internally and rejects
-			// entries without a version. Prefer explicit external references, then
-			// the latest active remote version, then the common initial version.
-			version: s.version ?? skillVersions?.[s.skill_id] ?? "1.0",
-		}));
-	}
+	// Skills are an explicit replacement set. Keep an empty array in the full update
+	// payload so removing the last binding has the same declarative meaning everywhere.
+	body.skills = refs.skill_ids.map((s) => ({
+		// Bailian's SkillType enum is "customer" | "official"; map the
+		// resolver's generic "custom" sentinel to "customer".
+		type: s.type === "custom" ? "customer" : s.type,
+		skill_id: s.skill_id,
+		// Bailian composes `{skill_id}@{version}` internally and rejects
+		// entries without a version. Prefer explicit external references, then
+		// the latest active remote version, then the common initial version.
+		version: s.version ?? skillVersions?.[s.skill_id] ?? "1.0",
+	}));
 
 	return body;
 }
