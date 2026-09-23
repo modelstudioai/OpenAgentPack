@@ -303,6 +303,9 @@ agents:
       delete_on_destroy: <boolean>    # optional; defaults to false (retain)
     environment_variables: { <key>: <string> }  # Qoder only
     managed_tool_config: { enabled_tools: [ <string> ] }  # Qoder Forward delivery only
+    delivery:                     # optional; per-provider remote materialization
+      qoder:
+        type: managed | forward
     resources: [ SessionResource ]
     multiagent: { type: "coordinator", agents: [...] }
     metadata: { <key>: <string> }
@@ -375,9 +378,10 @@ If the preflight cannot resolve the Identity, Template, or Store lookup, destroy
 | `default_memory_store.delete_on_destroy` | boolean | no | Permanently delete the Store during destroy. Defaults to `false` (retain). |
 | `environment_variables` | map<string,string> | no | Qoder runtime variables. Managed Sessions use Qoder's `KEY=VALUE;...` wire format; Forward Templates store the map as defaults and Forward Sessions send it under `config.environment_variables`. |
 | `managed_tool_config.enabled_tools` | string[] | no | Provider-operated tools the Agent Harness exposes, e.g. `create_forward_schedule`, `list_forward_schedules`, `delete_forward_schedule`. Qoder Forward delivery only; declaring it on managed delivery is a validation error. |
+| `delivery.<provider>.type` | `"managed"` \| `"forward"` | no | Per-provider remote materialization. Omitted means the managed Agent resource. `forward` (Qoder only) materializes the agent as a Forward Template; Qoder multi-agent members must use the same delivery type as their coordinator. |
 | `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
-| `multiagent.agents` | string[] | yes (with multiagent) | Agents it orchestrates. |
+| `multiagent.agents` | (string \| `{ agent_id: string }`)[] | yes (with multiagent) | Project logical names and, for Managed delivery, explicitly referenced external Agent ids. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
 
 For Qoder Forward delivery, a locally declared Environment is created only through the Forward Environment API. An
@@ -387,6 +391,49 @@ Memory Stores are created through their Forward APIs. A locally managed Environm
 Store cannot be shared by Managed and Forward Agents under one logical declaration; declare separate resources for
 the two API domains. Explicit Forward Memory Stores require `defaults.identity` and are mounted read-only to that
 Identity and Template.
+
+### Multi-agent
+
+A coordinator agent can orchestrate project-owned agents and existing external Managed Agents:
+
+```yaml
+agents:
+  researcher: { ... }
+  writer: { ... }
+  lead:
+    model: <model>
+    instructions: |
+      You are the lead agent coordinating a team: ...
+    multiagent:
+      type: coordinator
+      agents:
+        - researcher
+        - writer
+        - agent_id: agent_external_reviewer
+```
+
+Phase 1 rules, enforced at plan time on every provider:
+
+- A string member is a project logical name. OpenAgentPack resolves it to the materialized remote resource and manages its lifecycle.
+- `{ agent_id: ... }` explicitly references an external Managed Agent. It does not need a local `agents` declaration or state entry and OpenAgentPack never creates, updates, or destroys it.
+- Qoder Forward does not accept `{ agent_id }`, because its roster requires Template ids. External Forward Templates are not exposed by the common schema yet.
+- For project logical-name members, self references, nested coordinators, and any direct or indirect cycle are rejected. External members are non-owned leaves in the topology.
+- A roster carries at most 20 members (Qoder and Bailian platform limits).
+- On Qoder, every member must use the **same delivery type as its coordinator**: a managed coordinator references managed Agents (by `id`), a forward coordinator references Forward Templates (by `template_id`).
+
+Version semantics per materialization (OpenAgentPack never declares member versions):
+
+- **Qoder Managed**: the member reference carries only `id`; the platform pins each member's current numeric version when the coordinator is saved.
+- **Qoder Forward**: the member reference carries only `template_id`; there is no member version field — members always run the Template's current content.
+- **Bailian**: the member reference carries only `id`; the child Thread resolves the latest member version when it is first created and keeps that version for its lifetime.
+
+Update and clear semantics are hidden by the provider adapters: removing `multiagent` from a coordinator declaration clears the remote roster on update (Qoder sends an explicit `multiagent: null`, Bailian sends an empty array) — you never write provider-specific clear payloads yourself. Whether delegation actually happens is decided by the coordinator's system prompt and the runtime, so describe task split, delegation criteria, and output format in `instructions`.
+
+Bailian child agents run in **parallel over a shared file system**: files written by one member are visible to the others. Declare file/directory ownership in the coordinator's `instructions` (and in each member's) to keep parallel members from writing the same path.
+
+`self` references, Qoder Advisors, explicit member versions, external Forward Templates, and Thread management are not exposed by the common schema yet.
+
+`agents sync` reverse-maps project-owned members to logical names via the `agents.project`/`agents.resource` metadata OpenAgentPack injects, and preserves non-owned members as `{ agent_id }`. The sync fails closed — without touching your existing file — when a project-owned roster member is archived, missing from the account listing, lacks a logical name, or when two remote agents claim the same logical name.
 
 ### Session resources
 

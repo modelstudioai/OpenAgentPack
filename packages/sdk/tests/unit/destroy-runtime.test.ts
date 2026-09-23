@@ -501,3 +501,30 @@ describe("destroy runtime", () => {
 		expect(runtime.state.listResources()).toHaveLength(1);
 	});
 });
+
+describe("destroy runtime multiagent ordering", () => {
+	test("destroys a multiagent coordinator before its members", async () => {
+		const calls: string[] = [];
+		const runtime = await ctx(
+			[
+				resource("agent", "reviewer", "agent_reviewer_1"),
+				resource("agent", "writer", "agent_writer_1"),
+				resource("agent", "lead", "agent_lead_1"),
+			],
+			adapter(calls),
+		);
+		runtime.config.agents = {
+			reviewer: { model: { qoder: "auto" }, instructions: "Help." },
+			writer: { model: { qoder: "auto" }, instructions: "Help." },
+			lead: {
+				model: { qoder: "auto" },
+				instructions: "Help.",
+				multiagent: { type: "coordinator", agents: ["reviewer", "writer"] },
+			},
+		};
+
+		await destroyPlannedProjectResources(planDestroyProjectContext(runtime));
+
+		expect(calls).toEqual(["agent:agent_lead_1", "agent:agent_reviewer_1", "agent:agent_writer_1"]);
+	});
+});

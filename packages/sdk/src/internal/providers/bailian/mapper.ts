@@ -1,4 +1,5 @@
 import { UserError } from "../../errors.ts";
+import { reverseMultiagentDecl } from "../../multiagent/reverse-index.ts";
 import type {
 	AgentDecl,
 	CredentialDecl,
@@ -6,13 +7,14 @@ import type {
 	EnvironmentDecl,
 	InitialEventDecl,
 	ModelSpec,
+	MultiagentMemberDecl,
 	VaultDecl,
 } from "../../types/config.ts";
 import type { ManagedSessionBindings } from "../../types/session.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
 import { resolveBuiltinTools } from "../../utils/tool-permissions.ts";
-import type { ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
+import type { MappingOperation, ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
 
 export function mapEnvironment(name: string, decl: EnvironmentDecl, projectName?: string): unknown {
@@ -157,7 +159,10 @@ export function envToDecl(raw: Record<string, unknown>): Record<string, unknown>
 }
 
 /** Reverse-map a remote agent into an AgentDecl-shaped object for agents.yaml. */
-export function agentToDecl(raw: Record<string, unknown>): Record<string, unknown> {
+export function agentToDecl(
+	raw: Record<string, unknown>,
+	resolveMember?: (memberId: string) => MultiagentMemberDecl,
+): Record<string, unknown> {
 	const tools = raw.tools as Array<Record<string, unknown>> | undefined;
 	const mcpServers = raw.mcp_servers as Array<Record<string, unknown>> | undefined;
 	const skills = raw.skills as Array<Record<string, unknown>> | undefined;
@@ -206,6 +211,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 		tools: builtinTools?.length ? { builtin: builtinTools } : undefined,
 		mcp_servers: mcpServerDecls,
 		skills: skillDecls,
+		multiagent: reverseMultiagentDecl(raw.multiagent, resolveMember),
 		metadata: stripAgentsMetadata(raw.metadata),
 	}) as Record<string, unknown>;
 }
@@ -217,6 +223,7 @@ export function mapAgent(
 	version?: number,
 	projectName?: string,
 	skillVersions?: Record<string, string>,
+	operation: MappingOperation = "create",
 ): unknown {
 	let modelId: string;
 	if (typeof decl.model === "string") {
@@ -302,6 +309,17 @@ export function mapAgent(
 		// the latest active remote version, then the common initial version.
 		version: s.version ?? skillVersions?.[s.skill_id] ?? "1.0",
 	}));
+
+	if (refs.multiagent) {
+		body.multiagent = {
+			type: "coordinator",
+			// No version: Bailian resolves the child Thread on first creation.
+			agents: refs.multiagent.members.map(({ remote_id }) => ({ type: "agent", id: remote_id })),
+		};
+	} else if (operation === "update") {
+		// Bailian updates replace the field wholesale; an empty roster clears it.
+		body.multiagent = { type: "coordinator", agents: [] };
+	}
 
 	return body;
 }

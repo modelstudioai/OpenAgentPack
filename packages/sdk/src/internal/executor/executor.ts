@@ -764,7 +764,7 @@ async function executeActionInner(
 	}
 
 	const hash = await computeResourceHash(address, ctx.config, ctx.configPath, ctx.state);
-	const comparableHash = computeComparableDesiredHash(address, ctx.config, provider);
+	const comparableHash = computeComparableDesiredHash(address, ctx.config, provider, ctx.state);
 
 	// After apply, read back the actual remote state to establish the drift
 	// baseline. Cloud APIs often normalize, enrich, or transform payloads, so

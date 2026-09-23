@@ -28,6 +28,8 @@ const RESOURCE_KIND_METHODS: Record<ResourceKind, { methods: string[]; skip?: bo
 	},
 	session: { methods: ["createSession", "listSessions", "getSession", "deleteSession"] },
 	mcp_server: { methods: [], skip: true },
+	// Multi-agent is a field-level capability: the roster rides on agent/template
+	// create and update bodies, so it has no dedicated adapter methods to conform.
 	multiagent: { methods: [], skip: true },
 	deployment: { methods: ["createDeployment", "updateDeployment", "deleteDeployment"] },
 };
@@ -94,6 +96,11 @@ for (const providerDef of conformingProviders) {
 		test("fine-grained provider features are declared", () => {
 			expect(typeof providerDef.features.tool_permissions).toBe("boolean");
 			expect(Array.isArray(providerDef.features.session_resources)).toBe(true);
+		});
+
+		test("multiagent native tier rides on native agent resources", () => {
+			if (providerDef.capabilities.multiagent.tier !== "native") return;
+			expect(providerDef.capabilities.agent.tier).toBe("native");
 		});
 
 		for (const kind of ALL_RESOURCE_KINDS) {

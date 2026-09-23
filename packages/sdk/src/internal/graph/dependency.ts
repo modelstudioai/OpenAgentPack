@@ -166,6 +166,7 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 
 				if (decl.multiagent && isSupported(caps, "multiagent")) {
 					for (const subName of decl.multiagent.agents) {
+						if (typeof subName !== "string") continue;
 						const subDecl = config.agents[subName];
 						const subType = subDecl ? resolveAgentMaterialization(provider, subDecl).resourceType : "agent";
 						const subAddr: ResourceAddress = { type: subType, name: subName, provider };

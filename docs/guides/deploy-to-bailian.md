@@ -1,6 +1,6 @@
 # Deploy to Bailian
 
-Bailian (Aliyun AgentStudio) manages agents with versioned updates and references **official MCP servers by name** rather than wiring vaults for them.
+Bailian (Aliyun AgentStudio) manages agents with versioned updates, references **official MCP servers by name** rather than wiring vaults for them, and supports **multi-agent coordinators** whose children run in parallel.
 
 ## Provider configuration
 
@@ -25,7 +25,7 @@ providers:
 |---------|:----:|
 | Environment, Vault, Skill, Agent, MCP Server, Session | native |
 | Memory Store | unsupported |
-| Multi-Agent | unsupported |
+| Multi-Agent | native |
 | Deployment | native |
 
 - Skills upload as a zip via the Files API (two-step).
@@ -62,6 +62,45 @@ agents:
     tools:
       builtin: [bash, read, glob, grep]
 ```
+
+## Multi-agent
+
+A Bailian coordinator delegates to other declared agents. Child agents run in **parallel over a shared file system** — files written by one member are visible to the others, so declare file/directory ownership in the coordinator's instructions:
+
+```yaml
+agents:
+  researcher:
+    model: qwen3.7-max
+    instructions: |
+      Research the task. Only write files under /work/research/.
+    environment: dev
+  writer:
+    model: qwen3.7-max
+    instructions: |
+      Turn findings into reports. Only write files under /work/report/.
+    environment: dev
+  lead:
+    model: qwen3.7-max
+    instructions: |
+      You are the lead agent coordinating a team:
+      - researcher: owns /work/research/
+      - writer: owns /work/report/
+      Child agents run in parallel on one shared file system, so keep each
+      member inside its own directory. Delegate, then synthesize into /work/report/.
+    environment: dev
+    multiagent:
+      type: coordinator
+      agents: [researcher, writer]
+```
+
+Rules and behavior:
+
+- Roster entries are **project logical names**; OpenAgentPack resolves them to remote agent ids. Nesting, cycles, self references, and rosters over 20 members are rejected at plan time.
+- Member versions are never declared: each child Thread resolves the latest member version when it is first created and keeps that version for its lifetime.
+- Removing `multiagent` from the declaration clears the remote roster on update — the adapter sends Bailian's empty roster for you.
+- `self` references, explicit member versions, and Thread management are not exposed by the common schema yet.
+
+See [`examples/bailian/multiagent/`](../../examples/bailian/multiagent/).
 
 ## What Bailian uniquely supports
 

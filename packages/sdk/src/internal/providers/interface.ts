@@ -1,3 +1,4 @@
+import type { ResolvedMultiagentRoster } from "../multiagent/model.ts";
 import type {
 	AgentDecl,
 	ChannelDecl,
@@ -104,8 +105,15 @@ export interface ExportedResource {
 
 export interface ResolvedAgentRefs {
 	skill_ids: Array<{ type: string; skill_id: string; version?: string }>;
-	multiagent_agent_ids?: string[];
+	multiagent?: ResolvedMultiagentRoster;
 }
+
+/**
+ * Which provider request a mapped body is destined for. Providers with
+ * merge-style update APIs need it to emit explicit "clear" sentinels
+ * (e.g. `multiagent: null`) that a create body must omit.
+ */
+export type MappingOperation = "create" | "update";
 
 export interface ResolvedTemplateRefs extends ResolvedAgentRefs {
 	environment_id: string;
@@ -227,7 +235,17 @@ export interface ProviderAdapter {
 		name: string,
 		decl?: unknown,
 	): Promise<ComparableRemoteResource | null>;
-	normalizeDesiredResource?(type: ResourceType, name: string, decl: unknown): unknown | null;
+	/**
+	 * Canonical desired form for drift comparison. `refs` carries resolved
+	 * skill and multiagent references; callers only compute it for agent/template
+	 * resources where they have config + state at hand.
+	 */
+	normalizeDesiredResource?(
+		type: ResourceType,
+		name: string,
+		decl: unknown,
+		refs?: ResolvedAgentRefs | ResolvedTemplateRefs,
+	): unknown | null;
 
 	/**
 	 * Reverse-map remote resources of a given type into `agents.yaml` declarations

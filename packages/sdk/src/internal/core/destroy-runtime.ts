@@ -1,9 +1,12 @@
 import { UserError } from "../errors.ts";
 import { ApiError } from "../providers/base-client.ts";
 import type { ProviderAdapter, ProviderResourceMode } from "../providers/interface.ts";
+import type { ProjectConfig } from "../types/config.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import { emitRuntimeFeedback } from "../types/runtime-feedback.ts";
 import type { ResourceState, ResourceType } from "../types/state.ts";
+import { addressKey } from "../types/state.ts";
+import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider } from "./project-runtime.ts";
 
@@ -78,9 +81,10 @@ const destroyOrder: Record<ResourceType, number> = {
 };
 
 export function planDestroyProjectContext(ctx: ProjectRuntimeContext): DestroyPlanResult {
-	const resources = [...ctx.state.listResources()].sort(
+	const tierSorted = [...ctx.state.listResources()].sort(
 		(a, b) => (destroyOrder[a.address.type] ?? 99) - (destroyOrder[b.address.type] ?? 99),
 	);
+	const resources = destroyCoordinatorsFirst(tierSorted, ctx.config);
 	const identityName = ctx.config.defaults?.identity;
 	const defaultMemoryStores: DestroyDefaultMemoryStorePlan[] = [];
 	for (const [agentName, agent] of Object.entries(ctx.config.agents ?? {})) {
@@ -121,6 +125,57 @@ export function planDestroyProjectContext(ctx: ProjectRuntimeContext): DestroyPl
 		}
 	}
 	return { resources, defaultMemoryStores, executionContext: ctx };
+}
+
+/**
+ * Within a type tier, a multiagent coordinator must be destroyed before its
+ * members: the roster references the members remotely, so deleting a member
+ * first leaves the coordinator pointing at a dangling id. The create graph
+ * orders members before coordinators; destroy reverses that edge only, leaving
+ * the cross-tier `destroyOrder` sequence untouched.
+ */
+function destroyCoordinatorsFirst(resources: ResourceState[], config: ProjectConfig): ResourceState[] {
+	const byAddress = new Map<string, ResourceState>();
+	for (const resource of resources) byAddress.set(addressKey(resource.address), resource);
+
+	const memberResourcesOf = (resource: ResourceState): ResourceState[] => {
+		const decl = config.agents?.[resource.address.name];
+		if (!decl?.multiagent) return [];
+		if (decl.provider && decl.provider !== resource.address.provider) return [];
+		const members: ResourceState[] = [];
+		for (const memberName of decl.multiagent.agents) {
+			if (typeof memberName !== "string") continue;
+			const memberDecl = config.agents?.[memberName];
+			if (!memberDecl) continue;
+			const memberType = resolveAgentMaterialization(resource.address.provider, memberDecl).resourceType;
+			const member = byAddress.get(
+				addressKey({ type: memberType, name: memberName, provider: resource.address.provider }),
+			);
+			if (member) members.push(member);
+		}
+		return members;
+	};
+
+	const emitted = new Set<string>();
+	const ordered: ResourceState[] = [];
+	const emit = (resource: ResourceState): void => {
+		const key = addressKey(resource.address);
+		if (emitted.has(key)) return;
+		emitted.add(key);
+		ordered.push(resource);
+		for (const member of memberResourcesOf(resource)) emit(member);
+	};
+
+	const isCoordinator = (resource: ResourceState): boolean => {
+		const decl = config.agents?.[resource.address.name];
+		if (!decl?.multiagent) return false;
+		return !decl.provider || decl.provider === resource.address.provider;
+	};
+	for (const resource of resources) {
+		if (isCoordinator(resource)) emit(resource);
+	}
+	for (const resource of resources) emit(resource);
+	return ordered;
 }
 
 export async function destroyPlannedProjectResources(

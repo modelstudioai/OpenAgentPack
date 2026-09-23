@@ -4,6 +4,7 @@
 import "../providers/all.ts";
 
 import { DiagnosticCollector } from "../diagnostics/diagnostics.ts";
+import { collectMultiagentTopologyDiagnostics, MULTIAGENT_MEMBER_LIMIT } from "../multiagent/topology.ts";
 import { isSupported } from "../providers/capabilities.ts";
 import { getProvider } from "../providers/registry.ts";
 import type { ProjectConfig } from "../types/config.ts";
@@ -98,6 +99,7 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 		}
 		if (agent.multiagent) {
 			for (const subAgent of agent.multiagent.agents) {
+				if (typeof subAgent !== "string") continue;
 				if (!agentNames.has(subAgent)) {
 					diagnostics.error(
 						"config.agent.multiagent.unknown",
@@ -110,6 +112,8 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 			}
 		}
 	}
+
+	collectMultiagentTopologyDiagnostics(config, diagnostics);
 
 	for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
 		if (deployment.tunnel && !tunnelNames.has(deployment.tunnel)) {
@@ -464,13 +468,44 @@ export function collectProviderCapabilities(
 						{ type: "template", name, provider: providerName },
 					);
 				}
-				if (agent.multiagent) {
+			}
+
+			if (providerName === "qoder" && agent.multiagent) {
+				const coordinatorMode = resolveAgentMaterialization(providerName, agent).mode;
+				for (const memberName of agent.multiagent.agents) {
+					if (typeof memberName !== "string") {
+						if (coordinatorMode === "forward") {
+							diagnostics.error(
+								"qoder.template.multiagent.external_member",
+								`agent.${name}: Qoder Forward coordinator cannot reference external Managed Agent '${memberName.agent_id}'.`,
+								{ type: "template", name, provider: providerName },
+							);
+						}
+						continue;
+					}
+					const memberDecl = config.agents?.[memberName];
+					if (!memberDecl) continue;
+					const memberMode = resolveAgentMaterialization(providerName, memberDecl).mode;
+					if (memberMode === coordinatorMode) continue;
 					diagnostics.error(
-						"qoder.template.multiagent.unsupported",
-						`agent.${name}: multiagent is not yet supported by Qoder Forward Template delivery.`,
-						{ type: "template", name, provider: providerName },
+						"qoder.template.multiagent.member_materialization",
+						`agent.${name}: multiagent member '${memberName}' uses ${memberMode} delivery but the coordinator uses ${coordinatorMode}; Qoder multiagent members must match the coordinator's delivery type.`,
+						{ type: coordinatorMode === "forward" ? "template" : "agent", name, provider: providerName },
 					);
 				}
+			}
+		}
+
+		if (providerName === "qoder" || providerName === "bailian") {
+			for (const [name, agent] of Object.entries(config.agents ?? {})) {
+				if (agent.provider && agent.provider !== providerName) continue;
+				const size = agent.multiagent?.agents.length ?? 0;
+				if (size <= MULTIAGENT_MEMBER_LIMIT) continue;
+				diagnostics.error(
+					`${providerName}.agent.multiagent.member_limit`,
+					`agent.${name}: provider '${providerName}' supports at most ${MULTIAGENT_MEMBER_LIMIT} multiagent members; got ${size}.`,
+					{ type: resolveAgentMaterialization(providerName, agent).resourceType, name, provider: providerName },
+				);
 			}
 		}
 

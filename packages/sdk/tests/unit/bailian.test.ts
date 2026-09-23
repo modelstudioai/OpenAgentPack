@@ -366,3 +366,63 @@ describe("Bailian mapEnvironment", () => {
 		expect(() => mapEnvironment("locked", decl, "proj")).toThrow(/only supports networking.type 'unrestricted'/);
 	});
 });
+
+// --- Multiagent roster (Qoder/Bailian Multi-Agent plan) ---
+
+describe("Bailian mapAgent multiagent", () => {
+	const decl: AgentDecl = {
+		model: "qwen3.7-max",
+		instructions: "You are a helpful assistant.",
+		multiagent: { type: "coordinator", agents: ["reviewer", "writer"] },
+	};
+
+	const rosterRefs: ResolvedAgentRefs = {
+		skill_ids: [],
+		multiagent: {
+			type: "coordinator",
+			members: [
+				{ logical_name: "reviewer", resource_type: "agent", remote_id: "agent_reviewer_1" },
+				{ logical_name: "writer", resource_type: "agent", remote_id: "agent_writer_1" },
+			],
+		},
+	};
+
+	const expectedWire = {
+		type: "coordinator",
+		agents: [
+			{ type: "agent", id: "agent_reviewer_1" },
+			{ type: "agent", id: "agent_writer_1" },
+		],
+	};
+
+	test("maps the roster without member version fields", () => {
+		const body = mapAgent("lead", decl, rosterRefs) as Record<string, unknown>;
+		expect(body.multiagent).toEqual(expectedWire);
+	});
+
+	test("create omits the multiagent field when the declaration has no roster", () => {
+		const soloDecl: AgentDecl = { model: "qwen3.7-max", instructions: "Help." };
+		const body = mapAgent("solo", soloDecl, { skill_ids: [] }, undefined, undefined, undefined, "create") as Record<
+			string,
+			unknown
+		>;
+		expect("multiagent" in body).toBe(false);
+	});
+
+	test("update clears a previously set roster with an empty coordinator", () => {
+		const soloDecl: AgentDecl = { model: "qwen3.7-max", instructions: "Help." };
+		const body = mapAgent("solo", soloDecl, { skill_ids: [] }, undefined, undefined, undefined, "update") as Record<
+			string,
+			unknown
+		>;
+		expect(body.multiagent).toEqual({ type: "coordinator", agents: [] });
+	});
+
+	test("update keeps the roster when the declaration still declares members", () => {
+		const body = mapAgent("lead", decl, rosterRefs, undefined, undefined, undefined, "update") as Record<
+			string,
+			unknown
+		>;
+		expect(body.multiagent).toEqual(expectedWire);
+	});
+});
