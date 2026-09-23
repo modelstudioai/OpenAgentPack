@@ -250,7 +250,17 @@ export function mapAgent(
 	}
 
 	// Tools: builtin_toolkit + mcp_toolkit blocks
-	const BAILIAN_BUILTINS = new Set(["bash", "read", "write", "edit", "glob", "grep", "download_file"]);
+	const BAILIAN_BUILTINS = new Set([
+		"bash",
+		"read",
+		"write",
+		"edit",
+		"glob",
+		"grep",
+		"web_search",
+		"web_fetch",
+		"mark_artifacts",
+	]);
 	if (decl.tools) {
 		const toolConfigs = resolveBuiltinTools(decl.tools, {
 			supportedWireNames: BAILIAN_BUILTINS,
