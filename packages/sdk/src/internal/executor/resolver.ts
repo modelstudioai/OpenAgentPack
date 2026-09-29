@@ -1,4 +1,6 @@
+import { resolveAgentMaterialization } from "../core/agent-materialization.ts";
 import { UserError } from "../errors.ts";
+import type { ResolvedMultiagentRoster } from "../multiagent/model.ts";
 import type {
 	ResolvedAgentRefs,
 	ResolvedChannelRefs,
@@ -6,7 +8,7 @@ import type {
 	ResolvedTemplateRefs,
 } from "../providers/interface.ts";
 import type { IStateManager } from "../state/state-manager.ts";
-import type { ProjectConfig } from "../types/config.ts";
+import type { AgentDecl, ProjectConfig } from "../types/config.ts";
 import type { ResourceAddress } from "../types/state.ts";
 
 export function resolveRef(state: IStateManager, address: ResourceAddress): string | null | undefined {
@@ -23,6 +25,63 @@ export function requireRef(state: IStateManager, address: ResourceAddress): stri
 	return id;
 }
 
+export function resolveSkillRefs(
+	agent: AgentDecl,
+	provider: string,
+	state: IStateManager,
+): ResolvedAgentRefs["skill_ids"] {
+	const skillIds: ResolvedAgentRefs["skill_ids"] = [];
+	for (const skill of agent.skills ?? []) {
+		if (typeof skill === "string") {
+			const id = requireRef(state, { type: "skill", name: skill, provider });
+			skillIds.push({ type: "custom", skill_id: id });
+		} else {
+			// For custom skills, resolve the skill_id (YAML key) to its remote_id
+			// from state. Official skills use their skill_id directly as the remote ID.
+			const resolvedId =
+				skill.type === "custom"
+					? (resolveRef(state, {
+							type: "skill",
+							name: skill.skill_id,
+							provider,
+						}) ?? skill.skill_id)
+					: skill.skill_id;
+			skillIds.push({
+				type: skill.type,
+				skill_id: resolvedId,
+				version: skill.version,
+			});
+		}
+	}
+	return skillIds;
+}
+
+function resolveMultiagentRoster(
+	agent: AgentDecl,
+	provider: string,
+	state: IStateManager,
+	resourceType: "agent" | "template",
+): ResolvedMultiagentRoster {
+	return {
+		type: "coordinator",
+		members: (agent.multiagent?.agents ?? []).map((member) => {
+			if (typeof member !== "string") {
+				if (resourceType === "template") {
+					throw new UserError(
+						`qoder.template.multiagent.external_member: Forward coordinator cannot reference external Managed Agent '${member.agent_id}'.`,
+					);
+				}
+				return { resource_type: "agent" as const, remote_id: member.agent_id };
+			}
+			return {
+				logical_name: member,
+				resource_type: resourceType,
+				remote_id: requireRef(state, { type: resourceType, name: member, provider }),
+			};
+		}),
+	};
+}
+
 export function resolveAgentRefs(
 	agentName: string,
 	config: ProjectConfig,
@@ -33,40 +92,11 @@ export function resolveAgentRefs(
 	if (!agent) throw new UserError(`Agent '${agentName}' not found in config`);
 
 	const refs: ResolvedAgentRefs = {
-		skill_ids: [],
+		skill_ids: resolveSkillRefs(agent, provider, state),
 	};
 
-	if (agent.skills) {
-		for (const skill of agent.skills) {
-			if (typeof skill === "string") {
-				const id = requireRef(state, { type: "skill", name: skill, provider });
-				refs.skill_ids.push({ type: "custom", skill_id: id });
-			} else {
-				// For custom skills, resolve the skill_id (YAML key) to its remote_id
-				// from state. Official skills use their skill_id directly as the remote ID.
-				const resolvedId =
-					skill.type === "custom"
-						? (resolveRef(state, {
-								type: "skill",
-								name: skill.skill_id,
-								provider,
-							}) ?? skill.skill_id)
-						: skill.skill_id;
-				refs.skill_ids.push({
-					type: skill.type,
-					skill_id: resolvedId,
-					version: skill.version,
-				});
-			}
-		}
-	}
-
-	if (agent.multiagent) {
-		refs.multiagent_agent_ids = [];
-		for (const subName of agent.multiagent.agents) {
-			const id = resolveRef(state, { type: "agent", name: subName, provider });
-			if (id) refs.multiagent_agent_ids.push(id);
-		}
+	if (agent.multiagent && resolveAgentMaterialization(provider, agent).resourceType === "agent") {
+		refs.multiagent = resolveMultiagentRoster(agent, provider, state, "agent");
 	}
 
 	return refs;
@@ -93,6 +123,7 @@ export function resolveTemplateRefs(
 	const identityName = config.defaults?.identity;
 	return {
 		...agentRefs,
+		...(agent.multiagent ? { multiagent: resolveMultiagentRoster(agent, provider, state, "template") } : {}),
 		environment_id:
 			environment.environment_id ?? requireRef(state, { type: "environment", name: agent.environment, provider }),
 		...(agent.tunnel ? { tunnel_id: resolveTunnelIdFromConfig(config, agent.tunnel, provider) } : {}),

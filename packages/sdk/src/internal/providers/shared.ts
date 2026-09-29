@@ -1,3 +1,5 @@
+import { buildReverseIndex, memberDeclResolver } from "../multiagent/reverse-index.ts";
+import type { MultiagentMemberDecl } from "../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../types/dto.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
 import type { ProviderSessionInfo } from "../types/session.ts";
@@ -86,7 +88,10 @@ export interface ExportMappers {
 	) => Record<string, unknown>;
 	fileToDecl: (raw: Record<string, unknown>, filename: string) => Record<string, unknown>;
 	skillToDecl: (raw: Record<string, unknown>, name: string) => Record<string, unknown>;
-	agentToDecl: (raw: Record<string, unknown>) => Record<string, unknown>;
+	agentToDecl: (
+		raw: Record<string, unknown>,
+		resolveMember?: (memberId: string) => MultiagentMemberDecl,
+	) => Record<string, unknown>;
 }
 
 /**
@@ -101,6 +106,7 @@ export async function exportRemoteResources(
 	client: BaseApiClient,
 	type: ResourceType,
 	mappers: ExportMappers,
+	projectName?: string,
 ): Promise<ExportedResource[]> {
 	if (type === "environment") {
 		const envs = await client.getAllPaged("/environments");
@@ -140,11 +146,16 @@ export async function exportRemoteResources(
 	}
 	if (type === "agent") {
 		const agents = await client.getAllPaged("/agents");
+		// The reverse index needs the FULL listing — archived entries included — so an
+		// archived roster member fails with `archived` rather than `unresolved`;
+		// archived agents stay excluded from the exported resources themselves.
+		const resolveMember = memberDeclResolver(buildReverseIndex(agents, projectName ?? ""));
 		return agents
 			.filter((agent) => !agent.archived_at)
 			.map((agent) => {
 				const agentId = agent.id as string;
-				return { name: agentId, decl: mappers.agentToDecl(agent) };
+				const name = resourceNameFromMetadata(agent.metadata, (agent.name as string) ?? agentId, agentId);
+				return { name, decl: mappers.agentToDecl(agent, resolveMember) };
 			});
 	}
 	return [];

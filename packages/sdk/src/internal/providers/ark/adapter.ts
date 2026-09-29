@@ -227,13 +227,18 @@ export class ArkAdapter implements ProviderAdapter {
 		// failing the whole export on GET /skills. Existing stateful skill refs can still
 		// be refreshed by id through getSkillInfo/findResource.
 		if (type === "skill") return [];
-		return exportRemoteResources(this.client, type, {
-			envToDecl,
-			vaultToDecl,
-			fileToDecl,
-			skillToDecl,
-			agentToDecl,
-		});
+		return exportRemoteResources(
+			this.client,
+			type,
+			{
+				envToDecl,
+				vaultToDecl,
+				fileToDecl,
+				skillToDecl,
+				agentToDecl,
+			},
+			this.projectName,
+		);
 	}
 
 	// Ark skills support create + get + attach only. There is no list/update/delete endpoint

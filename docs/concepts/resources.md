@@ -19,7 +19,7 @@ These are the top-level blocks you write in a config. Each maps to a state-track
 Two more facets are expressed *through* an agent rather than as standalone blocks:
 
 - **MCP server** — declared on `agents.<name>.mcp_servers[]`; an external tool server reached over the MCP protocol.
-- **Multi-agent** — declared on `agents.<name>.multiagent`; one agent orchestrates others in `coordinator` mode *(Claude, Ark)*.
+- **Multi-agent** — declared on `agents.<name>.multiagent`; one agent orchestrates others in `coordinator` mode. All four providers support it; on Qoder, members must share the coordinator's delivery type (Managed Agent or Forward Template).
 
 `session` is a runtime concept, not a declared resource — see [Sessions and deployments](./sessions-and-deployments.md).
 

@@ -86,7 +86,7 @@ test("qoder agent mapper preserves declared tool permission policies", () => {
 				permissions: { Read: "allow", Bash: "ask" },
 			},
 		},
-		{ skill_ids: [], memory_store_ids: [], multiagent_agent_ids: [] },
+		{ skill_ids: [], memory_store_ids: [] },
 	) as Record<string, unknown>;
 	expect(body.tools).toEqual([
 		{
@@ -137,4 +137,147 @@ test("qoder sync preserves tool permission policies", () => {
 		builtin: ["read", "bash"],
 		permissions: { read: "allow", bash: "ask" },
 	});
+});
+
+test("qoder managed agent mapper emits the coordinator roster wire format", () => {
+	const body = mapAgent(
+		"lead",
+		{
+			model: "auto",
+			instructions: "Coordinate.",
+			multiagent: { type: "coordinator", agents: ["reviewer", "writer"] },
+		},
+		{
+			skill_ids: [],
+			multiagent: {
+				type: "coordinator",
+				members: [
+					{ logical_name: "reviewer", resource_type: "agent", remote_id: "agent_reviewer_1" },
+					{ logical_name: "writer", resource_type: "agent", remote_id: "agent_writer_1" },
+				],
+			},
+		},
+	) as Record<string, unknown>;
+	expect(body.multiagent).toEqual({
+		type: "coordinator",
+		agents: [
+			{ type: "agent", id: "agent_reviewer_1" },
+			{ type: "agent", id: "agent_writer_1" },
+		],
+	});
+	const tools = body.tools as Array<{ type: string }>;
+	expect(tools.filter((tool) => tool.type === "agent_toolset_20260401")).toHaveLength(1);
+});
+
+test("qoder create omits multiagent when the declaration has no roster", () => {
+	const body = mapAgent(
+		"solo",
+		{ model: "auto", instructions: "Solo." },
+		{ skill_ids: [] },
+		undefined,
+		"tmp",
+		"create",
+	) as Record<string, unknown>;
+	expect("multiagent" in body).toBe(false);
+});
+
+test("qoder update clears a previously set roster with multiagent null", () => {
+	const body = mapAgent(
+		"solo",
+		{ model: "auto", instructions: "Solo." },
+		{ skill_ids: [] },
+		undefined,
+		"tmp",
+		"update",
+	) as Record<string, unknown>;
+	expect(body.multiagent).toBeNull();
+});
+
+test("qoder update keeps the roster field when the declaration still declares members", () => {
+	const body = mapAgent(
+		"lead",
+		{
+			model: "auto",
+			instructions: "Coordinate.",
+			multiagent: { type: "coordinator", agents: ["reviewer"] },
+		},
+		{
+			skill_ids: [],
+			multiagent: {
+				type: "coordinator",
+				members: [{ logical_name: "reviewer", resource_type: "agent", remote_id: "agent_reviewer_1" }],
+			},
+		},
+		undefined,
+		"tmp",
+		"update",
+	) as Record<string, unknown>;
+	expect(body.multiagent).toEqual({
+		type: "coordinator",
+		agents: [{ type: "agent", id: "agent_reviewer_1" }],
+	});
+});
+
+test("plan creates multiagent members before their coordinator", async () => {
+	const config = {
+		version: "1",
+		providers: { qoder: {} },
+		defaults: { provider: "qoder" },
+		agents: {
+			reviewer: { model: "auto", instructions: "Review." },
+			writer: { model: "auto", instructions: "Write." },
+			lead: {
+				model: "auto",
+				instructions: "Coordinate.",
+				multiagent: { type: "coordinator" as const, agents: ["reviewer", "writer"] },
+			},
+		},
+	};
+	const plan = await buildPlan(config, emptyState);
+	expect(plan.diagnostics).toEqual([]);
+	expect(plan.actions.map((a) => `${a.action}:${a.address.type}:${a.address.name}`)).toEqual([
+		"create:agent:reviewer",
+		"create:agent:writer",
+		"create:agent:lead",
+	]);
+});
+
+test("qoder multiagent example (managed) plans members before the coordinator", async () => {
+	const { config, errors } = await loadConfig(resolve(EXAMPLES, "qoder/multiagent/agents.yaml"));
+	expect(errors).toEqual([]);
+
+	const lead = config.agents?.lead;
+	expect(lead?.multiagent).toEqual({
+		type: "coordinator",
+		agents: ["researcher", "writer", { agent_id: "agent_external_reviewer" }],
+	});
+	expect(lead?.delivery).toBeUndefined();
+
+	const plan = await buildPlan(config, emptyState);
+	expect(plan.diagnostics).toEqual([]);
+	expect(plan.actions.map((a) => `${a.action}:${a.address.type}:${a.address.name}`)).toEqual([
+		"create:environment:dev",
+		"create:agent:researcher",
+		"create:agent:writer",
+		"create:agent:lead",
+	]);
+});
+
+test("qoder multiagent-forward example materializes every agent as a template", async () => {
+	const { config, errors } = await loadConfig(resolve(EXAMPLES, "qoder/multiagent-forward/agents.yaml"));
+	expect(errors).toEqual([]);
+
+	for (const agent of Object.values(config.agents ?? {})) {
+		expect(agent.delivery?.qoder).toEqual({ type: "forward" });
+	}
+	expect(config.agents?.lead?.multiagent).toEqual({ type: "coordinator", agents: ["researcher", "writer"] });
+
+	const plan = await buildPlan(config, emptyState);
+	expect(plan.diagnostics).toEqual([]);
+	expect(plan.actions.map((a) => `${a.action}:${a.address.type}:${a.address.name}`)).toEqual([
+		"create:environment:dev",
+		"create:template:researcher",
+		"create:template:writer",
+		"create:template:lead",
+	]);
 });

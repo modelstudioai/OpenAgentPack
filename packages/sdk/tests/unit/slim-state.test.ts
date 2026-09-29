@@ -16,7 +16,6 @@ function tmpPath(): string {
 
 const emptyRefs: ResolvedAgentRefs = {
 	skill_ids: [],
-	multiagent_agent_ids: [],
 };
 
 describe("StateManager backward compat", () => {

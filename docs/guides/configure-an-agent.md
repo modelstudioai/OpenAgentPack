@@ -146,9 +146,9 @@ agents:
     memory_stores: [project-memory]
 ```
 
-## Multi-agent coordination (Claude, Ark)
+## Multi-agent coordination
 
-One agent can orchestrate others in `coordinator` mode:
+One agent can orchestrate others in `coordinator` mode. All four providers support it:
 
 ```yaml
 agents:
@@ -157,6 +157,14 @@ agents:
       type: coordinator
       agents: [researcher, reviewer]
 ```
+
+Rules:
+
+- `multiagent.agents` accepts project **logical names** and explicit external Managed Agent references such as `{ agent_id: agent_external_1 }`. External references are not lifecycle-managed by OpenAgentPack and are not supported by Qoder Forward delivery.
+- Logical-name members must be declared in the same config; a coordinator cannot orchestrate itself, nest another coordinator, or form a cycle (direct or indirect). External `{ agent_id }` members are treated as non-owned leaves. Rosters are capped at 20 members.
+- On Qoder, every member must use the same delivery type as its coordinator — all Managed Agents (`id` references) or all Forward Templates (`template_id` references).
+
+Examples: [`examples/claude/multiagent/`](../../examples/claude/multiagent/) · [`examples/qoder/multiagent/`](../../examples/qoder/multiagent/) · [`examples/qoder/multiagent-forward/`](../../examples/qoder/multiagent-forward/) · [`examples/bailian/multiagent/`](../../examples/bailian/multiagent/) · [`examples/ark/multiagent/`](../../examples/ark/multiagent/).
 
 ## Deployments
 

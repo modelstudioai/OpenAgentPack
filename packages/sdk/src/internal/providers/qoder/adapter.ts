@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import JSZip from "jszip";
 import { UserError } from "../../errors.ts";
+import { comparableMultiagentField } from "../../multiagent/comparable.ts";
 import type {
 	AgentDecl,
 	ChannelDecl,
@@ -380,7 +381,12 @@ export class QoderAdapter implements ProviderAdapter {
 		);
 	}
 
-	normalizeDesiredResource(type: ResourceType, name: string, decl: unknown): unknown | null {
+	normalizeDesiredResource(
+		type: ResourceType,
+		name: string,
+		decl: unknown,
+		refs?: ResolvedAgentRefs | ResolvedTemplateRefs,
+	): unknown | null {
 		if (type === "environment") {
 			return this.normalizeRemote(
 				type,
@@ -390,10 +396,22 @@ export class QoderAdapter implements ProviderAdapter {
 		if (type === "agent") {
 			return this.normalizeRemote(
 				type,
-				mapAgent(name, decl as AgentDecl, { skill_ids: [] }, undefined, this.projectName) as Record<string, unknown>,
+				mapAgent(name, decl as AgentDecl, refs ?? { skill_ids: [] }, undefined, this.projectName) as Record<
+					string,
+					unknown
+				>,
 			);
 		}
-		if (type === "template") return null;
+		if (type === "template") {
+			if (!refs) return null;
+			return this.normalizeRemote(
+				type,
+				mapForwardTemplate(name, decl as AgentDecl, refs as ResolvedTemplateRefs, this.projectName) as Record<
+					string,
+					unknown
+				>,
+			);
+		}
 		if (type === "identity") {
 			const identity = decl as IdentityDecl;
 			if (identity.identity_id) return null;
@@ -422,10 +440,10 @@ export class QoderAdapter implements ProviderAdapter {
 				description: raw.description,
 				model: raw.model,
 				system: raw.system,
-				tools: raw.tools,
-				mcp_servers: raw.mcp_servers,
+				tools: normalizeQoderTools(raw.tools),
+				mcp_servers: normalizeQoderMcpServers(raw.mcp_servers),
 				skills: raw.skills,
-				multiagent: raw.multiagent,
+				multiagent: comparableMultiagentField(raw.multiagent, "forward"),
 				environment_id: raw.environment_id,
 				tunnel_id: raw.tunnel_id,
 				vault_ids: Array.isArray(raw.vault_ids)
@@ -470,6 +488,7 @@ export class QoderAdapter implements ProviderAdapter {
 			instructions: raw.system,
 			tools: normalizeQoderTools(raw.tools),
 			mcp_servers: normalizeQoderMcpServers(raw.mcp_servers),
+			multiagent: comparableMultiagentField(raw.multiagent, "managed"),
 			metadata: stripAgentsMetadata(raw.metadata),
 		});
 	}
@@ -598,13 +617,18 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async exportResources(type: ResourceType): Promise<ExportedResource[]> {
-		return exportRemoteResources(this.client, type, {
-			envToDecl,
-			vaultToDecl,
-			fileToDecl,
-			skillToDecl,
-			agentToDecl,
-		});
+		return exportRemoteResources(
+			this.client,
+			type,
+			{
+				envToDecl,
+				vaultToDecl,
+				fileToDecl,
+				skillToDecl,
+				agentToDecl,
+			},
+			this.projectName,
+		);
 	}
 
 	async createSkill(
@@ -641,7 +665,7 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource> {
-		const body = mapAgent(name, decl, refs, undefined, this.projectName);
+		const body = mapAgent(name, decl, refs, undefined, this.projectName, "create");
 		const res = (await this.client.post("/agents", body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
@@ -650,7 +674,7 @@ export class QoderAdapter implements ProviderAdapter {
 		const current = (await this.client.get(`/agents/${id}`)) as {
 			version: number;
 		};
-		const body = mapAgent(name, decl, refs, current.version, this.projectName);
+		const body = mapAgent(name, decl, refs, current.version, this.projectName, "update");
 		const res = (await this.client.put(`/agents/${id}`, body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
@@ -660,14 +684,14 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async createTemplate(name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
-		const body = mapForwardTemplate(name, decl, refs, this.projectName);
+		const body = mapForwardTemplate(name, decl, refs, this.projectName, "create");
 		const res = (await this.forwardClient.post("/templates", body)) as Record<string, unknown>;
 		await this.reconcileForwardMemoryMounts(res.id as string, refs);
 		return toRemoteResource(res);
 	}
 
 	async updateTemplate(id: string, name: string, decl: AgentDecl, refs: ResolvedTemplateRefs): Promise<RemoteResource> {
-		const body = mapForwardTemplate(name, decl, refs, this.projectName) as Record<string, unknown>;
+		const body = mapForwardTemplate(name, decl, refs, this.projectName, "update") as Record<string, unknown>;
 		// Forward updates are merge-style; null explicitly clears a previously inherited BYOC tunnel.
 		if (!refs.tunnel_id) body.tunnel_id = null;
 		const res = (await this.forwardClient.post(`/templates/${id}`, body)) as Record<string, unknown>;

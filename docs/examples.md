@@ -15,7 +15,7 @@ The [`examples/`](../examples) directory has runnable configs for every provider
 | Connect a credential-based IM Channel | [`examples/qoder/with-channel/`](../examples/qoder/with-channel/) |
 | Use memory stores | [`examples/qoder/with-memory/`](../examples/qoder/with-memory/) · [`examples/claude/with-memory/`](../examples/claude/with-memory/) · [`examples/ark/full/`](../examples/ark/full/) · [runtime lifecycle](../examples/memory/README.md) |
 | Upload local files (Files API) | [`examples/bailian/with-files/`](../examples/bailian/with-files/) · [`examples/ark/with-files/`](../examples/ark/with-files/) |
-| Coordinate multiple agents | [`examples/claude/multiagent/`](../examples/claude/multiagent/) · [`examples/ark/multiagent/`](../examples/ark/multiagent/) |
+| Coordinate multiple agents | [`examples/bailian/multiagent/`](../examples/bailian/multiagent/) · [`examples/claude/multiagent/`](../examples/claude/multiagent/) · [`examples/qoder/multiagent/`](../examples/qoder/multiagent/) · [`examples/qoder/multiagent-forward/`](../examples/qoder/multiagent-forward/) · [`examples/ark/multiagent/`](../examples/ark/multiagent/) |
 | Deploy to multiple providers | [`examples/claude/multi-provider/`](../examples/claude/multi-provider/) · [`examples/qoder/multi-provider/`](../examples/qoder/multi-provider/) |
 | Schedule a deployment | [`examples/bailian/deployment/`](../examples/bailian/deployment/) · [`examples/claude/deployment/`](../examples/claude/deployment/) · [`examples/qoder/deployment/`](../examples/qoder/deployment/) · [`examples/ark/deployment/`](../examples/ark/deployment/) |
 | Run everything end-to-end | [`examples/bailian/full/`](../examples/bailian/full/) · [`examples/claude/full/`](../examples/claude/full/) · [`examples/qoder/full/`](../examples/qoder/full/) · [`examples/ark/full/`](../examples/ark/full/) |
@@ -52,7 +52,7 @@ agents destroy
 | Agent | native | native | native | native |
 | MCP Server | native | native | native | native |
 | Memory Store | unsupported | native | native | native |
-| Multi-Agent | unsupported | unsupported | native | native |
+| Multi-Agent | native | native | native | native |
 | Deployment | native | native | native | emulated |
 | Session | native | native | native | native |
 

@@ -1,6 +1,6 @@
 # Deploy to Qoder
 
-Qoder is a managed-agent platform with native **memory stores** and **deployments**, but no multi-agent primitive.
+Qoder is a managed-agent platform with native **memory stores**, **deployments**, and **multi-agent coordinators**, in both Managed Agent and Forward Template delivery.
 
 ## Provider configuration
 
@@ -23,7 +23,7 @@ providers:
 | Feature | Tier |
 |---------|:----:|
 | Environment, Vault, Skill, Agent, MCP Server, Memory Store, Deployment, Session, Identity, Channel | native |
-| Multi-Agent | unsupported |
+| Multi-Agent | native |
 
 A `deployment run` on Qoder creates a native Deployment Run and associated Session. Cron schedules run server-side.
 
@@ -97,6 +97,41 @@ agents:
 ```
 
 Qoder runs `setup_script` after package installation with `/bin/bash -lc`. Scripts are limited to 64 KB of UTF-8 text and 10 minutes, and a non-zero exit prevents Session startup. Make them idempotent because they run again whenever the sandbox is rebuilt. Use vaults for credentials; never place secrets directly in a script. Qoder package declarations accept `apt`, `npm`, and `pip` only.
+
+## Multi-agent
+
+A Qoder coordinator delegates to other declared agents over isolated session threads that share the environment, sandbox, and file system:
+
+```yaml
+agents:
+  researcher:
+    model: ultimate
+    instructions: Research and write findings under /data/research/.
+    environment: dev
+  writer:
+    model: ultimate
+    instructions: Turn findings into reports under /data/report/.
+    environment: dev
+  lead:
+    model: ultimate
+    instructions: |
+      You are the lead agent coordinating a team:
+      - researcher: owns /data/research/
+      - writer: owns /data/report/
+      Delegate and synthesize their outputs.
+    environment: dev
+    multiagent:
+      type: coordinator
+      agents: [researcher, writer]
+```
+
+Rules and behavior:
+
+- Roster entries are **project logical names**; OpenAgentPack resolves them to remote ids. Nesting, cycles, self references, and rosters over 20 members are rejected at plan time.
+- Members must use the **same delivery type as the coordinator**: a managed coordinator wires managed Agents by `id`; a forward coordinator (every agent declares `delivery: { qoder: { type: forward } }`) wires Forward Templates by `template_id`. See [`examples/qoder/multiagent/`](../../examples/qoder/multiagent/) and [`examples/qoder/multiagent-forward/`](../../examples/qoder/multiagent-forward/).
+- Member versions are never declared: a managed coordinator's roster pins each member's current version when the coordinator is saved; a forward roster has no version field at all.
+- Removing `multiagent` from the declaration clears the remote roster on update — the adapter sends Qoder's explicit `multiagent: null` for you.
+- Qoder's `self` references, Advisors, explicit member versions, and Thread management are not exposed by the common schema yet.
 
 ## What Qoder uniquely supports
 

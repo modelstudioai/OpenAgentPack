@@ -3,7 +3,7 @@ import {
 	mapDeployment as mapBailianDeployment,
 	mapDeploymentUpdate as mapBailianDeploymentUpdate,
 } from "../../src/internal/providers/bailian/mapper.ts";
-import { mapDeployment, mapDeploymentUpdate } from "../../src/internal/providers/claude/mapper.ts";
+import { mapAgent, mapDeployment, mapDeploymentUpdate } from "../../src/internal/providers/claude/mapper.ts";
 import type { ResolvedDeploymentRefs } from "../../src/internal/providers/interface.ts";
 import {
 	mapDeploymentToSession,
@@ -503,6 +503,33 @@ describe("Bailian mapDeployment", () => {
 			description: "",
 			metadata: { stale: "value" },
 			schedule: null,
+		});
+	});
+});
+
+describe("Claude mapAgent multiagent regression", () => {
+	test("maps a resolved roster to a bare id string array", () => {
+		const body = mapAgent(
+			"lead",
+			{
+				model: "claude-sonnet-4-20250514",
+				instructions: "Help.",
+				multiagent: { type: "coordinator", agents: ["reviewer", "writer"] },
+			},
+			{
+				skill_ids: [],
+				multiagent: {
+					type: "coordinator",
+					members: [
+						{ logical_name: "reviewer", resource_type: "agent", remote_id: "agent_reviewer_1" },
+						{ logical_name: "writer", resource_type: "agent", remote_id: "agent_writer_1" },
+					],
+				},
+			},
+		) as Record<string, unknown>;
+		expect(body.multiagent).toEqual({
+			type: "coordinator",
+			agents: ["agent_reviewer_1", "agent_writer_1"],
 		});
 	});
 });

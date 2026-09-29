@@ -536,6 +536,7 @@ export function collectAgentAddresses(config: ProjectConfig, agentName: string, 
 			roots.push({ type: "identity", name: config.defaults.identity, provider: resolvedProvider });
 		}
 		for (const subAgentName of declaration.multiagent?.agents ?? []) {
+			if (typeof subAgentName !== "string") continue;
 			const subAgent = config.agents?.[subAgentName];
 			if (!subAgent) continue;
 			roots.push({

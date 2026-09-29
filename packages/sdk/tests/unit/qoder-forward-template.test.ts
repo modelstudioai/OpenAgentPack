@@ -1207,3 +1207,60 @@ describe("Qoder Forward default memory store", () => {
 		expect(calls).toEqual([["idn_1", "tmpl_1", { name: "Support memory" }]]);
 	});
 });
+
+describe("Qoder Forward multiagent roster", () => {
+	const roster = {
+		type: "coordinator" as const,
+		members: [
+			{ logical_name: "reviewer", resource_type: "template" as const, remote_id: "tmpl_reviewer_1" },
+			{ logical_name: "writer", resource_type: "template" as const, remote_id: "tmpl_writer_1" },
+		],
+	};
+
+	const baseRefs = {
+		environment_id: "env_byoc",
+		tunnel_id: "tnl_internal",
+		vault_ids: ["vault_mcp"],
+		skill_ids: [],
+	};
+
+	const expectedWire = {
+		type: "coordinator",
+		agents: [
+			{ type: "agent", template_id: "tmpl_reviewer_1" },
+			{ type: "agent", template_id: "tmpl_writer_1" },
+		],
+	};
+
+	test("emits template_id member refs without id, name, or version fields", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		decl.multiagent = { type: "coordinator", agents: ["reviewer", "writer"] };
+		const body = mapForwardTemplate("assistant", decl, { ...baseRefs, multiagent: roster }) as Record<string, any>;
+		expect(body.multiagent).toEqual(expectedWire);
+	});
+
+	test("create omits the multiagent field when the declaration has no roster", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		const body = mapForwardTemplate("assistant", decl, baseRefs, undefined, "create") as Record<string, any>;
+		expect("multiagent" in body).toBe(false);
+	});
+
+	test("update clears a previously set roster with multiagent null", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		const body = mapForwardTemplate("assistant", decl, baseRefs, undefined, "update") as Record<string, any>;
+		expect(body.multiagent).toBeNull();
+	});
+
+	test("update keeps the roster when the declaration still declares members", () => {
+		const decl = forwardConfig().agents!.assistant!;
+		decl.multiagent = { type: "coordinator", agents: ["reviewer", "writer"] };
+		const body = mapForwardTemplate(
+			"assistant",
+			decl,
+			{ ...baseRefs, multiagent: roster },
+			undefined,
+			"update",
+		) as Record<string, any>;
+		expect(body.multiagent).toEqual(expectedWire);
+	});
+});

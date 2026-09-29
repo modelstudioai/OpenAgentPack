@@ -439,7 +439,7 @@ OpenCMA 删除，会继续挂载默认 Store，因此 `delete_on_destroy: true` 
 
 通过 coordinator 模式，一个 Agent 可以调度其他 Agent 协同完成任务。
 
-> 注意：Multi-Agent 目前由 Claude 和 火山方舟 Provider 原生支持。
+> 注意：Multi-Agent 由四家 Provider（百炼、Qoder、Claude、火山方舟）原生支持。
 
 ```yaml
 agents:
@@ -478,7 +478,19 @@ agents:
       agents: [researcher, writer]
 ```
 
-`multiagent.agents` 中引用的 Agent 必须在同一配置文件中定义。OpenAgentPack 会自动处理依赖顺序，先创建子 Agent，再创建 coordinator。
+`multiagent.agents` 可以写同一配置文件中的**项目逻辑名称**，也可以用 `{ agent_id: ... }` 显式引用外部 Managed Agent。OpenAgentPack 会为逻辑名成员处理依赖顺序和生命周期；外部成员不需要本地 state，且不会被 OpenAgentPack 创建、更新或销毁。Qoder Forward 暂不支持外部 `agent_id`，因为其 roster 需要 Template ID。
+
+第一阶段拓扑限制：
+
+- coordinator 不能编排自己，不能嵌套另一个 coordinator，也不能形成任何直接或间接循环。
+- 成员名单上限为 20 个。
+- Qoder 上，所有成员必须与 coordinator 使用相同交付类型——全部为 Managed Agent（按 `id` 引用）或全部为 Forward Template（按 `template_id` 引用）。
+
+各 Provider 的成员版本语义由 Adapter 统一处理，公共 YAML 不写版本号：Qoder Managed 在 coordinator 保存时由平台固定成员版本；Qoder Forward 本身没有版本字段；百炼省略版本号，由子 Thread 首次创建时解析最新成员并在 Thread 生命周期内固定。移除全部成员即清除编排关系（Qoder 发送 `multiagent: null`，百炼发送空名单），无需其他配置。
+
+百炼的子 Agent 并行执行并共享 coordinator 的文件系统，建议在 coordinator 的 instructions 中声明每个成员的目录归属，避免相互覆盖文件。
+
+`self`、Advisor、显式版本和 Thread 管理不在公共 Schema 中暴露。
 
 ---
 

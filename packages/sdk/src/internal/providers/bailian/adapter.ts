@@ -12,6 +12,7 @@ import {
 	skillStatusFromString,
 } from "../../../scan-lifecycle.ts";
 import { UserError } from "../../errors.ts";
+import { comparableMultiagentField } from "../../multiagent/comparable.ts";
 import type {
 	AgentDecl,
 	CredentialDecl,
@@ -158,7 +159,7 @@ export class BailianAdapter implements ProviderAdapter {
 		};
 	}
 
-	normalizeDesiredResource(type: ResourceType, name: string, decl: unknown): unknown | null {
+	normalizeDesiredResource(type: ResourceType, name: string, decl: unknown, refs?: ResolvedAgentRefs): unknown | null {
 		if (type === "environment") {
 			return this.normalizeRemote(
 				type,
@@ -168,7 +169,10 @@ export class BailianAdapter implements ProviderAdapter {
 		if (type === "agent") {
 			return this.normalizeRemote(
 				type,
-				mapAgent(name, decl as AgentDecl, { skill_ids: [] }, undefined, this.projectName) as Record<string, unknown>,
+				mapAgent(name, decl as AgentDecl, refs ?? { skill_ids: [] }, undefined, this.projectName) as Record<
+					string,
+					unknown
+				>,
 			);
 		}
 		return null;
@@ -195,18 +199,24 @@ export class BailianAdapter implements ProviderAdapter {
 			instructions: raw.system,
 			tools: normalizeBailianTools(raw.tools),
 			mcp_servers: normalizeBailianMcpServers(raw.mcp_servers),
+			multiagent: comparableMultiagentField(raw.multiagent, "managed"),
 			metadata: stripAgentsMetadata(raw.metadata),
 		});
 	}
 
 	async exportResources(type: ResourceType): Promise<ExportedResource[]> {
-		return exportRemoteResources(this.client, type, {
-			envToDecl,
-			vaultToDecl,
-			fileToDecl,
-			skillToDecl,
-			agentToDecl,
-		});
+		return exportRemoteResources(
+			this.client,
+			type,
+			{
+				envToDecl,
+				vaultToDecl,
+				fileToDecl,
+				skillToDecl,
+				agentToDecl,
+			},
+			this.projectName,
+		);
 	}
 
 	// --- Environment ---
@@ -245,7 +255,7 @@ export class BailianAdapter implements ProviderAdapter {
 
 	async createAgent(name: string, decl: AgentDecl, refs: ResolvedAgentRefs): Promise<RemoteResource> {
 		const skillVersions = await this.fetchSkillVersions(refs);
-		const body = mapAgent(name, decl, refs, undefined, this.projectName, skillVersions);
+		const body = mapAgent(name, decl, refs, undefined, this.projectName, skillVersions, "create");
 		const res = (await this.client.post("/agents", body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}
@@ -255,7 +265,7 @@ export class BailianAdapter implements ProviderAdapter {
 			version: number;
 		};
 		const skillVersions = await this.fetchSkillVersions(refs);
-		const body = mapAgent(name, decl, refs, current.version, this.projectName, skillVersions);
+		const body = mapAgent(name, decl, refs, current.version, this.projectName, skillVersions, "update");
 		const res = (await this.client.post(`/agents/${id}`, body)) as Record<string, unknown>;
 		return toRemoteResource(res);
 	}

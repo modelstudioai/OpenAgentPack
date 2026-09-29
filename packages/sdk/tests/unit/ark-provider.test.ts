@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { refreshState } from "../../src/internal/planner/refresh.ts";
 import { ArkAdapter } from "../../src/internal/providers/ark/adapter.ts";
+import { mapAgent } from "../../src/internal/providers/ark/mapper.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 
 function tmpPath(): string {
@@ -79,5 +80,35 @@ describe("Ark provider platform gaps", () => {
 		expect(createCalls).toBe(2);
 		expect(JSON.parse(postedBodies[0]!).name).toBe("agents-base");
 		expect(JSON.parse(postedBodies[1]!).name).toBe("agents-base-1");
+	});
+});
+
+describe("Ark mapAgent multiagent regression", () => {
+	test("maps a resolved roster to AgentRef objects", () => {
+		const body = mapAgent(
+			"lead",
+			{
+				model: { ark: "doubao-seed-1-6" },
+				instructions: "Help.",
+				multiagent: { type: "coordinator", agents: ["reviewer", "writer"] },
+			},
+			{
+				skill_ids: [],
+				multiagent: {
+					type: "coordinator",
+					members: [
+						{ logical_name: "reviewer", resource_type: "agent", remote_id: "agent_reviewer_1" },
+						{ logical_name: "writer", resource_type: "agent", remote_id: "agent_writer_1" },
+					],
+				},
+			},
+		) as Record<string, unknown>;
+		expect(body.multiagent).toEqual({
+			type: "coordinator",
+			agents: [
+				{ type: "agent", id: "agent_reviewer_1" },
+				{ type: "agent", id: "agent_writer_1" },
+			],
+		});
 	});
 });

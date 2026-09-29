@@ -216,13 +216,18 @@ export class ClaudeAdapter implements ProviderAdapter {
 	}
 
 	async exportResources(type: ResourceType): Promise<ExportedResource[]> {
-		return exportRemoteResources(this.client, type, {
-			envToDecl,
-			vaultToDecl,
-			fileToDecl,
-			skillToDecl,
-			agentToDecl,
-		});
+		return exportRemoteResources(
+			this.client,
+			type,
+			{
+				envToDecl,
+				vaultToDecl,
+				fileToDecl,
+				skillToDecl,
+				agentToDecl,
+			},
+			this.projectName,
+		);
 	}
 
 	async createSkill(name: string, _decl: SkillDecl, files: SkillFile[]): Promise<RemoteResource> {
