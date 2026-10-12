@@ -12,5 +12,6 @@ Implementation:
 - `packages/sdk/src/internal/providers/bailian/`
 - `packages/sdk/tests/e2e/bailian-adapter.test.ts`
 - `packages/sdk/docs/providers/bailian-vault-integration.md`
+- [Workspace Webhook APIs](./bailian-webhooks.md)
 
 Do not copy the full upstream API documentation into this repository. Link to the canonical provider pages so authentication, fields, limits, and examples remain current.

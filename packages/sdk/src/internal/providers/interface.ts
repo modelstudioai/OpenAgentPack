@@ -62,6 +62,19 @@ import type {
 import type { SkillFile } from "../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
+import type {
+	CreateWebhookEndpointInput,
+	UpdateWebhookEndpointInput,
+	WebhookDeleteResult,
+	WebhookEndpoint,
+	WebhookEndpointList,
+	WebhookEndpointWithSecret,
+	WebhookEventListOptions,
+	WebhookEventPage,
+	WebhookRequestOptions,
+	WebhookSecretResetResult,
+	WebhookTestResult,
+} from "../types/webhook.ts";
 
 export interface RemoteResource {
 	id: string | null;
@@ -235,6 +248,25 @@ export interface ProviderAdapter {
 	 * values that the provider does not return are emitted as `${ENV}` placeholders.
 	 */
 	exportResources?(type: ResourceType): Promise<ExportedResource[]>;
+
+	/** Workspace-level APIs do not participate in project declaration or state. */
+	createWebhookEndpoint?(
+		input: CreateWebhookEndpointInput,
+		options?: WebhookRequestOptions,
+	): Promise<WebhookEndpointWithSecret>;
+	listWebhookEndpoints?(options?: WebhookRequestOptions): Promise<WebhookEndpointList>;
+	getWebhookEndpoint?(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint>;
+	updateWebhookEndpoint?(
+		id: string,
+		input: UpdateWebhookEndpointInput,
+		options?: WebhookRequestOptions,
+	): Promise<WebhookEndpoint>;
+	deleteWebhookEndpoint?(id: string, options?: WebhookRequestOptions): Promise<WebhookDeleteResult>;
+	enableWebhookEndpoint?(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint>;
+	disableWebhookEndpoint?(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint>;
+	testWebhookEndpoint?(id: string, options?: WebhookRequestOptions): Promise<WebhookTestResult>;
+	resetWebhookSecret?(id: string, options?: WebhookRequestOptions): Promise<WebhookSecretResetResult>;
+	listWebhookEvents?(id: string, options?: WebhookEventListOptions): Promise<WebhookEventPage>;
 
 	createEnvironment(name: string, decl: EnvironmentDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
 	updateEnvironment(

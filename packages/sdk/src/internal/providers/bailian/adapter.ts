@@ -56,6 +56,19 @@ import type {
 import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
+import type {
+	CreateWebhookEndpointInput,
+	UpdateWebhookEndpointInput,
+	WebhookDeleteResult,
+	WebhookEndpoint,
+	WebhookEndpointList,
+	WebhookEndpointWithSecret,
+	WebhookEventListOptions,
+	WebhookEventPage,
+	WebhookRequestOptions,
+	WebhookSecretResetResult,
+	WebhookTestResult,
+} from "../../types/webhook.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { toRemoteResource } from "../base-client.ts";
 import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
@@ -114,6 +127,75 @@ export class BailianAdapter implements ProviderAdapter {
 
 	async validate(): Promise<void> {
 		await this.client.get("/agents?limit=1");
+	}
+
+	async createWebhookEndpoint(
+		input: CreateWebhookEndpointInput,
+		options?: WebhookRequestOptions,
+	): Promise<WebhookEndpointWithSecret> {
+		return this.client.post("/webhook_endpoints", input, options) as Promise<WebhookEndpointWithSecret>;
+	}
+
+	async listWebhookEndpoints(options?: WebhookRequestOptions): Promise<WebhookEndpointList> {
+		return this.client.get("/webhook_endpoints", options) as Promise<WebhookEndpointList>;
+	}
+
+	async getWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint> {
+		return this.client.get(`/webhook_endpoints/${encodeURIComponent(id)}`, options) as Promise<WebhookEndpoint>;
+	}
+
+	async updateWebhookEndpoint(
+		id: string,
+		input: UpdateWebhookEndpointInput,
+		options?: WebhookRequestOptions,
+	): Promise<WebhookEndpoint> {
+		return this.client.put(`/webhook_endpoints/${encodeURIComponent(id)}`, input, options) as Promise<WebhookEndpoint>;
+	}
+
+	async deleteWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookDeleteResult> {
+		return this.client.deleteJson(
+			`/webhook_endpoints/${encodeURIComponent(id)}`,
+			options,
+		) as Promise<WebhookDeleteResult>;
+	}
+
+	async enableWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/enable`,
+			undefined,
+			options,
+		) as Promise<WebhookEndpoint>;
+	}
+
+	async disableWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/disable`,
+			undefined,
+			options,
+		) as Promise<WebhookEndpoint>;
+	}
+
+	async testWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookTestResult> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/test`,
+			undefined,
+			options,
+		) as Promise<WebhookTestResult>;
+	}
+
+	async resetWebhookSecret(id: string, options?: WebhookRequestOptions): Promise<WebhookSecretResetResult> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/reset_secret`,
+			undefined,
+			options,
+		) as Promise<WebhookSecretResetResult>;
+	}
+
+	async listWebhookEvents(id: string, options?: WebhookEventListOptions): Promise<WebhookEventPage> {
+		return this.client.get(
+			withQuery(`/webhook_endpoints/${encodeURIComponent(id)}/events`, cursorParams(options)),
+			options,
+		) as Promise<WebhookEventPage>;
 	}
 
 	private static readonly ENDPOINT_MAP: Partial<Record<ResourceType, string>> = {

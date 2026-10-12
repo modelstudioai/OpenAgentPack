@@ -13,6 +13,40 @@ export { ApiError, ConflictError } from "./internal/providers/base-client.ts";
 // globalThis.fetch. Unset → provider clients use the global fetch as before.
 export { setDefaultFetch, type FetchLike } from "./internal/transport.ts";
 
+export { createManagedApiContext } from "./internal/core/managed-api-context.ts";
+export type { CreateManagedApiContextInput, ManagedApiContext } from "./internal/core/managed-api-context.ts";
+export { resolveBailianApiBaseUrl } from "./internal/providers/bailian/api-base-url.ts";
+export type { ResolveBailianApiBaseUrlOptions } from "./internal/providers/bailian/api-base-url.ts";
+export {
+	createRemoteWebhookEndpoint,
+	deleteRemoteWebhookEndpoint,
+	disableRemoteWebhookEndpoint,
+	enableRemoteWebhookEndpoint,
+	getRemoteWebhookEndpoint,
+	listRemoteWebhookEndpoints,
+	listRemoteWebhookEvents,
+	resetRemoteWebhookSecret,
+	testRemoteWebhookEndpoint,
+	updateRemoteWebhookEndpoint,
+} from "./internal/core/webhook-runtime.ts";
+export type {
+	CreateWebhookEndpointInput,
+	UpdateWebhookEndpointInput,
+	WebhookDeleteResult,
+	WebhookDelivery,
+	WebhookEndpoint,
+	WebhookEndpointList,
+	WebhookEndpointWithSecret,
+	WebhookEvent,
+	WebhookEventData,
+	WebhookEventListOptions,
+	WebhookEventPage,
+	WebhookEventWithDelivery,
+	WebhookRequestOptions,
+	WebhookSecretResetResult,
+	WebhookTestResult,
+} from "./internal/types/webhook.ts";
+
 export type {
 	BackendRuntimeInput,
 	ProjectRuntimeContext,

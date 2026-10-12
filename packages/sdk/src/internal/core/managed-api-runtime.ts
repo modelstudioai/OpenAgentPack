@@ -1,11 +1,9 @@
-import { UserError } from "../errors.ts";
 import { ApiError } from "../providers/base-client.ts";
 import type {
 	DeploymentInfo,
 	DeploymentListFilter,
 	DeploymentListResult,
 	DeploymentRunResult,
-	ProviderAdapter,
 } from "../providers/interface.ts";
 import { resolveFetch } from "../transport.ts";
 import type {
@@ -34,23 +32,14 @@ import type {
 } from "../types/managed-api.ts";
 import type { ProviderSessionInfo } from "../types/session.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
+import {
+	requireManagedApiMethod as requiredMethod,
+	resolveManagedApiAdapter as resolveAdapter,
+} from "./managed-api-context.ts";
 import type { ProjectRuntimeContext } from "./project-runtime.ts";
-import { getRuntimeProvider } from "./project-runtime.ts";
 
 export interface ManagedApiTarget {
 	provider?: string;
-}
-
-function resolveAdapter(ctx: ProjectRuntimeContext, provider?: string): ProviderAdapter {
-	if (provider) return getRuntimeProvider(ctx, provider);
-	const configured = Array.from(ctx.providers.keys());
-	if (configured.length === 1) return getRuntimeProvider(ctx, configured[0]!);
-	throw new UserError("Multiple providers configured. Use --provider to specify one.");
-}
-
-function requiredMethod<T>(value: T | undefined, provider: string, operation: string): T {
-	if (value) return value;
-	throw new UserError(`Provider '${provider}' does not support ${operation}.`);
 }
 
 export async function listRemoteAgents(
@@ -312,6 +301,16 @@ const UNSUPPORTED_OAUTH: ManagedAgentOperationCapability = {
 };
 
 const BAILIAN_OPERATIONS: Record<string, ManagedAgentOperationCapability> = {
+	"webhook.create": API_KEY,
+	"webhook.list": API_KEY,
+	"webhook.get": API_KEY,
+	"webhook.update": API_KEY,
+	"webhook.delete": API_KEY,
+	"webhook.enable": API_KEY,
+	"webhook.disable": API_KEY,
+	"webhook.test": API_KEY,
+	"webhook.reset_secret": API_KEY,
+	"webhook.events": API_KEY,
 	"agent.create": { ...API_KEY, reason: "YAML declaration plus scoped create-only apply." },
 	"agent.list": API_KEY,
 	"agent.get": API_KEY,
