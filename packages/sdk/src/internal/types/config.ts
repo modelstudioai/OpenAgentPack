@@ -272,8 +272,11 @@ export interface McpServerDecl {
 
 export interface MultiagentDecl {
 	type: "coordinator";
-	agents: string[];
+	agents: MultiagentMemberDecl[];
 }
+
+/** A project-owned logical Agent name, or an externally owned Managed Agent id. */
+export type MultiagentMemberDecl = string | { agent_id: string };
 
 // --- Deployment ---
 

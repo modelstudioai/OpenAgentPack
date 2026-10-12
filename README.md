@@ -156,7 +156,7 @@ Beta testers can install `@openagentpack/cli@beta`; see the [release guide](./do
 | Agent | native | native | native | native |
 | MCP Server | native | native | native | native |
 | Memory Store | unsupported | native | native | native |
-| Multi-Agent | unsupported | unsupported | native | native |
+| Multi-Agent | native | native | native | native |
 | Deployment | native | native | native | emulated |
 | Session | native | native | native | native |
 

@@ -11,11 +11,7 @@ export const BAILIAN_CAPABILITIES: ProviderCapabilities = {
 		reason: "no memory store primitive on Bailian",
 	},
 	mcp_server: { tier: "native", reason: "mcp_servers field on agent (official servers)" },
-	multiagent: {
-		tier: "unsupported",
-		reason: "no multiagent primitive on Bailian",
-		remediation: "deploy agents independently and orchestrate via MCP",
-	},
+	multiagent: { tier: "native", reason: "coordinator + roster topology" },
 	deployment: {
 		tier: "native",
 		reason: "deployments API with cron schedules, manual runs, pause/unpause and archive",

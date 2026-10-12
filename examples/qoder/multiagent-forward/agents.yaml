@@ -1,0 +1,73 @@
+# Qoder Forward multi-agent example: the coordinator and every member
+# materialize as Forward Templates (`delivery.qoder.type: forward`), so the
+# roster is wired with template ids on the remote side. Qoder requires all
+# members of a coordinator to use the SAME delivery type as the coordinator.
+#
+# Phase 1 rules enforced at plan time:
+# - members must be declared in this file (logical names only)
+# - no self reference, no nesting, no direct or indirect cycles
+# - at most 20 members per coordinator
+# - Forward Template sync/export is NOT supported; only Managed Agents export
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  researcher:
+    description: "Gathers information from the codebase"
+    model: ultimate
+    instructions: |
+      You are a research agent. Your job is to gather relevant information
+      from the codebase when asked. Use glob and grep to find files, then
+      read them to extract the needed context.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch]
+    delivery:
+      qoder:
+        type: forward
+
+  writer:
+    description: "Writes documentation and summaries"
+    model: ultimate
+    instructions: |
+      You are a technical writer. Given research findings, produce clear
+      and concise documentation, summaries, or reports.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]
+    delivery:
+      qoder:
+        type: forward
+
+  lead:
+    description: "Coordinates researcher and writer to complete tasks"
+    model: ultimate
+    instructions: |
+      You are the lead agent coordinating a team:
+      - researcher: can search code and the web for information
+      - writer: can produce documentation from findings
+
+      Break tasks into research and writing phases. Delegate to the
+      appropriate agent and synthesize their outputs.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]
+    delivery:
+      qoder:
+        type: forward
+    multiagent:
+      type: coordinator
+      agents: [researcher, writer]

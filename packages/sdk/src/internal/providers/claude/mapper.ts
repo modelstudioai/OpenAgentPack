@@ -1,4 +1,5 @@
 import { UserError } from "../../errors.ts";
+import { reverseMultiagentDecl } from "../../multiagent/reverse-index.ts";
 import type {
 	AgentDecl,
 	CredentialDecl,
@@ -6,6 +7,7 @@ import type {
 	EnvironmentDecl,
 	InitialEventDecl,
 	ModelSpec,
+	MultiagentMemberDecl,
 } from "../../types/config.ts";
 import type { SessionEventType } from "../../types/dto.ts";
 import type { ManagedSessionBindings } from "../../types/session.ts";
@@ -119,11 +121,13 @@ export function envToDecl(raw: Record<string, unknown>): Record<string, unknown>
 }
 
 /** Reverse-map a remote agent into an AgentDecl-shaped object for agents.yaml. */
-export function agentToDecl(raw: Record<string, unknown>): Record<string, unknown> {
+export function agentToDecl(
+	raw: Record<string, unknown>,
+	resolveMember?: (memberId: string) => MultiagentMemberDecl,
+): Record<string, unknown> {
 	const tools = raw.tools as Array<Record<string, unknown>> | undefined;
 	const mcpServers = raw.mcp_servers as Array<Record<string, unknown>> | undefined;
 	const skills = raw.skills as Array<Record<string, unknown>> | undefined;
-	const multiagent = raw.multiagent as Record<string, unknown> | undefined;
 
 	// Reverse-map tools: extract builtin names from agent_toolset_20260401 configs
 	let builtinTools: string[] | undefined;
@@ -167,12 +171,6 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 		}));
 	}
 
-	// Reverse-map multiagent
-	let multiagentDecl: Record<string, unknown> | undefined;
-	if (multiagent && (multiagent.agents as string[] | undefined)?.length) {
-		multiagentDecl = { type: "coordinator", agents: multiagent.agents };
-	}
-
 	// Resolve tools declaration
 	let toolsDecl: Record<string, unknown> | undefined;
 	if (builtinTools?.length) {
@@ -191,7 +189,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 		tools: toolsDecl,
 		mcp_servers: mcpServerDecls,
 		skills: skillDecls,
-		multiagent: multiagentDecl,
+		multiagent: reverseMultiagentDecl(raw.multiagent, resolveMember),
 		metadata: stripAgentsMetadata(raw.metadata),
 	}) as Record<string, unknown>;
 }
@@ -293,10 +291,10 @@ export function mapAgent(
 	}
 
 	// Multiagent
-	if (decl.multiagent && refs.multiagent_agent_ids?.length) {
+	if (decl.multiagent && refs.multiagent) {
 		body.multiagent = {
 			type: "coordinator",
-			agents: refs.multiagent_agent_ids,
+			agents: refs.multiagent.members.map((member) => member.remote_id),
 		};
 	}
 

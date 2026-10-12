@@ -161,5 +161,10 @@ export interface DriftReadAdapter {
 		name: string,
 		decl?: unknown,
 	): Promise<ComparableRemoteResource | null>;
-	normalizeDesiredResource?(type: ResourceType, name: string, decl: unknown): unknown | null;
+	normalizeDesiredResource?(
+		type: ResourceType,
+		name: string,
+		decl: unknown,
+		refs?: ResolvedAgentRefs | ResolvedTemplateRefs,
+	): unknown | null;
 }

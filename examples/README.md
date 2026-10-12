@@ -14,6 +14,7 @@ examples/
 │   ├── with-files/              upload local files (Files API)
 │   ├── with-vault/              vault
 │   ├── bailian-cli/             Bailian CLI integration
+│   ├── multiagent/              coordinator multi-agent (Managed Agents)
 │   ├── deployment/              schedule + file resources (emulated -> Session on run)
 │   └── full/                    dev + staging dual-environment full stack
 ├── claude/                      Claude provider
@@ -35,6 +36,8 @@ examples/
 │   ├── github-session/          private GitHub repository mounted into each Session
 │   ├── vault-only/              vault-only project
 │   ├── multi-provider/          same agent on both Claude + Qoder
+│   ├── multiagent/              coordinator multi-agent (Managed Agents)
+│   ├── multiagent-forward/      coordinator multi-agent (Forward Templates)
 │   ├── deployment/              schedule + memory_store (native)
 │   ├── bailian-cli/             Bailian CLI integration
 │   └── full/                    Qoder full-feature stack
@@ -64,7 +67,7 @@ extensions, and live-test commands.
 | Agent | native | native | native | native | Core managed-agent resource. |
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
 | Memory Store | unsupported | native | native | native | Qoder, Claude (beta), and Volcengine Ark. |
-| Multi-Agent | unsupported | unsupported | native | native | Claude and Volcengine Ark support coordinator. |
+| Multi-Agent | native | native | native | native | All four providers support the coordinator topology. |
 | Deployment | native | native | native | emulated | Bailian, Qoder, and Claude schedule server-side; Ark expands into a session at `run` time. |
 | Session | native | native | native | native | All four support runtime sessions. |
 | GitHub Session resource | unsupported | native | native | unsupported | Qoder and Claude clone and mount repositories at Session creation. |

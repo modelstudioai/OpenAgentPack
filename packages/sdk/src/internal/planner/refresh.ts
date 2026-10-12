@@ -6,6 +6,7 @@ import { emitRuntimeFeedback, type RuntimeFeedbackSink } from "../types/runtime-
 import type { ResourceState } from "../types/state.ts";
 import { addressKey } from "../types/state.ts";
 import { contentHash } from "../utils/hash.ts";
+import { resolveComparableRefs } from "./comparable.ts";
 import { getResourceDeclaration } from "./declaration.ts";
 import { diffChangedPaths } from "./plan-semantics.ts";
 
@@ -81,7 +82,12 @@ export async function refreshState(
 
 				const remoteHash = contentHash(remote.comparable);
 				const desiredComparable = decl
-					? provider.normalizeDesiredResource(res.address.type, res.address.name, decl)
+					? provider.normalizeDesiredResource(
+							res.address.type,
+							res.address.name,
+							decl,
+							resolveComparableRefs(res.address, options.config, state),
+						)
 					: null;
 				const desiredComparableHash = desiredComparable === null ? undefined : contentHash(desiredComparable);
 				// Resources created before full drift support have no comparable baseline.

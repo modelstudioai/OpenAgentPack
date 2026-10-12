@@ -1,0 +1,69 @@
+# Qoder Managed multi-agent example: a coordinator that delegates to
+# researcher, writer, and an existing external reviewer. Locally declared
+# agents materialize as Managed Agents (`delivery` omitted — the default).
+# Replace `agent_external_reviewer` with an Agent id accessible to your account
+# before applying this example against Qoder Cloud.
+#
+# Phase 1 rules enforced at plan time:
+# - logical-name members must be declared in this file; external ids are non-owned
+# - no self reference, no nesting, no direct or indirect cycles
+# - at most 20 members per coordinator
+version: "1"
+
+providers:
+  qoder:
+    api_key: ${QODER_PAT}
+    gateway: "https://api.qoder.com/api/v1/cloud"
+
+defaults:
+  provider: qoder
+
+environments:
+  dev:
+    config:
+      type: cloud
+      networking:
+        type: unrestricted
+
+agents:
+  researcher:
+    description: "Gathers information from the codebase"
+    model: ultimate
+    instructions: |
+      You are a research agent. Your job is to gather relevant information
+      from the codebase when asked. Use glob and grep to find files, then
+      read them to extract the needed context.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep, WebSearch]
+
+  writer:
+    description: "Writes documentation and summaries"
+    model: ultimate
+    instructions: |
+      You are a technical writer. Given research findings, produce clear
+      and concise documentation, summaries, or reports.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]
+
+  lead:
+    description: "Coordinates local agents and an external reviewer"
+    model: ultimate
+    instructions: |
+      You are the lead agent coordinating a team:
+      - researcher: can search code and the web for information
+      - writer: can produce documentation from findings
+      - external reviewer: can independently review the proposed result
+
+      Break tasks into research, writing, and review phases. Delegate to the
+      appropriate agents and synthesize their outputs.
+    environment: dev
+    tools:
+      builtin: [Read, Glob, Grep]
+    multiagent:
+      type: coordinator
+      agents:
+        - researcher
+        - writer
+        - agent_id: agent_external_reviewer

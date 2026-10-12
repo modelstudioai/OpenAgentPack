@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BaseApiClient } from "../../src/internal/providers/base-client.ts";
+import { agentToDecl } from "../../src/internal/providers/qoder/mapper.ts";
 import {
 	buildSessionInfo,
 	type ExportMappers,
@@ -151,6 +152,13 @@ const idMappers: ExportMappers = {
 	skillToDecl: (r, name) => ({ kind: "skill", id: r.id, name }),
 };
 
+// Real qoder mapper so the agent branch test exercises the full shared.ts →
+// reverse-index → mapper pipeline, not a stub of it.
+const agentMappers: ExportMappers = {
+	...idMappers,
+	agentToDecl,
+};
+
 describe("exportRemoteResources", () => {
 	test("file branch tolerates file_id (qoder) and id (claude/bailian)", async () => {
 		const c = new ExportStub();
@@ -198,5 +206,102 @@ describe("exportRemoteResources", () => {
 	test("unsupported type returns empty", async () => {
 		const c = new ExportStub();
 		expect(await exportRemoteResources(c, "memory_store", idMappers)).toEqual([]);
+	});
+
+	test("agent branch exports logical names and keeps archived agents out of the listing", async () => {
+		const c = new ExportStub();
+		c.pagedByPath = {
+			"/agents": [
+				{
+					id: "lead-1",
+					name: "Lead Agent",
+					archived_at: null,
+					metadata: { "agents.project": "proj", "agents.resource": "lead" },
+					multiagent: { type: "coordinator", agents: [{ type: "agent", id: "writer-1" }] },
+				},
+				{
+					id: "writer-1",
+					name: "Writer",
+					archived_at: null,
+					metadata: { "agents.project": "proj", "agents.resource": "writer" },
+				},
+				{
+					id: "ghost-1",
+					name: "Ghost",
+					archived_at: "2026-01-01T00:00:00Z",
+					metadata: { "agents.project": "proj", "agents.resource": "ghost" },
+				},
+			],
+		};
+		const out = await exportRemoteResources(c, "agent", agentMappers, "proj");
+		expect(out.map((o) => o.name)).toEqual(["lead", "writer"]);
+		const lead = out[0]!.decl as { multiagent?: { agents: string[] } };
+		expect(lead.multiagent?.agents).toEqual(["writer"]);
+	});
+
+	test("agent branch fails closed on archived roster members", async () => {
+		const c = new ExportStub();
+		c.pagedByPath = {
+			"/agents": [
+				{
+					id: "lead-1",
+					name: "Lead",
+					archived_at: null,
+					metadata: { "agents.project": "proj", "agents.resource": "lead" },
+					multiagent: { type: "coordinator", agents: [{ type: "agent", id: "arch-1" }] },
+				},
+				{
+					id: "arch-1",
+					name: "Arch",
+					archived_at: "2026-01-01T00:00:00Z",
+					metadata: { "agents.project": "proj", "agents.resource": "arch" },
+				},
+			],
+		};
+		await expect(exportRemoteResources(c, "agent", agentMappers, "proj")).rejects.toThrow(
+			/sync\.multiagent\.member\.archived/,
+		);
+	});
+
+	test("agent branch exports roster members owned by another project as external references", async () => {
+		const c = new ExportStub();
+		c.pagedByPath = {
+			"/agents": [
+				{
+					id: "lead-1",
+					name: "Lead",
+					archived_at: null,
+					metadata: { "agents.project": "proj", "agents.resource": "lead" },
+					multiagent: { type: "coordinator", agents: [{ type: "agent", id: "foreign-1" }] },
+				},
+				{
+					id: "foreign-1",
+					name: "Foreign",
+					archived_at: null,
+					metadata: { "agents.project": "other", "agents.resource": "foreign" },
+				},
+			],
+		};
+		const out = await exportRemoteResources(c, "agent", agentMappers, "proj");
+		const lead = out[0]!.decl as { multiagent?: { agents: Array<{ agent_id: string }> } };
+		expect(lead.multiagent?.agents).toEqual([{ agent_id: "foreign-1" }]);
+	});
+
+	test("agent branch fails closed on roster members missing from the listing", async () => {
+		const c = new ExportStub();
+		c.pagedByPath = {
+			"/agents": [
+				{
+					id: "lead-1",
+					name: "Lead",
+					archived_at: null,
+					metadata: { "agents.project": "proj", "agents.resource": "lead" },
+					multiagent: { type: "coordinator", agents: [{ type: "agent", id: "missing-1" }] },
+				},
+			],
+		};
+		await expect(exportRemoteResources(c, "agent", agentMappers, "proj")).rejects.toThrow(
+			/sync\.multiagent\.member\.unresolved/,
+		);
 	});
 });

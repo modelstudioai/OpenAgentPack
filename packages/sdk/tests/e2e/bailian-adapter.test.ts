@@ -356,6 +356,32 @@ describe("BailianAdapter e2e", () => {
 			expect(result.version).toBe(1);
 		});
 
+		test("createAgent preserves opt-in web and artifact builtin tools", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: AGENT_RESPONSE }]);
+			cleanup = restore;
+			await makeAdapter().createAgent(
+				"helper",
+				{
+					model: "qwen3.7-max",
+					instructions: "Use requested tools.",
+					tools: { builtin: ["bash", "web_search", "web_fetch", "mark_artifacts"] },
+				},
+				{ skill_ids: [] },
+			);
+			const body = calls[0]!.body as Record<string, unknown>;
+			const tools = body.tools as Array<{ type: string; default_config: unknown; configs: unknown }>;
+			expect(tools[0]).toEqual({
+				type: "builtin_toolkit",
+				default_config: { enabled: false },
+				configs: [
+					{ name: "bash", enabled: true },
+					{ name: "web_search", enabled: true },
+					{ name: "web_fetch", enabled: true },
+					{ name: "mark_artifacts", enabled: true },
+				],
+			});
+		});
+
 		test("createAgent uses explicit external skill version without fetching versions", async () => {
 			const externalRefs: ResolvedAgentRefs = {
 				skill_ids: [{ type: "official", skill_id: "pptx", version: "1.0" }],

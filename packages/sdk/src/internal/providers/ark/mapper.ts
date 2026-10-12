@@ -1,4 +1,5 @@
 import { UserError } from "../../errors.ts";
+import { reverseMultiagentDecl } from "../../multiagent/reverse-index.ts";
 import type {
 	AgentDecl,
 	CredentialDecl,
@@ -6,6 +7,7 @@ import type {
 	EnvironmentDecl,
 	MemoryStoreDecl,
 	ModelSpec,
+	MultiagentMemberDecl,
 } from "../../types/config.ts";
 import type { SessionEventType } from "../../types/dto.ts";
 import type { ManagedSessionBindings } from "../../types/session.ts";
@@ -106,11 +108,13 @@ export function envToDecl(raw: Record<string, unknown>): Record<string, unknown>
 	}) as Record<string, unknown>;
 }
 
-export function agentToDecl(raw: Record<string, unknown>): Record<string, unknown> {
+export function agentToDecl(
+	raw: Record<string, unknown>,
+	resolveMember?: (memberId: string) => MultiagentMemberDecl,
+): Record<string, unknown> {
 	const tools = raw.tools as Array<Record<string, unknown>> | undefined;
 	const mcpServers = raw.mcp_servers as Array<Record<string, unknown>> | undefined;
 	const skills = raw.skills as Array<Record<string, unknown>> | undefined;
-	const multiagent = raw.multiagent as Record<string, unknown> | undefined;
 
 	let builtinTools: string[] | undefined;
 	let builtinPermissions: Record<string, "allow" | "ask"> | undefined;
@@ -150,17 +154,6 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 		}));
 	}
 
-	let multiagentDecl: Record<string, unknown> | undefined;
-	if (multiagent) {
-		// Ark returns `agents` as AgentRef objects (`{type:"agent", id}`); normalize back
-		// to id strings for the agents decl. Tolerate a bare-string array defensively.
-		const rawAgents = multiagent.agents as Array<Record<string, unknown> | string> | undefined;
-		if (rawAgents?.length) {
-			const ids = rawAgents.map((a) => (typeof a === "string" ? a : (a.id as string))).filter(Boolean);
-			if (ids.length) multiagentDecl = { type: "coordinator", agents: ids };
-		}
-	}
-
 	let toolsDecl: Record<string, unknown> | undefined;
 	if (builtinTools?.length) {
 		toolsDecl = { builtin: builtinTools, permissions: builtinPermissions };
@@ -178,7 +171,7 @@ export function agentToDecl(raw: Record<string, unknown>): Record<string, unknow
 		tools: toolsDecl,
 		mcp_servers: mcpServerDecls,
 		skills: skillDecls,
-		multiagent: multiagentDecl,
+		multiagent: reverseMultiagentDecl(raw.multiagent, resolveMember),
 		metadata: stripAgentsMetadata(raw.metadata),
 	}) as Record<string, unknown>;
 }
@@ -285,12 +278,12 @@ export function mapAgent(
 	}
 
 	// Multiagent
-	if (decl.multiagent && refs.multiagent_agent_ids?.length) {
+	if (decl.multiagent && refs.multiagent) {
 		// Ark's `multiagent.agents` requires `AgentRef` objects (`{type:"agent", id}`),
 		// not a bare id string array (bare strings → 400 "Mismatch type agent.AgentRef").
 		body.multiagent = {
 			type: "coordinator",
-			agents: refs.multiagent_agent_ids.map((id) => ({ type: "agent", id })),
+			agents: refs.multiagent.members.map(({ remote_id }) => ({ type: "agent", id: remote_id })),
 		};
 	}
 

@@ -219,10 +219,26 @@ const toolsSchema = z
 		}
 	});
 
-const multiagentSchema = z.object({
-	type: z.literal("coordinator"),
-	agents: z.array(z.string()),
-});
+const multiagentSchema = z
+	.object({
+		type: z.literal("coordinator"),
+		agents: z.array(z.union([z.string().min(1), z.object({ agent_id: z.string().trim().min(1) })])).min(1),
+	})
+	.superRefine((multiagent, ctx) => {
+		const seen = new Set<string>();
+		for (const [index, member] of multiagent.agents.entries()) {
+			const key = typeof member === "string" ? `logical:${member}` : `external:${member.agent_id}`;
+			if (seen.has(key)) {
+				const label = typeof member === "string" ? member : member.agent_id;
+				ctx.addIssue({
+					code: "custom",
+					path: ["agents", index],
+					message: `duplicates member '${label}'`,
+				});
+			}
+			seen.add(key);
+		}
+	});
 
 const agentSkillRefSchema = z
 	.object({

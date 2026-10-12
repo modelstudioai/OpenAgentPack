@@ -33,7 +33,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 | Agent | native | native | native | native | 核心资源 |
 | MCP Server | native | native | native | native | 通过 Agent 的 MCP 配置挂载 |
 | Memory Store | unsupported | native | native | native | Qoder、Claude（beta）、方舟均已接入 |
-| Multi-Agent | unsupported | unsupported | native | native | Claude 与 火山方舟 支持 coordinator |
+| Multi-Agent | native | native | native | native | 四家 Provider 均支持 coordinator 拓扑 |
 | Deployment | native | native | native | emulated | 百炼、Qoder 和 Claude 使用原生 Deployment；火山方舟在 `run` 时展开为 Session |
 | Session | native | native | native | native | 四者均原生支持 |
 
@@ -59,8 +59,8 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 
 #### Provider 特有实现与限制
 
-- **百炼**：Skill 通过 Files API 上传并支持扫描状态轮询；Agent 更新会生成平台侧版本；官方 MCP Server 按名称引用；Deployment 为原生资源，支持服务端 cron 调度、手动触发和暂停/恢复。
-- **Qoder**：配置中的小写工具名会转换为 PascalCase；Session 发送返回游标，可恢复事件消费；Deployment 为原生资源，支持手动或定时运行。
+- **百炼**：Skill 通过 Files API 上传并支持扫描状态轮询；Agent 更新会生成平台侧版本；官方 MCP Server 按名称引用；Deployment 为原生资源，支持服务端 cron 调度、手动触发和暂停/恢复。Multi-Agent 成员并行执行并共享 Coordinator 的文件系统；成员名单省略版本号，由子 Thread 首次创建时解析最新成员并在 Thread 生命周期内固定。
+- **Qoder**：配置中的小写工具名会转换为 PascalCase；Session 发送返回游标，可恢复事件消费；Deployment 为原生资源，支持手动或定时运行。Multi-Agent Coordinator 在两种交付模式下均可用——Managed Agent 按 `id` 引用成员，Forward Template 按 `template_id` 引用，且成员必须与 Coordinator 使用相同交付类型。
 - **Claude**：Deployment 是原生资源，具有服务端生命周期；当前只有 Claude Adapter 会在 `sync` 时下载远端 Skill 包。
 - **火山方舟**：经本项目验证的 Skill API 行为仅支持创建、按 ID 查询和挂载。更新会重新上传，无法枚举和原地更新，删除为 best-effort；Deployment 由 Session 模拟。
 
@@ -131,10 +131,6 @@ Claude 的 drift detection 接口路径已预留；本仓库中的 live baseline
 bailian.memory_store.unsupported:
   no memory store primitive on Bailian
   use skill knowledge or MCP for persistent context
-
-qoder.multiagent.unsupported:
-  no multiagent primitive on Qoder.
-  deploy agents independently and orchestrate via MCP
 ```
 
 ### 模拟（emulated）资源的能力降级
