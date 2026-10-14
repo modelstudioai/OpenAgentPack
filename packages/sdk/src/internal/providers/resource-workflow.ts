@@ -43,6 +43,8 @@ import type {
  */
 export interface ResourceCrudAdapter {
 	readonly name: string;
+	/** False disables name-only lookups and conflict adoption for this resource kind. */
+	supportsResourceNameLookup?(type: ResourceType): boolean;
 
 	findResource(
 		type: ResourceType,
@@ -93,6 +95,7 @@ export interface ResourceCrudAdapter {
 	// implement these. The registry validates the matrix↔method match; unsupported
 	// providers omit them entirely (no throw-stubs).
 	createMemoryStore?(name: string, decl: MemoryStoreDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	getMemoryStore?(id: string, mode?: ProviderResourceMode): Promise<MemoryStoreInfo>;
 	deleteMemoryStore?(id: string, mode?: ProviderResourceMode): Promise<void>;
 	updateMemoryStore?(id: string, input: UpdateMemoryStoreInput, mode?: ProviderResourceMode): Promise<MemoryStoreInfo>;
 	createMemory?(storeId: string, input: CreateMemoryInput, mode?: ProviderResourceMode): Promise<MemoryInfo>;

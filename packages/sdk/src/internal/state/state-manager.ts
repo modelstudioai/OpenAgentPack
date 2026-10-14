@@ -17,6 +17,7 @@ export class StateManager implements IStateManager {
 	private state: StateFile;
 	private path: string;
 	private index: Map<string, number>;
+	private pendingSave: Promise<void> = Promise.resolve();
 
 	private constructor(state: StateFile, path: string) {
 		this.state = state;
@@ -41,6 +42,7 @@ export class StateManager implements IStateManager {
 				remote_id: r.remote_id as string | null,
 				externally_managed: r.externally_managed === true ? true : undefined,
 				api_mode: r.api_mode === "forward" ? "forward" : r.api_mode === "managed" ? "managed" : undefined,
+				memory_initialization: r.memory_initialization as ResourceState["memory_initialization"],
 				version: r.version as number | undefined,
 				content_hash: ((r.content_hash ?? r.desired_hash) as string) ?? "",
 				desired_hash: ((r.desired_hash ?? r.content_hash) as string) ?? "",
@@ -118,10 +120,17 @@ export class StateManager implements IStateManager {
 	}
 
 	async save(): Promise<void> {
+		const snapshot = `${JSON.stringify(this.state, null, 2)}\n`;
+		const pending = this.pendingSave.catch(() => {}).then(() => this.writeSnapshot(snapshot));
+		this.pendingSave = pending;
+		await pending;
+	}
+
+	private async writeSnapshot(snapshot: string): Promise<void> {
 		await mkdir(dirname(this.path), { recursive: true });
 		const tmpPath = `${this.path}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
 		try {
-			await writeFile(tmpPath, `${JSON.stringify(this.state, null, 2)}\n`);
+			await writeFile(tmpPath, snapshot);
 			await rename(tmpPath, this.path);
 		} catch (error) {
 			await unlink(tmpPath).catch(() => {});

@@ -151,8 +151,14 @@ export function buildDependencyGraph(config: ProjectConfig, targetProviders: str
 					}
 				}
 
-				if (decl.memory_stores) {
-					for (const msName of decl.memory_stores) {
+				const memoryStoreNames = [
+					...(decl.memory_stores ?? []),
+					...(decl.resources ?? []).flatMap((resource) =>
+						resource.type === "memory_store" ? [resource.memory_store] : [],
+					),
+				];
+				if (memoryStoreNames.length) {
+					for (const msName of memoryStoreNames) {
 						const msAddr: ResourceAddress = {
 							type: "memory_store",
 							name: msName,

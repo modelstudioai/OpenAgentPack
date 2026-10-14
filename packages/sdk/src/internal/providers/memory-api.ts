@@ -2,6 +2,7 @@ import type {
 	BatchCreateMemoryInput,
 	BatchCreateMemoryResult,
 	CreateMemoryInput,
+	MemoryDeleteResult,
 	MemoryInfo,
 	MemoryListItem,
 	MemoryListOptions,
@@ -29,6 +30,11 @@ export interface MemoryApiDialect {
 	supportsPathUpdate?: boolean;
 	supportsDeletePrecondition: boolean;
 	supportsIncludeArchived: boolean;
+	/** Keep the provider's resource fields and native pagination envelope intact. */
+	preserveRawResponse?: boolean;
+	/** Some APIs support view only on list endpoints. */
+	supportsSingleView?: boolean;
+	supportsVersionFilters?: boolean;
 }
 
 function query(path: string, values: Record<string, unknown>): string {
@@ -135,19 +141,35 @@ export class ProviderMemoryApi {
 		private readonly dialect: MemoryApiDialect,
 	) {}
 
+	private response<T>(raw: unknown, map: (item: Record<string, unknown>) => T): T {
+		return this.dialect.preserveRawResponse ? (raw as T) : map(raw as Record<string, unknown>);
+	}
+
+	private responsePage<T>(raw: unknown, map: (item: Record<string, unknown>) => T): MemoryPage<T> {
+		return this.dialect.preserveRawResponse ? (raw as MemoryPage<T>) : page(raw, map);
+	}
+
+	private resourcePath(storeId: string, segment?: string, resourceId?: string): string {
+		return `/memory_stores/${encodeURIComponent(storeId)}${segment ? `/${segment}` : ""}${resourceId !== undefined ? `/${encodeURIComponent(resourceId)}` : ""}`;
+	}
+
+	private singleView(): string {
+		return this.dialect.supportsView && this.dialect.supportsSingleView !== false ? "?view=full" : "";
+	}
+
 	async listStores(options: MemoryStoreListOptions = {}): Promise<MemoryPage<MemoryStoreInfo>> {
 		const raw = await this.client.get(
 			query("/memory_stores", {
 				limit: options.limit,
-				[this.dialect.cursorParam]: options.cursor,
+				[this.dialect.cursorParam]: options.page ?? options.cursor,
 				include_archived: this.dialect.supportsIncludeArchived ? options.include_archived : undefined,
 			}),
 		);
-		return page(raw, mapMemoryStore);
+		return this.responsePage(raw, mapMemoryStore);
 	}
 
 	async getStore(id: string): Promise<MemoryStoreInfo> {
-		return mapMemoryStore((await this.client.get(`/memory_stores/${id}`)) as Record<string, unknown>);
+		return this.response(await this.client.get(this.resourcePath(id)), mapMemoryStore);
 	}
 
 	async updateStore(id: string, input: UpdateMemoryStoreInput): Promise<MemoryStoreInfo> {
@@ -162,11 +184,14 @@ export class ProviderMemoryApi {
 				},
 			};
 		}
-		return mapMemoryStore((await this.client.post(`/memory_stores/${id}`, body)) as Record<string, unknown>);
+		return this.response(await this.client.post(this.resourcePath(id), body), mapMemoryStore);
 	}
 
 	async archiveStore(id: string): Promise<MemoryStoreInfo> {
-		return mapMemoryStore((await this.client.post(`/memory_stores/${id}/archive`, {})) as Record<string, unknown>);
+		return this.response(
+			await this.client.post(`${this.resourcePath(id)}/archive`, this.dialect.preserveRawResponse ? undefined : {}),
+			mapMemoryStore,
+		);
 	}
 
 	async createMemory(storeId: string, input: CreateMemoryInput): Promise<MemoryInfo> {
@@ -175,29 +200,32 @@ export class ProviderMemoryApi {
 			content: input.content,
 			...(this.dialect.supportsMemoryMetadata && input.metadata ? { metadata: input.metadata } : {}),
 		};
-		return mapMemory((await this.client.post(`/memory_stores/${storeId}/memories`, body)) as Record<string, unknown>);
+		return this.response(await this.client.post(this.resourcePath(storeId, "memories"), body), mapMemory);
 	}
 
 	async listMemories(storeId: string, options: MemoryListOptions = {}): Promise<MemoryPage<MemoryListItem>> {
 		const raw = await this.client.get(
-			query(`/memory_stores/${storeId}/memories`, {
+			query(this.resourcePath(storeId, "memories"), {
 				limit: options.limit,
-				[this.dialect.cursorParam]: options.cursor,
-				[this.dialect.prefixParam]: options.prefix ? providerPath(options.prefix, this.dialect.pathStyle) : undefined,
+				[this.dialect.cursorParam]: options.page ?? options.cursor,
+				[this.dialect.prefixParam]:
+					(options.path_prefix ?? options.prefix) !== undefined
+						? providerPath(options.path_prefix ?? options.prefix ?? "", this.dialect.pathStyle)
+						: undefined,
 				depth: options.depth,
 				view: this.dialect.supportsView ? options.view : undefined,
 			}),
 		);
-		return page(raw, mapMemoryListItem);
+		return this.responsePage(raw, mapMemoryListItem);
 	}
 
 	async getMemory(storeId: string, memoryId: string): Promise<MemoryInfo> {
-		const path = `/memory_stores/${storeId}/memories/${memoryId}${this.dialect.supportsView ? "?view=full" : ""}`;
-		return mapMemory((await this.client.get(path)) as Record<string, unknown>);
+		const path = `${this.resourcePath(storeId, "memories", memoryId)}${this.singleView()}`;
+		return this.response(await this.client.get(path), mapMemory);
 	}
 
 	async updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput): Promise<MemoryInfo> {
-		const { expected_content_sha256, ...values } = input;
+		const { expected_content_sha256, precondition, ...values } = input;
 		const body: Record<string, unknown> = {
 			...(values.content !== undefined ? { content: values.content } : {}),
 			...(this.dialect.supportsMemoryMetadata && values.metadata ? { metadata: values.metadata } : {}),
@@ -205,55 +233,60 @@ export class ProviderMemoryApi {
 				? { path: providerPath(values.path, this.dialect.pathStyle) }
 				: {}),
 		};
-		if (expected_content_sha256 && this.dialect.updatePrecondition !== "none") {
+		if (precondition && this.dialect.updatePrecondition === "precondition") body.precondition = precondition;
+		else if (expected_content_sha256 && this.dialect.updatePrecondition !== "none") {
 			if (this.dialect.updatePrecondition === "precondition") {
 				body.precondition = { type: "content_sha256", content_sha256: expected_content_sha256 };
 			} else {
 				body[this.dialect.updatePrecondition] = expected_content_sha256;
 			}
 		}
-		const path = `/memory_stores/${storeId}/memories/${memoryId}${this.dialect.supportsView ? "?view=full" : ""}`;
+		const path = `${this.resourcePath(storeId, "memories", memoryId)}${this.singleView()}`;
 		const raw = await this.client.post(path, body);
-		return mapMemory(raw as Record<string, unknown>);
+		return this.response(raw, mapMemory);
 	}
 
-	async deleteMemory(storeId: string, memoryId: string, expected?: string): Promise<void> {
-		await this.client.delete(
-			query(`/memory_stores/${storeId}/memories/${memoryId}`, {
-				expected_content_sha256: this.dialect.supportsDeletePrecondition ? expected : undefined,
-			}),
-		);
+	// biome-ignore lint/suspicious/noConfusingVoidType: Preserve the legacy void result for providers with empty DELETE responses.
+	async deleteMemory(storeId: string, memoryId: string, expected?: string): Promise<MemoryDeleteResult | void> {
+		const path = query(this.resourcePath(storeId, "memories", memoryId), {
+			expected_content_sha256: this.dialect.supportsDeletePrecondition ? expected : undefined,
+		});
+		if (this.dialect.preserveRawResponse) return (await this.client.deleteJson(path)) as MemoryDeleteResult;
+		await this.client.delete(path);
 	}
 
 	async listVersions(storeId: string, options: MemoryVersionListOptions = {}): Promise<MemoryPage<MemoryVersionInfo>> {
 		const segment = this.dialect.versionsSegment ?? "memory_versions";
 		const raw = await this.client.get(
-			query(`/memory_stores/${storeId}/${segment}`, {
+			query(this.resourcePath(storeId, segment), {
 				limit: options.limit,
-				[this.dialect.cursorParam]: options.cursor,
+				[this.dialect.cursorParam]: options.page ?? options.cursor,
 				memory_id: options.memory_id,
+				operation: this.dialect.supportsVersionFilters ? options.operation : undefined,
+				"created_at.gte": this.dialect.supportsVersionFilters ? options["created_at.gte"] : undefined,
+				"created_at.lte": this.dialect.supportsVersionFilters ? options["created_at.lte"] : undefined,
 				view: this.dialect.supportsView ? options.view : undefined,
 			}),
 		);
-		return page(raw, mapMemoryVersion);
+		return this.responsePage(raw, mapMemoryVersion);
 	}
 
 	async getVersion(storeId: string, versionId: string): Promise<MemoryVersionInfo> {
 		const segment = this.dialect.versionsSegment ?? "memory_versions";
-		return mapMemoryVersion(
-			(await this.client.get(
-				`/memory_stores/${storeId}/${segment}/${versionId}${this.dialect.supportsView ? "?view=full" : ""}`,
-			)) as Record<string, unknown>,
+		return this.response(
+			await this.client.get(`${this.resourcePath(storeId, segment, versionId)}${this.singleView()}`),
+			mapMemoryVersion,
 		);
 	}
 
 	async redactVersion(storeId: string, versionId: string): Promise<MemoryVersionInfo> {
 		const segment = this.dialect.versionsSegment ?? "memory_versions";
-		return mapMemoryVersion(
-			(await this.client.post(`/memory_stores/${storeId}/${segment}/${versionId}/redact`, {})) as Record<
-				string,
-				unknown
-			>,
+		return this.response(
+			await this.client.post(
+				`${this.resourcePath(storeId, segment, versionId)}/redact`,
+				this.dialect.preserveRawResponse ? undefined : {},
+			),
+			mapMemoryVersion,
 		);
 	}
 

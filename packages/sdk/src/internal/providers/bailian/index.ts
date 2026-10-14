@@ -7,7 +7,7 @@ registerProvider({
 	name: "bailian",
 	configSchema: bailianConfigSchema,
 	capabilities: BAILIAN_CAPABILITIES,
-	features: { tool_permissions: false, session_resources: [] },
+	features: { tool_permissions: false, session_resources: ["memory_store"] },
 	createAdapter: (config, projectName) => {
 		const c = config as BailianConfig;
 		return new BailianAdapter(c.api_key, c.workspace_id, c.base_url, projectName);

@@ -93,9 +93,11 @@ const memoryEntrySchema = z.object({
 });
 
 const memoryStoreSchema = z.object({
+	name: z.string().min(1).max(255).optional(),
 	description: z.string(),
 	provider: z.string().optional(),
-	metadata: z.record(z.string(), z.string()).optional(),
+	metadata: z.record(z.string(), z.unknown()).optional(),
+	entries_mode: z.enum(["initialize", "sync"]).optional(),
 	entries: z.array(memoryEntrySchema).optional(),
 });
 
@@ -282,6 +284,22 @@ const sessionGithubRepoResourceSchema = z.object({
 	authorization_token: z.string().min(1),
 });
 
+const sessionMemoryStoreResourceSchema = z
+	.object({
+		type: z.literal("memory_store"),
+		memory_store: z.string().min(1),
+		access: z.enum(["read_write", "read_only"]).optional(),
+		instructions: z.string().max(4096).optional(),
+	})
+	.strict();
+
+const sessionResourceSchema = z.discriminatedUnion("type", [
+	sessionGithubRepoResourceSchema,
+	sessionMemoryStoreResourceSchema,
+]);
+
+export const sessionResourcesSchema = z.array(sessionResourceSchema);
+
 const agentSchema = z.object({
 	name: z.string().optional(),
 	description: z.string().optional(),
@@ -303,7 +321,7 @@ const agentSchema = z.object({
 			delete_on_destroy: z.boolean().optional().default(false),
 		})
 		.optional(),
-	resources: z.array(sessionGithubRepoResourceSchema).optional(),
+	resources: sessionResourcesSchema.optional(),
 	multiagent: multiagentSchema.optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
 	environment_variables: z.record(z.string().min(1), z.string()).optional(),
@@ -330,13 +348,6 @@ const deploymentFileResourceSchema = z.object({
 	mount_path: z.string().optional(),
 });
 
-const deploymentMemoryStoreResourceSchema = z.object({
-	type: z.literal("memory_store"),
-	memory_store: z.string(),
-	access: z.enum(["read_write", "read_only"]).optional(),
-	instructions: z.string().optional(),
-});
-
 const deploymentGithubRepoResourceSchema = z.object({
 	type: z.literal("github_repository"),
 	url: z.string(),
@@ -347,7 +358,7 @@ const deploymentGithubRepoResourceSchema = z.object({
 
 const deploymentResourceSchema = z.discriminatedUnion("type", [
 	deploymentFileResourceSchema,
-	deploymentMemoryStoreResourceSchema,
+	sessionMemoryStoreResourceSchema,
 	deploymentGithubRepoResourceSchema,
 ]);
 

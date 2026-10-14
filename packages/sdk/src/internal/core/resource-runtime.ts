@@ -2,10 +2,11 @@ import { UserError } from "../errors.ts";
 import { type ExecutionResult, executePlan } from "../executor/executor.ts";
 import { buildDependencyGraph, collectDependencyClosure } from "../graph/dependency.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
-import { buildReadinessBaseline } from "../planner/plan-semantics.ts";
+import { buildReadinessBaseline, diffChangedPaths } from "../planner/plan-semantics.ts";
 import { buildPlan } from "../planner/planner.ts";
 import { type RefreshResult, refreshState } from "../planner/refresh.ts";
 import { readComparableIfSupported } from "../providers/drift-support.ts";
+import type { IStateManager } from "../state/state-manager.ts";
 import type { ExecutionPlan, PlannedAction } from "../types/plan.ts";
 import type { RuntimeFeedbackSink } from "../types/runtime-feedback.ts";
 import type { ResourceAddress, ResourceState, ResourceType } from "../types/state.ts";
@@ -126,10 +127,34 @@ export async function importResource(
 			`Invalid resource type: ${address.type}. Valid types: ${[...IMPORTABLE_RESOURCE_TYPES].join(", ")}`,
 		);
 	}
-	if (ctx.state.getResource(address)) {
+	const memoryImport = address.provider === "bailian" && address.type === "memory_store";
+	const existing = ctx.state.getResource(address);
+	if (existing && !(memoryImport && !existing.remote_id)) {
 		throw new UserError(
 			`Resource ${address.provider}.${address.type}.${address.name} already exists in state. Remove it before re-importing.`,
 		);
+	}
+	if (memoryImport) {
+		if (!remoteId.trim()) throw new UserError("Memory Store ID must not be empty. / 记忆库 ID 不能为空。");
+		const duplicate = ctx.state
+			.listResources()
+			.find(
+				(resource) =>
+					resource.address.provider === address.provider &&
+					resource.address.type === "memory_store" &&
+					resource.remote_id === remoteId,
+			);
+		if (duplicate) {
+			throw new UserError(
+				`Memory Store '${remoteId}' is already bound to '${addressKey(duplicate.address)}'. / 记忆库已绑定到其他 State 地址。`,
+			);
+		}
+		const provider = ctx.providers.get(address.provider);
+		if (!provider?.getMemoryStore) throw new UserError("Bailian Memory Store API is not configured.");
+		const store = await provider.getMemoryStore(remoteId);
+		if (store.archived_at || store.status === "archived") {
+			throw new UserError(`Cannot import archived Memory Store '${remoteId}'. / 无法导入已归档的记忆库。`);
+		}
 	}
 
 	const planned = await planProjectContext(ctx, {
@@ -157,16 +182,22 @@ export async function importResource(
 	// comparable and report a one-time phantom "Remote drift detected" — most
 	// visibly for external-reference environments OpenCMA never configured.
 	const provider = ctx.providers.get(address.provider);
-	const remote = provider
-		? await readComparableIfSupported(
-				provider,
-				address.type,
-				remoteId,
-				address.name,
-				getResourceDeclaration(address, ctx.config) ?? undefined,
-			)
-		: null;
+	const declaration = getResourceDeclaration(address, ctx.config) ?? undefined;
+	const remote =
+		memoryImport && provider?.readComparableResource
+			? await provider.readComparableResource(address.type, remoteId, address.name, declaration)
+			: provider
+				? await readComparableIfSupported(provider, address.type, remoteId, address.name, declaration)
+				: null;
 	const remoteHash = remote ? stableContentHash(remote.comparable) : undefined;
+	if (memoryImport && !remote) {
+		throw new UserError(`Memory Store '${remoteId}' is unavailable for import. / 记忆库当前不可导入。`);
+	}
+	const desiredComparable = memoryImport
+		? provider?.normalizeDesiredResource?.(address.type, address.name, declaration)
+		: undefined;
+	const desiredComparableHash = desiredComparable != null ? stableContentHash(desiredComparable) : remoteHash;
+	const memoryDrift = memoryImport && remoteHash !== undefined && desiredComparableHash !== remoteHash;
 
 	const resource: ResourceState = {
 		address,
@@ -176,11 +207,12 @@ export async function importResource(
 		version: options.resourceVersion ?? remote?.version,
 		content_hash: contentHash,
 		desired_hash: contentHash,
-		desired_comparable_hash: remoteHash,
+		desired_comparable_hash: memoryImport ? desiredComparableHash : remoteHash,
 		desired_readiness_baseline: buildReadinessBaseline(getResourceDeclaration(address, ctx.config)),
 		remote_hash: remoteHash,
 		remote_snapshot: remote ? (remote.snapshot ?? remote.comparable) : undefined,
-		drift_status: remoteHash ? "in_sync" : undefined,
+		drift_status: memoryDrift ? "drifted" : remoteHash ? "in_sync" : undefined,
+		...(memoryDrift && remote ? { drift_paths: diffChangedPaths(desiredComparable, remote.comparable) } : {}),
 	};
 	ctx.state.setResource(resource);
 	await ctx.state.save();
@@ -217,7 +249,7 @@ export async function planProjectContext(
 		resourceAddresses: selectedAddresses,
 	});
 	if (options.mode === "create-only" && options.scope) {
-		plan = enforceCreateOnlyPlan(plan, options.scope, toResourceRefreshResult(refreshResult));
+		plan = enforceCreateOnlyPlan(plan, options.scope, toResourceRefreshResult(refreshResult), ctx.state);
 	}
 
 	return {
@@ -235,6 +267,7 @@ function enforceCreateOnlyPlan(
 	plan: ExecutionPlan,
 	scope: ResourcePlanScope,
 	refreshResult: ResourceRefreshResult | undefined,
+	state: IStateManager,
 ): ExecutionPlan {
 	const reasons: string[] = [];
 	const rootKeys = new Set(scope.roots.map(addressKey));
@@ -250,7 +283,14 @@ function enforceCreateOnlyPlan(
 		const rootAction = plan.actions.find((action) => addressKey(action.address) === rootKey);
 		if (!rootAction) {
 			reasons.push(`Scoped plan did not contain target resource ${rootKey}.`);
-		} else if (rootAction.action !== "create") {
+		} else if (
+			rootAction.action !== "create" &&
+			!(
+				root.type === "memory_store" &&
+				rootAction.action === "update" &&
+				state.getResource(root)?.memory_initialization
+			)
+		) {
 			reasons.push(`Target resource ${rootKey} must be new, but the scoped plan requires '${rootAction.action}'.`);
 		}
 	}

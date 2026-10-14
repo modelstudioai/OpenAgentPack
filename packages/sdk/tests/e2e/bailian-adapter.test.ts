@@ -191,8 +191,78 @@ describe("BailianAdapter e2e", () => {
 		});
 
 		test("returns null for unmapped resource types", async () => {
-			const result = await makeAdapter().findResource("memory_store", "any");
+			const result = await makeAdapter().findResource("channel", "any");
 			expect(result).toBeNull();
+		});
+
+		test.each([undefined, null, ""])("does not look up a memory store by name when id is %p", async (storeId) => {
+			const { calls, restore } = mockFetch([
+				{
+					status: 200,
+					body: {
+						data: [
+							{ id: "memstore_first", type: "memory_store", name: "notes" },
+							{ id: "memstore_second", type: "memory_store", name: "notes" },
+						],
+					},
+				},
+			]);
+			cleanup = restore;
+			const adapter = makeAdapter();
+			const result =
+				storeId === undefined
+					? await adapter.findResource("memory_store", "notes")
+					: await adapter.findResource("memory_store", "notes", storeId);
+
+			expect(result).toBeNull();
+			expect(calls).toHaveLength(0);
+		});
+
+		test("looks up the exact memory store id without requesting a same-name list", async () => {
+			const { calls, restore } = mockFetch([
+				{ status: 200, body: { id: "memstore_selected", type: "memory_store", name: "notes", archived_at: null } },
+				{
+					status: 200,
+					body: { data: [{ id: "memstore_first", type: "memory_store", name: "notes" }] },
+				},
+			]);
+			cleanup = restore;
+
+			const result = await makeAdapter().findResource("memory_store", "notes", "memstore_selected");
+
+			expect(result?.id).toBe("memstore_selected");
+			expect(calls).toEqual([{ url: `${BASE}/memory_stores/memstore_selected`, method: "GET" }]);
+		});
+
+		test("does not fall back to a same-name memory store when the selected id returns 404", async () => {
+			const { calls, restore } = mockFetch([
+				{ status: 404, body: { error: "not found" } },
+				{
+					status: 200,
+					body: { data: [{ id: "memstore_same_name", type: "memory_store", name: "notes" }] },
+				},
+			]);
+			cleanup = restore;
+
+			const result = await makeAdapter().findResource("memory_store", "notes", "memstore_missing");
+
+			expect(result).toBeNull();
+			expect(calls).toEqual([{ url: `${BASE}/memory_stores/memstore_missing`, method: "GET" }]);
+		});
+
+		test("treats an archived memory store id as absent from the managed lifecycle", async () => {
+			const { calls, restore } = mockFetch([
+				{
+					status: 200,
+					body: { id: "memstore_archived", type: "memory_store", name: "notes", archived_at: "2026-10-13T00:00:00Z" },
+				},
+			]);
+			cleanup = restore;
+
+			const result = await makeAdapter().findResource("memory_store", "notes", "memstore_archived");
+
+			expect(result).toBeNull();
+			expect(calls).toEqual([{ url: `${BASE}/memory_stores/memstore_archived`, method: "GET" }]);
 		});
 
 		test("verifies by id via the detail endpoint when id is provided", async () => {
@@ -1440,13 +1510,13 @@ describe("BailianAdapter e2e", () => {
 		});
 	});
 
-	// ---- Unsupported operations ----
+	// ---- Memory operations ----
 
-	describe("Unsupported operations", () => {
-		test("memory_store methods are omitted (not stubbed)", () => {
+	describe("Memory operations", () => {
+		test("exposes native memory_store lifecycle methods", () => {
 			const adapter = makeAdapter() as unknown as Record<string, unknown>;
-			expect(typeof adapter.createMemoryStore).not.toBe("function");
-			expect(typeof adapter.deleteMemoryStore).not.toBe("function");
+			expect(typeof adapter.createMemoryStore).toBe("function");
+			expect(typeof adapter.deleteMemoryStore).toBe("function");
 		});
 	});
 

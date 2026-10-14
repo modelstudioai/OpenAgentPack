@@ -726,6 +726,7 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 	for (const f of bindings.files ?? [])
 		resources.push({ type: "file", file_id: f.file_id, mount_path: resolveSandboxMountPath("qoder", f.mount_path) });
 	for (const resource of bindings.resources ?? []) {
+		if (resource.type !== "github_repository") continue;
 		resources.push(
 			mapGithubRepositorySessionResource(resource, {
 				mapMountPath: (item) => resolveGithubRepositoryMountPath("qoder", item),

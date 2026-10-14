@@ -41,6 +41,7 @@ import type {
 	BatchCreateMemoryInput,
 	BatchCreateMemoryResult,
 	CreateMemoryInput,
+	MemoryDeleteResult,
 	MemoryInfo,
 	MemoryListItem,
 	MemoryListOptions,
@@ -210,11 +211,14 @@ export interface ProviderAdapter {
 	readonly memoryCapabilities?: MemoryProviderCapabilities;
 
 	validate(): Promise<void>;
+	/** False for resource kinds whose non-unique names cannot identify an existing remote resource. */
+	supportsResourceNameLookup?(type: ResourceType): boolean;
 	/**
 	 * Locate a remote resource. When `id` is provided, the resource is verified
 	 * precisely via its detail endpoint (`GET /{endpoint}/{id}`), which avoids the
 	 * ambiguity of name matching when names are not unique. Without `id`, falls
-	 * back to listing and matching by `name` (used by conflict adoption).
+	 * back to listing and matching by `name` (used by conflict adoption), unless
+	 * supportsResourceNameLookup returns false for that resource kind.
 	 */
 	findResource(
 		type: ResourceType,
@@ -354,7 +358,8 @@ export interface ProviderAdapter {
 		input: UpdateMemoryInput,
 		mode?: ProviderResourceMode,
 	): Promise<MemoryInfo>;
-	deleteMemory?(storeId: string, memoryId: string, expectedContentSha256?: string): Promise<void>;
+	// biome-ignore lint/suspicious/noConfusingVoidType: Preserve legacy providers returning void alongside native receipts.
+	deleteMemory?(storeId: string, memoryId: string, expectedContentSha256?: string): Promise<MemoryDeleteResult | void>;
 	listMemoryVersions?(storeId: string, options?: MemoryVersionListOptions): Promise<MemoryPage<MemoryVersionInfo>>;
 	getMemoryVersion?(storeId: string, versionId: string): Promise<MemoryVersionInfo>;
 	redactMemoryVersion?(storeId: string, versionId: string): Promise<MemoryVersionInfo>;

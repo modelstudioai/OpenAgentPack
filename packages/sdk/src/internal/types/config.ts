@@ -129,9 +129,12 @@ export interface CredentialDecl {
 // --- Memory Store ---
 
 export interface MemoryStoreDecl {
+	name?: string;
 	description: string;
 	provider?: ProviderName;
-	metadata?: Record<string, string>;
+	metadata?: Record<string, unknown>;
+	/** Initialize entries only on creation by default; sync explicitly keeps declared paths managed. */
+	entries_mode?: "initialize" | "sync";
 	entries?: MemoryEntryDecl[];
 }
 
@@ -309,7 +312,15 @@ export interface SessionGithubRepoResourceDecl extends Omit<DeploymentGithubRepo
 	authorization_token: string;
 }
 
-export type SessionResourceDecl = SessionGithubRepoResourceDecl;
+export type SessionResourceDecl = SessionGithubRepoResourceDecl | SessionMemoryStoreResourceDecl;
+
+export interface SessionMemoryStoreResourceDecl {
+	type: "memory_store";
+	/** Logical key in the project's memory_stores group. */
+	memory_store: string;
+	access?: "read_write" | "read_only";
+	instructions?: string;
+}
 
 export interface DeploymentFileResource {
 	type: "file";
@@ -318,12 +329,7 @@ export interface DeploymentFileResource {
 	mount_path?: string;
 }
 
-export interface DeploymentMemoryStoreResource {
-	type: "memory_store";
-	memory_store: string;
-	access?: "read_write" | "read_only";
-	instructions?: string;
-}
+export type DeploymentMemoryStoreResource = SessionMemoryStoreResourceDecl;
 
 export interface DeploymentGithubRepoResource {
 	type: "github_repository";

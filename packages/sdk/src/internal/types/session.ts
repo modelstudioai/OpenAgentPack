@@ -13,7 +13,24 @@ export interface SessionGithubRepositoryResource {
 	authorization_token: string;
 }
 
-export type SessionResource = SessionGithubRepositoryResource;
+export interface SessionMemoryStoreResource {
+	type: "memory_store";
+	memory_store_id: string;
+	access?: "read_write" | "read_only";
+	instructions?: string;
+}
+
+export type SessionResource = SessionGithubRepositoryResource | SessionMemoryStoreResource;
+
+/** Provider response resource, including server-assigned sandbox mount paths. */
+export interface SessionResourceInfo extends Record<string, unknown> {
+	type: string;
+	mount_path?: string;
+	memory_store_id?: string;
+	access?: "read_write" | "read_only";
+	instructions?: string;
+	file_id?: string;
+}
 
 interface CommonSessionBindings {
 	/** Uploaded files to mount in the session sandbox. */
@@ -58,6 +75,7 @@ export interface ProviderSessionInfo {
 	title?: string;
 	vault_ids: string[];
 	memory_store_ids: string[];
+	resources?: SessionResourceInfo[];
 	created_at: string;
 	updated_at: string;
 	attributes: Record<string, unknown>;

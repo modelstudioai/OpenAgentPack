@@ -355,8 +355,21 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 			mount_path: resolveSandboxMountPath("bailian", f.mount_path),
 		});
 	}
+	const memoryResources = new Map<string, Record<string, unknown>>();
+	for (const storeId of bindings.memory_store_ids) {
+		memoryResources.set(storeId, { type: "memory_store", memory_store_id: storeId, access: "read_write" });
+	}
+	for (const resource of bindings.resources ?? []) {
+		if (resource.type !== "memory_store") continue;
+		memoryResources.set(resource.memory_store_id, {
+			type: "memory_store",
+			memory_store_id: resource.memory_store_id,
+			...(resource.access !== undefined ? { access: resource.access } : {}),
+			...(resource.instructions !== undefined ? { instructions: resource.instructions } : {}),
+		});
+	}
+	resources.push(...memoryResources.values());
 	if (resources.length) body.resources = resources;
-	if (bindings.memory_store_ids.length) body.memory_store_ids = bindings.memory_store_ids;
 
 	return body;
 }

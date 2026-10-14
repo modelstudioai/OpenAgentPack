@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { loadConfig } from "../../src/internal/parser/index.ts";
 import { buildPlan } from "../../src/internal/planner/planner.ts";
+import type { ProjectConfig } from "../../src/internal/types/config.ts";
 import type { StateFile } from "../../src/internal/types/state.ts";
 import "../../src/internal/providers/claude/index.ts";
 import "../../src/internal/providers/qoder/index.ts";
@@ -12,6 +13,92 @@ const FIXTURES = resolve(import.meta.dir, "../fixtures");
 const emptyState: StateFile = {
 	resources: [],
 };
+
+const memoryConfig: ProjectConfig = {
+	version: "1",
+	providers: { qoder: {} },
+	defaults: { provider: "qoder" },
+	memory_stores: { notes: { description: "Project notes" } },
+};
+
+async function matchingMemoryState(remoteId: string | null, projectConfig = memoryConfig): Promise<StateFile> {
+	const initialPlan = await buildPlan(projectConfig, emptyState);
+	const initialAction = initialPlan.actions.find((action) => action.address.type === "memory_store")!;
+	const { content_hash } = initialAction.after as { content_hash: string };
+	return {
+		resources: [{ address: initialAction.address, remote_id: remoteId, content_hash }],
+	};
+}
+
+test.each([
+	null,
+	"",
+])("plans memory store creation when remote ID is %p even if the config hash matches", async (remoteId) => {
+	const plan = await buildPlan(memoryConfig, await matchingMemoryState(remoteId));
+	expect(plan.actions).toHaveLength(1);
+	expect(plan.actions[0]?.action).toBe("create");
+	expect(plan.actions[0]?.address).toEqual({ provider: "qoder", type: "memory_store", name: "notes" });
+});
+
+test("keeps a memory store with a recorded remote ID unchanged when the config hash matches", async () => {
+	const plan = await buildPlan(memoryConfig, await matchingMemoryState("memstore_tracked"));
+	expect(plan.actions).toHaveLength(1);
+	expect(plan.actions[0]?.action).toBe("no-op");
+});
+
+test.each([
+	{ entries: [{ key: "seed.md", content: "Edited initial content" }] },
+	{ entries: [{ key: "another.md", content: "Added initial content" }] },
+	{ entries: [] },
+	{ entries: undefined },
+])("does not update an existing store when initialization entries alone change to %p", async (entryChange) => {
+	const originalConfig: ProjectConfig = {
+		...memoryConfig,
+		memory_stores: {
+			notes: { description: "Project notes", entries: [{ key: "seed.md", content: "Initial content" }] },
+		},
+	};
+	const state = await matchingMemoryState("memstore_tracked", originalConfig);
+	const nextConfig: ProjectConfig = {
+		...originalConfig,
+		memory_stores: { notes: { ...originalConfig.memory_stores!.notes!, ...entryChange } },
+	};
+	const plan = await buildPlan(nextConfig, state);
+	expect(plan.actions).toHaveLength(1);
+	expect(plan.actions[0]?.action).toBe("no-op");
+});
+
+test("explicit initialize mode is equivalent to the omitted default", async () => {
+	const state = await matchingMemoryState("memstore_tracked");
+	const config: ProjectConfig = {
+		...memoryConfig,
+		memory_stores: { notes: { ...memoryConfig.memory_stores!.notes!, entries_mode: "initialize" } },
+	};
+	const plan = await buildPlan(config, state);
+	expect(plan.actions[0]?.action).toBe("no-op");
+});
+
+test("plans an update when explicitly synchronized entry content changes", async () => {
+	const originalConfig: ProjectConfig = {
+		...memoryConfig,
+		memory_stores: {
+			notes: {
+				description: "Project notes",
+				entries_mode: "sync",
+				entries: [{ key: "seed.md", content: "Old content" }],
+			},
+		},
+	};
+	const state = await matchingMemoryState("memstore_tracked", originalConfig);
+	const nextConfig: ProjectConfig = {
+		...originalConfig,
+		memory_stores: {
+			notes: { ...originalConfig.memory_stores!.notes!, entries: [{ key: "seed.md", content: "New content" }] },
+		},
+	};
+	const plan = await buildPlan(nextConfig, state);
+	expect(plan.actions[0]?.action).toBe("update");
+});
 
 test("creates actions for all resources from empty state", async () => {
 	const { config } = await loadConfig(resolve(FIXTURES, "minimal.yaml"));
@@ -97,9 +184,7 @@ test("diagnoses Bailian MCP servers without matching tool config", async () => {
 	});
 });
 
-test("emits no action for a kind whose provider capability tier is unsupported", async () => {
-	// bailian marks memory_store unsupported in its capability matrix; the graph must
-	// filter it so no create action reaches the executor's throw-guarded switch.
+test("plans native Bailian Memory Store creation without unsupported diagnostics", async () => {
 	const plan = await buildPlan(
 		{
 			version: "1",
@@ -112,11 +197,33 @@ test("emits no action for a kind whose provider capability tier is unsupported",
 		emptyState,
 	);
 
-	expect(plan.actions.some((a) => a.address.type === "memory_store")).toBe(false);
+	expect(plan.actions).toContainEqual(
+		expect.objectContaining({
+			action: "create",
+			address: { type: "memory_store", name: "notes", provider: "bailian" },
+		}),
+	);
+	expect(plan.diagnostics.some((diagnostic) => diagnostic.code === "bailian.memory_store.unsupported")).toBe(false);
+});
+
+test("emits no action for a kind whose provider capability tier is unsupported", async () => {
+	const plan = await buildPlan(
+		{
+			version: "1",
+			providers: { bailian: {} },
+			defaults: { provider: "bailian" },
+			identities: {
+				user: { external_id: "user_456", name: "Test user" },
+			},
+		},
+		emptyState,
+	);
+
+	expect(plan.actions.some((action) => action.address.type === "identity")).toBe(false);
 	expect(plan.diagnostics).toContainEqual(
 		expect.objectContaining({
-			code: "bailian.memory_store.unsupported",
-			resource: { type: "memory_store", name: "notes", provider: "bailian" },
+			code: "bailian.identity.unsupported",
+			resource: { type: "identity", name: "user", provider: "bailian" },
 		}),
 	);
 });
