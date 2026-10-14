@@ -297,8 +297,8 @@ export interface DeploymentDecl {
 	description?: string;
 	provider?: ProviderName;
 	metadata?: Record<string, string>;
-	/** Qoder-only deployment-level variables copied into each created session. */
-	environment_variables?: string;
+	/** Variables copied into Deployment sessions: Bailian string maps or Qoder's existing string format. */
+	environment_variables?: string | Record<string, string>;
 }
 
 export type DeploymentResourceDecl =

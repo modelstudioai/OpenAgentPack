@@ -381,6 +381,24 @@ const scheduleSchema = z.object({
 	timezone: z.string(),
 });
 
+// Check reserved keys before z.record can discard them from its parsed result.
+const deploymentEnvironmentVariablesSchema = z
+	.unknown()
+	.superRefine((environmentVariables, context) => {
+		if (
+			environmentVariables !== null &&
+			typeof environmentVariables === "object" &&
+			Object.hasOwn(environmentVariables, "__proto__")
+		) {
+			context.addIssue({
+				code: "custom",
+				message:
+					"Deployment environment_variables does not support the reserved key '__proto__' / Deployment environment_variables 不支持保留键 '__proto__'。",
+			});
+		}
+	})
+	.pipe(z.union([z.string(), z.record(z.string(), z.string())]));
+
 const deploymentSchema = z.object({
 	name: z.string().optional(),
 	agent: z.string(),
@@ -395,7 +413,7 @@ const deploymentSchema = z.object({
 	description: z.string().optional(),
 	provider: z.string().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
-	environment_variables: z.string().optional(),
+	environment_variables: deploymentEnvironmentVariablesSchema.optional(),
 });
 
 export const projectConfigSchema = z.object({

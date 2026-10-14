@@ -3383,6 +3383,9 @@ export interface components {
 					[key: string]: unknown;
 				};
 				environment_id?: string | null;
+				environment_variables?: {
+					[key: string]: string;
+				};
 				created_at?: string;
 				updated_at?: string;
 				metadata?: {

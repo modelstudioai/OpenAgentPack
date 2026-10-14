@@ -81,6 +81,7 @@ import type {
 } from "../../types/webhook.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { sha256 } from "../../utils/hash.ts";
+import { isDeploymentEnvironmentVariableMap } from "../../validation/deployment-environment.ts";
 import { toRemoteResource } from "../base-client.ts";
 import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
@@ -1287,6 +1288,9 @@ function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
 	return {
 		id: (res.id as string | undefined) ?? null,
 		status: (res.status as string) ?? "unknown",
+		...(isDeploymentEnvironmentVariableMap(res.environment_variables)
+			? { environment_variables: res.environment_variables }
+			: {}),
 		paused_reason: (res.paused_reason as DeploymentInfo["paused_reason"] | null | undefined) ?? undefined,
 		schedule: schedule
 			? {
@@ -1299,11 +1303,21 @@ function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
 }
 
 export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo {
-	return buildSessionInfo(res, (session) =>
+	const sessionInfo = buildSessionInfo(res, (session) =>
 		((session.resources ?? []) as Array<Record<string, unknown>>)
 			.filter((resource) => resource.type === "memory_store" && typeof resource.memory_store_id === "string")
 			.map((resource) => resource.memory_store_id as string),
 	);
+	const environmentVariables = res.environment_variables;
+	if (
+		environmentVariables !== null &&
+		typeof environmentVariables === "object" &&
+		!Array.isArray(environmentVariables) &&
+		Object.values(environmentVariables).every((value) => typeof value === "string")
+	) {
+		sessionInfo.environment_variables = environmentVariables as Record<string, string>;
+	}
+	return sessionInfo;
 }
 
 // Raw Bailian `/skills` item → neutral ProviderSkillInfo. Kept provider-local (not the

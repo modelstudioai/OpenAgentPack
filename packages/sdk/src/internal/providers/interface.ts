@@ -178,6 +178,8 @@ export interface DeploymentRunResult {
 export interface DeploymentInfo {
 	id: string | null;
 	status: string;
+	/** Deployment variables echoed as a string map by Bailian. */
+	environment_variables?: Record<string, string>;
 	paused_reason?: { type: string; error?: { type: string } };
 	schedule?: { expression: string; timezone?: string };
 	attributes?: Record<string, unknown>;

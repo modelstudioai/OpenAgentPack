@@ -719,6 +719,51 @@ describe("BailianAdapter e2e", () => {
 	// ---- Session CRUD ----
 
 	describe("Session CRUD", () => {
+		test.each([{ FEATURE_FLAG: "on", COMPLEX_VALUE: "alpha=beta;中文", EMPTY_VALUE: "" }, {}] satisfies Record<
+			string,
+			string
+		>[])("createSession sends environment variables as an exact JSON object %j", async (environmentVariables) => {
+			const response = { ...SESSION_RESPONSE, environment_variables: environmentVariables };
+			const { calls, restore } = mockFetch([{ status: 200, body: response }]);
+			cleanup = restore;
+			const result = await makeAdapter().createSession({
+				agent_id: "agent_01HKDPNVR8YZ7VBHKPK9CYNVTA",
+				environment_id: "env_xxx",
+				vault_ids: [],
+				memory_store_ids: [],
+				environment_variables: environmentVariables,
+			});
+			expect(calls).toEqual([
+				{
+					url: `${BASE}/sessions`,
+					method: "POST",
+					body: {
+						agent: "agent_01HKDPNVR8YZ7VBHKPK9CYNVTA",
+						environment_id: "env_xxx",
+						environment_variables: environmentVariables,
+					},
+				},
+			]);
+			expect(result.environment_variables).toEqual(environmentVariables);
+			expect(result.attributes).toEqual(response);
+		});
+
+		test("createSession omits environment variables when not supplied", async () => {
+			const { calls, restore } = mockFetch([{ status: 200, body: SESSION_RESPONSE }]);
+			cleanup = restore;
+			const result = await makeAdapter().createSession({
+				agent_id: "agent_01HKDPNVR8YZ7VBHKPK9CYNVTA",
+				environment_id: "env_xxx",
+				vault_ids: [],
+				memory_store_ids: [],
+			});
+			expect(calls[0]?.body).toEqual({
+				agent: "agent_01HKDPNVR8YZ7VBHKPK9CYNVTA",
+				environment_id: "env_xxx",
+			});
+			expect(result).not.toHaveProperty("environment_variables");
+		});
+
 		test("createSession sends correct body", async () => {
 			const { calls, restore } = mockFetch([{ status: 200, body: SESSION_RESPONSE }]);
 			cleanup = restore;

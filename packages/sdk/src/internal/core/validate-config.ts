@@ -12,6 +12,7 @@ import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
+import { getDeploymentEnvironmentVariablesIssue } from "../validation/deployment-environment.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 
 export interface ValidateProjectConfigOptions {
@@ -659,6 +660,18 @@ export function collectProviderCapabilities(
 			}
 		}
 
+		for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+			if (deployment.provider && deployment.provider !== providerName) continue;
+			const issue = getDeploymentEnvironmentVariablesIssue(providerName, deployment.environment_variables);
+			if (issue) {
+				diagnostics.error(
+					`${providerName}.deployment.environment_variables.${issue.kind}`,
+					`deployment.${name}: ${issue.message}`,
+					{ type: "deployment", name, provider: providerName },
+				);
+			}
+		}
+
 		if (providerName !== "qoder") {
 			for (const [name, env] of Object.entries(config.environments ?? {})) {
 				// External references are never sent to the provider API, so a
@@ -698,14 +711,6 @@ export function collectProviderCapabilities(
 			}
 			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
 				if (deployment.provider && deployment.provider !== providerName) continue;
-				if (deployment.environment_variables !== undefined) {
-					diagnostics.error(
-						`${providerName}.deployment.environment_variables.unsupported`,
-						`deployment.${name}: environment_variables is supported only by Qoder deployments; ` +
-							`remove it or pin this deployment to the qoder provider.`,
-						{ type: "deployment", name, provider: providerName },
-					);
-				}
 				if (deployment.tunnel && (!deployment.provider || deployment.provider === providerName)) {
 					diagnostics.error(
 						`${providerName}.deployment.tunnel.unsupported`,

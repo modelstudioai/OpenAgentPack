@@ -39,7 +39,7 @@ export interface SessionCreateOptions {
 	title?: string;
 	provider?: string;
 	metadata?: Record<string, string>;
-	/** Session-level environment variables. Currently supported by Qoder. */
+	/** Session-level environment variables. Supported by Bailian and Qoder. */
 	environmentVariables?: Record<string, string>;
 }
 
@@ -90,9 +90,17 @@ export function buildSessionBindings(
 		parseSessionResources(sessionResources.filter((resource) => resource.type === "memory_store"));
 	}
 	const sessionFiles = resolveSessionFiles(agentName, agent, provider, state, options.files ?? []);
+	// Agent defaults remain Qoder-only; Bailian variables must be supplied for this Session.
+	if (options.environmentVariables === undefined && agent.environment_variables !== undefined && provider !== "qoder") {
+		throw new UserError(
+			"Agent environment_variables defaults are supported only by Qoder; pass explicit Session environmentVariables instead. / Agent 的 environment_variables 默认值仅支持 Qoder；请在创建 Session 时显式传入环境变量。",
+		);
+	}
 	const environmentVariables = options.environmentVariables ?? agent.environment_variables;
-	if (environmentVariables && provider !== "qoder") {
-		throw new UserError("Session environment variables are supported only by Qoder.");
+	if (environmentVariables && provider !== "qoder" && provider !== "bailian") {
+		throw new UserError(
+			"Session environment variables are supported only by Bailian and Qoder / 会话环境变量仅支持百炼和 Qoder。",
+		);
 	}
 	const providerFeatures = getProvider(provider)?.features;
 	for (const resource of sessionResources ?? []) {

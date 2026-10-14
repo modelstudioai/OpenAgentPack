@@ -546,6 +546,7 @@ deployments:
     vaults: [ <string> ]
     memory_stores: [ <string> ]
     resources: [ DeploymentResource ]
+    environment_variables: { <key>: <string> } # optional; Bailian string map
     initial_events: [ InitialEvent ]  # 1..50
     schedule: { expression: <cron>, timezone: <tz> }
     description: <string>
@@ -554,6 +555,8 @@ deployments:
 ```
 
 `initial_events` is a discriminated union; `schedule.expression` must be a 5-field cron expression.
+
+For Bailian, `environment_variables` is a map of string keys and string values, such as `{ REPORT_REGION: "cn-hangzhou", FEATURE_ENABLED: "true" }`. The reserved map key `__proto__` is not supported. These variables are available by name in the deployment-run sandbox. Changes are reconciled by `plan`/`apply`; removing the field or declaring `{}` sends an empty map on the next update to clear the deployment variables. For Qoder, the field retains its existing string format, such as `"REPORT_REGION=cn-hangzhou;FEATURE_ENABLED=true"`. Claude and Ark do not support this field.
 
 > **Deployment `tunnel` caveat:** Qoder's deployment API does not accept `tunnel_id`, so the tunnel is dropped from the deployment payload and server-side runs execute without it (`validate`/`plan` emits a warning). Use sessions for private-network MCP access; see [Use BYOC environments](../guides/use-byoc-environments.md).
 

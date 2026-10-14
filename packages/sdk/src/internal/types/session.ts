@@ -39,7 +39,7 @@ interface CommonSessionBindings {
 	resources?: SessionResource[];
 	title?: string;
 	metadata?: Record<string, string>;
-	/** Provider-neutral representation; Qoder maps it to each Session API's wire shape. */
+	/** Provider-neutral representation; supported providers map it to their Session API's wire shape. */
 	environment_variables?: Record<string, string>;
 }
 
@@ -73,6 +73,8 @@ export interface ProviderSessionInfo {
 	tunnel_id?: string;
 	status: string;
 	title?: string;
+	/** Session sandbox environment variables echoed by supported providers. */
+	environment_variables?: Record<string, string>;
 	vault_ids: string[];
 	memory_store_ids: string[];
 	resources?: SessionResourceInfo[];
