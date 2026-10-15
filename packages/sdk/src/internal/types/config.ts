@@ -264,7 +264,8 @@ export interface AgentMcpToolkitDecl {
 	type: "mcp_toolkit";
 	mcp_server_name: string;
 	default_config?: { enabled: boolean };
-	configs: Array<{ name: string; enabled: boolean }>;
+	/** Per-tool overrides; omitted or empty uses default_config for every tool. */
+	configs?: Array<{ name: string; enabled: boolean }>;
 }
 
 export interface McpServerDecl {

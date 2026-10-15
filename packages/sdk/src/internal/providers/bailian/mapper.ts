@@ -303,7 +303,7 @@ export function mapAgent(
 				// AgentStudio REST validates snake_case.
 				mcp_server_name: s.name,
 				default_config: mcpTool.default_config ?? { enabled: false },
-				configs: mcpTool.configs,
+				configs: mcpTool.configs ?? [],
 			});
 		}
 	}

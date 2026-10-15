@@ -177,7 +177,7 @@ const mcpToolkitSchema = z
 		mcpServerName: z.string().optional(),
 		default_config: toolDefaultConfigSchema.optional(),
 		defaultConfig: toolDefaultConfigSchema.optional(),
-		configs: z.array(toolEnabledSchema).min(1),
+		configs: z.array(toolEnabledSchema).default([]),
 	})
 	.refine((t) => t.mcp_server_name !== undefined || t.mcpServerName !== undefined, {
 		message: "Either mcp_server_name or mcpServerName is required",

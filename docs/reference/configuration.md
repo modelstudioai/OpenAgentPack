@@ -523,8 +523,14 @@ Mount roots are provider invariants: Qoder uses `/data`, Claude uses `/workspace
 
 ### MCP toolkit (`tools.mcp[]`)
 
+`configs` is optional. On Bailian, omit it (or use `configs: []`) to apply
+`default_config.enabled` to every tool in the server. Set it to `true` to enable
+all tools without listing tool names. If `default_config` is also omitted, the
+default remains `false`. Use `configs` only for per-tool overrides:
+
 ```yaml
 tools:
+  builtin: [read]
   mcp:
     - type: mcp_toolkit
       mcp_server_name: WebSearch      # mcpServerName also accepted
