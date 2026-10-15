@@ -6,7 +6,7 @@ OpenAgentPack publishes `@openagentpack/sdk`, `@openagentpack/playground`, and `
 
 An organization owner must allow GitHub Actions to create pull requests in the organization Actions settings; then enable the matching option in **Repository Settings → Actions → General**. The Release PR workflow uses the repository `GITHUB_TOKEN`, not a personal token.
 
-Create a GitHub Environment named `npm-release`. Add required reviewers so a maintainer must approve every npm publish job. Do not store an npm token in this environment. GitHub may expose reviewer protection only after the repository is public or on a qualifying private-repository plan.
+No approval Environment is required. The publish job does not reference any GitHub `environment:`, so there is no manual reviewer gate. Publishing is still protected by the Trusted Publisher settings on npmjs.com and the `NPM_RELEASE_ENABLED` kill switch.
 
 On npmjs.com, open the settings for each of the three packages and configure the same Trusted Publisher:
 
@@ -16,11 +16,12 @@ On npmjs.com, open the settings for each of the three packages and configure the
 | Organization | `modelstudioai` |
 | Repository | `OpenAgentPack` |
 | Workflow filename | `release.yml` |
-| Environment | `npm-release` |
+
+Leave the Environment field empty in the Trusted Publisher settings; the workflow job no longer references an environment.
 
 The workflow uses a GitHub-hosted runner, Node.js 24, npm 12, `id-token: write`, and provenance. No `NPM_TOKEN` or `NODE_AUTH_TOKEN` is required. The packages must already exist before npm lets you add a Trusted Publisher.
 
-Only after the Trusted Publishers and Environment reviewers are ready, create the repository Actions variable `NPM_RELEASE_ENABLED` with value `true`. Its absence is a kill switch: publish jobs are skipped even if somebody manually dispatches the workflow.
+Only after the Trusted Publishers are ready, create the repository Actions variable `NPM_RELEASE_ENABLED` with value `true`. Its absence is a kill switch: publish jobs are skipped even if somebody manually dispatches the workflow.
 
 ## Changes required in every feature PR
 
@@ -30,17 +31,17 @@ Add a changeset whenever a user-visible package change is made:
 bun run changeset
 ```
 
-Choose the SemVer impact and describe the change for the generated changelog. Once merged, the **Release PR** workflow creates or updates a stable version PR on `main`. Only merging that Release PR starts stable publishing, which still waits for approval on the `npm-release` Environment.
+Choose the SemVer impact and describe the change for the generated changelog. Once merged, the **Release PR** workflow creates or updates a stable version PR on `main`. Only merging that Release PR starts stable publishing.
 
 ## Publish a beta
 
 1. In GitHub, open **Actions → Publish npm → Run workflow**.
 2. Select the exact branch to publish, choose `beta`, type `PUBLISH`, and run it.
-3. Approve the `npm-release` Environment deployment after reviewing the commit, generated version, and job summary.
+3. Review the commit, generated version, and job summary on the run page.
 
 The workflow derives an immutable version from the selected commit and full ref without changing Git history, for example `0.4.0-beta-a1b2c3d-24767cc1-20260827`, and creates the matching immutable Git tag. A beta from `main` publishes to npm's shared `beta` dist-tag. A beta from another branch publishes to a branch-scoped tag such as `beta-feat-managed-agent-api-commands-24767cc1`. The stable full-ref hash appears in both the version and branch tag, so different refs remain isolated even when they point to the same commit or normalize to the same readable slug; retrying the same ref and commit remains idempotent. The job summary prints the exact tag. It then installs that exact version from the public npm registry on Linux, Windows, and macOS under Node.js 22 and 24. The GitHub prerelease is created only after all six consumer jobs pass.
 
-For another beta, run **Publish npm** from the updated branch. Every new commit gets a new immutable snapshot version; changesets are not consumed. If the `npm-release` Environment has deployment-branch restrictions, its allowed branch patterns must include the selected beta branch while required reviewers remain enabled.
+For another beta, run **Publish npm** from the updated branch. Every new commit gets a new immutable snapshot version; changesets are not consumed.
 
 Install a branch beta with its printed dist-tag, for example `npm install @openagentpack/sdk@beta-feat-managed-agent-api-commands-24767cc1`. Pinning the exact generated version is the most reproducible option.
 
@@ -48,7 +49,7 @@ Install a branch beta with its printed dist-tag, for example `npm install @opena
 
 1. Review and merge the automated `chore: release packages` PR.
 2. **Publish npm** starts automatically when the release commit reaches `main`.
-3. Approve the `npm-release` Environment deployment after reviewing the exact package version.
+3. Review the exact package version in the run summary.
 
 If publishing fails partway through, manually rerun it from **Actions → Publish npm → Run workflow** with branch `main`, channel `stable`, and confirmation `PUBLISH`. Exact package versions already published are skipped.
 
@@ -103,7 +104,7 @@ After installing the CLI, run `agents --help`. A beta user returns to stable wit
 
 ## Recovery
 
-- If npm authentication fails, compare the Trusted Publisher repository, workflow filename, and Environment character-for-character with the table above.
+- If npm authentication fails, compare the Trusted Publisher repository and workflow filename character-for-character with the table above.
 - If a package published before another failed, rerun the same workflow from the same commit. Already-published exact versions are skipped.
 - If all packages published but a post-release consumer job fails, keep the immutable tag, do not unpublish or move the tag, and do not create the GitHub Release. Fix the compatibility issue and publish a new patch version; npm package versions cannot be overwritten.
 - Registry visibility is retried for five minutes before it is classified as a release failure. Retry the same workflow only when npm propagation, rather than package compatibility, was the cause.
