@@ -167,7 +167,7 @@ describe("directory project build", () => {
 		});
 	});
 
-	test("infers Memory Store list references without bypassing Bailian capability validation", async () => {
+	test("builds native Bailian Memory Stores with inferred references and a read-only preview", async () => {
 		const root = await temporaryProject();
 		await initializeDirectoryProject({ projectRoot: root });
 		for (const id of ["facts", "notes"]) {
@@ -182,14 +182,24 @@ describe("directory project build", () => {
 		await writeFile(agentPath, `${JSON.stringify({ ...agent, memory_stores: ["notes"] })}\n`);
 		const before = await readFile(agentPath, "utf8");
 		const preview = await previewProjectBuild(root);
-		expect(parse(preview.canonical_yaml).agents.assistant.memory_stores).toEqual(["notes", "facts"]);
+		const previewConfig = parse(preview.canonical_yaml);
+		expect(previewConfig.agents.assistant.memory_stores).toEqual(["notes", "facts"]);
+		expect(previewConfig.memory_stores).toEqual({
+			facts: { description: "facts" },
+			notes: { description: "notes" },
+			shared: { description: "Shared" },
+		});
 		expect(preview.warnings.map((diagnostic) => diagnostic.code)).toContain("project.memory_store.agent_link.inferred");
-		expect(preview.can_build).toBe(false);
-		expect(preview.diagnostics.map((diagnostic) => diagnostic.code)).toContain("bailian.memory_store.unsupported");
-		await expect(commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision })).rejects.toThrow(
-			"Project contains errors",
-		);
+		expect(preview.can_build).toBe(true);
+		expect(preview.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain("bailian.memory_store.unsupported");
 		expect(await readFile(agentPath, "utf8")).toBe(before);
+		await expect(stat(resolve(root, ".openagentpack/build/agents.yaml"))).rejects.toMatchObject({ code: "ENOENT" });
+
+		await commitProjectBuild({ projectRoot: root, baseRevision: preview.project_revision });
+		expect(JSON.parse(await readFile(agentPath, "utf8")).memory_stores).toEqual(["notes", "facts"]);
+		const builtConfig = parse(await readFile(resolve(root, ".openagentpack/build/agents.yaml"), "utf8"));
+		expect(builtConfig.agents.assistant.memory_stores).toEqual(["notes", "facts"]);
+		expect(builtConfig.memory_stores).toEqual(previewConfig.memory_stores);
 	});
 
 	for (const type of ["environment", "vault"] as const) {

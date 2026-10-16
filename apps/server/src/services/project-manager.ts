@@ -326,7 +326,7 @@ function projectAgentDetails(
 		memory_stores: agent?.memory_stores ?? [],
 		resources: (agent?.resources ?? []).map((resource) => ({
 			type: resource.type,
-			mount_path: resource.mount_path,
+			mount_path: resource.type === "github_repository" ? resource.mount_path : undefined,
 		})),
 	};
 }

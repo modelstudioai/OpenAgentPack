@@ -31,7 +31,7 @@ deployments:  { <name>: DeploymentDecl }
 | `environments` | map | no | Cloud runtimes. |
 | `tunnels` | map | no | Existing Qoder BYOC tunnels referenced by sessions; OpenCMA does not manage their lifecycle. |
 | `vaults` | map | no | Credential stores. |
-| `memory_stores` | map | no | Persistent agent context (Qoder, Volcengine Ark). |
+| `memory_stores` | map | no | Persistent agent context (Bailian, Qoder, Claude beta, Volcengine Ark). |
 | `skills` | map | no | Reusable capability modules. |
 | `files` | map | no | Local files uploaded to the Files API (Bailian, Volcengine Ark). |
 | `identities` | map | no | Stable end-user identities. Provider support is capability-gated. |
@@ -240,17 +240,59 @@ identity and metadata fields; a different policy is not treated as an exact matc
 ```yaml
 memory_stores:
   <name>:
+    name: <string>             # optional display name; defaults to the logical key
     description: <string>
     provider: <string>          # optional
-	metadata: { <string>: <string> } # optional
+    metadata: { <string>: <JSON-value> } # optional; Bailian preserves JSON values
+    entries_mode: initialize    # optional; initialize (default) | sync
     entries: [ { key: <string>, content: <string> } ]
 ```
 
-Supported on **Qoder**, **Claude (beta)**, and **Volcengine Ark** (**Bailian**: `unsupported`).
+Supported on **Bailian**, **Qoder**, **Claude (beta)**, and **Volcengine Ark**.
 
-Declarative `entries` are managed seeds: apply creates or updates those paths but
-preserves additional memories written by agents. Runtime CRUD and version commands
-are documented in [`examples/memory/`](../../examples/memory/README.md).
+By default, `entries` initialize a newly created store only. Existing, imported,
+or adopted stores keep their memory content: later apply runs update store
+attributes without creating, updating, or deleting memory files. Changing the
+initial entries alone does not schedule a store update.
+
+Set `entries_mode: sync` explicitly to keep declared paths managed by YAML.
+Sync creates or updates those paths while preserving additional memories written
+by agents; removing an entry does not delete its remote file. Runtime CRUD and
+version commands are documented in [`examples/memory/`](../../examples/memory/README.md).
+
+默认只在新库创建时写入 `entries`；已有、导入或接管的库保留正文。仅修改初始化内容不会触发库更新。
+需要持续同步声明路径时，显式设置 `entries_mode: sync`。
+
+### Bailian lifecycle
+
+The YAML key is a project reference; `name` is a display label, not a unique remote
+identity. A missing State ID always creates a new store, even if another store has
+the same display name. To manage an existing store, explicitly import its remote
+ID. Import validates that the store exists and is active, rejects an ID already
+bound to another State address, and does not initialize its contents.
+
+Bailian manages the store's display name, description, and only the metadata keys
+declared in YAML. Before updating metadata, apply reads the store and merges the
+declared keys into its current metadata, preserving keys added remotely. Runtime
+file contents and server-generated counters are not treated as store-attribute drift.
+When `entries_mode: sync` is explicitly enabled, refresh also compares the SHA-256
+of declared paths so remote edits or deletions schedule reconciliation. Other paths
+are ignored, and State stores only hashes, not memory bodies.
+
+For a new store, apply saves the returned ID and each pending initializer's path
+and content SHA-256 to State before writing any `entries`; it does not save the
+entry bodies in State. If initialization fails, rerun apply with the original
+pending entries. It resumes only unfinished paths in the same store, preserves
+any path that already exists, and checkpoints each completed path. Changing or
+removing a pending initializer is rejected; restore its original content to
+resume. Sessions cannot mount a store while this initialization is incomplete.
+
+Removing a Bailian store from YAML and applying, or running destroy, archives
+that store. **Archiving is irreversible**; it is not an unbind operation. Reusing
+the logical name after removal creates a new remote store.
+
+百炼通过 State 中的远端 ID 识别库，不按同名接管；新库初始化失败后沿用已保存的 ID，
+只补未完成且尚不存在的路径。移除声明后 apply 或执行 destroy 会不可逆地归档记忆库。
 
 ## Skill
 
@@ -372,7 +414,7 @@ If the preflight cannot resolve the Identity, Template, or Store lookup, destroy
 | `skills[]` | string \| AgentSkillRef | no | Skill name or `{ type: "official"\|"custom", skill_id, version? }`. |
 | `vault` | string | no | Vault name. |
 | `files` | string[] | no | File declarations inherited by a Qoder Forward Template. These files are created through the Forward File API. |
-| `memory_stores` | string[] | no | Bound memory stores. |
+| `memory_stores` | string[] | no | Logical names of bound memory stores. Bailian resolves them through State and mounts them read-write in each Session. |
 | `default_memory_store.name` | string | yes (with `default_memory_store`) | Display name for Qoder Forward's writable system-managed Store; 1–255 characters. |
 | `default_memory_store.description` | string | no | Display description for the system-managed Store; up to 1024 characters. |
 | `default_memory_store.delete_on_destroy` | boolean | no | Permanently delete the Store during destroy. Defaults to `false` (retain). |
@@ -437,6 +479,30 @@ Bailian child agents run in **parallel over a shared file system**: files writte
 
 ### Session resources
 
+Bailian managed Sessions support Memory Store resources. Both forms below
+reference top-level `memory_stores` by their logical YAML key:
+
+```yaml
+agents:
+  assistant:
+    # ...
+    memory_stores: [notes] # shorthand: read_write
+    resources:
+      - type: memory_store
+        memory_store: notes
+        access: read_only # optional; read_write by default
+        instructions: Use prior project decisions when answering. # optional
+```
+
+The explicit resource overrides shorthand settings for the same remote store,
+so the example mounts `notes` once with read-only access. Duplicate explicit
+mounts are rejected, and a Bailian Session can mount at most eight distinct
+stores. Each reference must resolve to an applied or imported State ID for the
+same provider. `instructions` is limited to 4096 characters. The server chooses
+the mount path; do not declare `mount_path` on a Memory resource. The SDK sends
+`resources[].memory_store_id`, `access`, and optional `instructions`, and preserves
+server-returned resources and mount paths in Session details.
+
 Qoder and Claude managed Sessions support a provider-neutral GitHub repository resource:
 
 ```yaml
@@ -457,8 +523,14 @@ Mount roots are provider invariants: Qoder uses `/data`, Claude uses `/workspace
 
 ### MCP toolkit (`tools.mcp[]`)
 
+`configs` is optional. On Bailian, omit it (or use `configs: []`) to apply
+`default_config.enabled` to every tool in the server. Set it to `true` to enable
+all tools without listing tool names. If `default_config` is also omitted, the
+default remains `false`. Use `configs` only for per-tool overrides:
+
 ```yaml
 tools:
+  builtin: [read]
   mcp:
     - type: mcp_toolkit
       mcp_server_name: WebSearch      # mcpServerName also accepted
@@ -480,6 +552,7 @@ deployments:
     vaults: [ <string> ]
     memory_stores: [ <string> ]
     resources: [ DeploymentResource ]
+    environment_variables: { <key>: <string> } # optional; Bailian string map
     initial_events: [ InitialEvent ]  # 1..50
     schedule: { expression: <cron>, timezone: <tz> }
     description: <string>
@@ -488,6 +561,8 @@ deployments:
 ```
 
 `initial_events` is a discriminated union; `schedule.expression` must be a 5-field cron expression.
+
+For Bailian, `environment_variables` is a map of string keys and string values, such as `{ REPORT_REGION: "cn-hangzhou", FEATURE_ENABLED: "true" }`. The reserved map key `__proto__` is not supported. These variables are available by name in the deployment-run sandbox. Changes are reconciled by `plan`/`apply`; removing the field or declaring `{}` sends an empty map on the next update to clear the deployment variables. For Qoder, the field retains its existing string format, such as `"REPORT_REGION=cn-hangzhou;FEATURE_ENABLED=true"`. Claude and Ark do not support this field.
 
 > **Deployment `tunnel` caveat:** Qoder's deployment API does not accept `tunnel_id`, so the tunnel is dropped from the deployment payload and server-side runs execute without it (`validate`/`plan` emits a warning). Use sessions for private-network MCP access; see [Use BYOC environments](../guides/use-byoc-environments.md).
 
@@ -506,3 +581,10 @@ deployments:
 | `file` | `file_id?`, `source?`, `mount_path?` |
 | `memory_store` | `memory_store`, `access?` (`read_write`\|`read_only`), `instructions?` |
 | `github_repository` | `url`, `checkout?` (`branch`/`commit`), `mount_path?`, `authorization_token?` |
+
+This table describes the cross-provider schema. **Bailian Deployment resources
+accept files only**, with a required `mount_path`. Memory mounting through
+Deployment `memory_stores`, explicit `memory_store` resources, or the referenced
+Agent's inherited Memory bindings is a validation error. Create a Session to
+mount Memory Stores. GitHub repository resources produce a warning and are not
+sent in the Bailian Deployment payload.

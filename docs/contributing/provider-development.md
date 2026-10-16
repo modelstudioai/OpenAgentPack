@@ -33,6 +33,12 @@ import "./<name>/index.ts";
 
 The registry validates a provider against `REQUIRED_METHODS_BY_KIND` (in `capabilities.ts`) at build time — so an unsupported kind needs no stub methods, and a supported kind must implement its lifecycle + session methods. Read/list methods are an orthogonal, à-la-carte facet and are soft-degraded at their call sites.
 
+## Resource identity
+
+Resource state binds a logical config address to a remote ID. When display names are not unique, implement `supportsResourceNameLookup(type)` with `false` for that resource kind and return `null` from `findResource` when no ID is provided. The executor then preserves create errors instead of adopting a same-name resource.
+
+Bailian Memory Stores use this ID-only lookup rule. Without a recorded ID, create a new store and persist its returned ID; with an ID, read and update that exact store. Reusing an existing store requires an explicit ID import. This lookup contract does not enable a resource's lifecycle capability by itself.
+
 ## Verify
 
 ```sh

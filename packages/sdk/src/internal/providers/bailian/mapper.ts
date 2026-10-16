@@ -14,6 +14,7 @@ import type { ManagedSessionBindings } from "../../types/session.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
 import { resolveBuiltinTools } from "../../utils/tool-permissions.ts";
+import { assertDeploymentEnvironmentVariables } from "../../validation/deployment-environment.ts";
 import type { MappingOperation, ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
 
@@ -302,7 +303,7 @@ export function mapAgent(
 				// AgentStudio REST validates snake_case.
 				mcp_server_name: s.name,
 				default_config: mcpTool.default_config ?? { enabled: false },
-				configs: mcpTool.configs,
+				configs: mcpTool.configs ?? [],
 			});
 		}
 	}
@@ -342,6 +343,7 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 
 	if (bindings.title) body.title = bindings.title;
 	if (bindings.metadata) body.metadata = bindings.metadata;
+	if (bindings.environment_variables !== undefined) body.environment_variables = bindings.environment_variables;
 	// Bind the credential vault(s) via the top-level `vault_ids` array — the shape the
 	// real console (bailian-managed-agents createSession) sends and the downstream
 	// vault→sandbox injection reads. The actual injection happens downstream (user-owned).
@@ -355,8 +357,21 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 			mount_path: resolveSandboxMountPath("bailian", f.mount_path),
 		});
 	}
+	const memoryResources = new Map<string, Record<string, unknown>>();
+	for (const storeId of bindings.memory_store_ids) {
+		memoryResources.set(storeId, { type: "memory_store", memory_store_id: storeId, access: "read_write" });
+	}
+	for (const resource of bindings.resources ?? []) {
+		if (resource.type !== "memory_store") continue;
+		memoryResources.set(resource.memory_store_id, {
+			type: "memory_store",
+			memory_store_id: resource.memory_store_id,
+			...(resource.access !== undefined ? { access: resource.access } : {}),
+			...(resource.instructions !== undefined ? { instructions: resource.instructions } : {}),
+		});
+	}
+	resources.push(...memoryResources.values());
 	if (resources.length) body.resources = resources;
-	if (bindings.memory_store_ids.length) body.memory_store_ids = bindings.memory_store_ids;
 
 	return body;
 }
@@ -368,6 +383,7 @@ export function mapDeployment(
 	projectName?: string,
 	uploadedFiles?: Map<string, string>,
 ): unknown {
+	assertDeploymentEnvironmentVariables("bailian", decl.environment_variables);
 	// `agent` is always an object here: the API's required shape is `{ id, version? }`,
 	// unlike the sessions API which takes a bare agent id string.
 	const agent: Record<string, unknown> = { id: refs.agent_id };
@@ -381,6 +397,7 @@ export function mapDeployment(
 	};
 
 	if (decl.description) body.description = decl.description;
+	if (decl.environment_variables !== undefined) body.environment_variables = decl.environment_variables;
 	if (refs.vault_ids.length) body.vault_ids = refs.vault_ids;
 
 	const resources = mapDeploymentResources(decl, uploadedFiles);
@@ -418,6 +435,8 @@ export function mapDeploymentUpdate(
 ): unknown {
 	const body = mapDeployment(name, decl, refs, projectName, uploadedFiles) as Record<string, unknown>;
 	body.description = decl.description ?? "";
+	// Update replaces the variable map; an absent declaration sends the empty map.
+	body.environment_variables = decl.environment_variables ?? {};
 	body.vault_ids = refs.vault_ids;
 	body.resources = mapDeploymentResources(decl, uploadedFiles);
 	if (!decl.schedule) body.schedule = null;

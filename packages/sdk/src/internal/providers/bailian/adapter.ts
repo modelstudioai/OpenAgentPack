@@ -18,6 +18,7 @@ import type {
 	CredentialDecl,
 	DeploymentDecl,
 	EnvironmentDecl,
+	MemoryStoreDecl,
 	SkillDecl,
 	VaultDecl,
 } from "../../types/config.ts";
@@ -47,6 +48,14 @@ import type {
 	VaultListOptions,
 	VaultPage,
 } from "../../types/managed-api.ts";
+import type {
+	CreateMemoryInput,
+	MemoryListOptions,
+	MemoryStoreListOptions,
+	MemoryVersionListOptions,
+	UpdateMemoryInput,
+	UpdateMemoryStoreInput,
+} from "../../types/memory.ts";
 import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../../types/session.ts";
 import type {
 	EventListOptions,
@@ -57,7 +66,22 @@ import type {
 import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
+import type {
+	CreateWebhookEndpointInput,
+	UpdateWebhookEndpointInput,
+	WebhookDeleteResult,
+	WebhookEndpoint,
+	WebhookEndpointList,
+	WebhookEndpointWithSecret,
+	WebhookEventListOptions,
+	WebhookEventPage,
+	WebhookRequestOptions,
+	WebhookSecretResetResult,
+	WebhookTestResult,
+} from "../../types/webhook.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
+import { sha256 } from "../../utils/hash.ts";
+import { isDeploymentEnvironmentVariableMap } from "../../validation/deployment-environment.ts";
 import { toRemoteResource } from "../base-client.ts";
 import { preserveDeploymentFilesOnConflict } from "../deployment-conflict.ts";
 import type {
@@ -74,11 +98,13 @@ import type {
 	ResolvedAgentRefs,
 	ResolvedDeploymentRefs,
 } from "../interface.ts";
+import { ProviderMemoryApi } from "../memory-api.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
 	exportRemoteResources,
 	locateRemote,
+	notArchived,
 	toCloudAgent,
 	toCloudEnvironment,
 	toCloudVault,
@@ -105,16 +131,106 @@ import {
 export class BailianAdapter implements ProviderAdapter {
 	readonly name = "bailian" as const;
 	readonly eventResume = false;
+	readonly memoryCapabilities = {
+		archive_store: true,
+		batch_create: false,
+		versions: true,
+		optimistic_concurrency: true,
+		memory_metadata: false,
+	} as const;
 	private client: BailianClient;
+	private memoryApi: ProviderMemoryApi;
 	private projectName: string;
 
 	constructor(apiKey: string, workspaceId?: string, baseUrl?: string, projectName?: string) {
 		this.client = new BailianClient({ apiKey, workspaceId, baseUrl });
+		this.memoryApi = new ProviderMemoryApi(this.client, {
+			pathStyle: "absolute",
+			cursorParam: "page",
+			updatePrecondition: "precondition",
+			prefixParam: "path_prefix",
+			supportsView: true,
+			supportsSingleView: false,
+			supportsMemoryMetadata: false,
+			supportsDeletePrecondition: false,
+			supportsIncludeArchived: true,
+			supportsVersionFilters: true,
+			preserveRawResponse: true,
+		});
 		this.projectName = projectName ?? "";
 	}
 
 	async validate(): Promise<void> {
 		await this.client.get("/agents?limit=1");
+	}
+
+	async createWebhookEndpoint(
+		input: CreateWebhookEndpointInput,
+		options?: WebhookRequestOptions,
+	): Promise<WebhookEndpointWithSecret> {
+		return this.client.post("/webhook_endpoints", input, options) as Promise<WebhookEndpointWithSecret>;
+	}
+
+	async listWebhookEndpoints(options?: WebhookRequestOptions): Promise<WebhookEndpointList> {
+		return this.client.get("/webhook_endpoints", options) as Promise<WebhookEndpointList>;
+	}
+
+	async getWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint> {
+		return this.client.get(`/webhook_endpoints/${encodeURIComponent(id)}`, options) as Promise<WebhookEndpoint>;
+	}
+
+	async updateWebhookEndpoint(
+		id: string,
+		input: UpdateWebhookEndpointInput,
+		options?: WebhookRequestOptions,
+	): Promise<WebhookEndpoint> {
+		return this.client.put(`/webhook_endpoints/${encodeURIComponent(id)}`, input, options) as Promise<WebhookEndpoint>;
+	}
+
+	async deleteWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookDeleteResult> {
+		return this.client.deleteJson(
+			`/webhook_endpoints/${encodeURIComponent(id)}`,
+			options,
+		) as Promise<WebhookDeleteResult>;
+	}
+
+	async enableWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/enable`,
+			undefined,
+			options,
+		) as Promise<WebhookEndpoint>;
+	}
+
+	async disableWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookEndpoint> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/disable`,
+			undefined,
+			options,
+		) as Promise<WebhookEndpoint>;
+	}
+
+	async testWebhookEndpoint(id: string, options?: WebhookRequestOptions): Promise<WebhookTestResult> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/test`,
+			undefined,
+			options,
+		) as Promise<WebhookTestResult>;
+	}
+
+	async resetWebhookSecret(id: string, options?: WebhookRequestOptions): Promise<WebhookSecretResetResult> {
+		return this.client.post(
+			`/webhook_endpoints/${encodeURIComponent(id)}/reset_secret`,
+			undefined,
+			options,
+		) as Promise<WebhookSecretResetResult>;
+	}
+
+	async listWebhookEvents(id: string, options?: WebhookEventListOptions): Promise<WebhookEventPage> {
+		return this.client.get(
+			withQuery(`/webhook_endpoints/${encodeURIComponent(id)}/events`, cursorParams(options)),
+			options,
+		) as Promise<WebhookEventPage>;
 	}
 
 	private static readonly ENDPOINT_MAP: Partial<Record<ResourceType, string>> = {
@@ -124,16 +240,27 @@ export class BailianAdapter implements ProviderAdapter {
 		vault: "/vaults",
 		file: "/files",
 		deployment: "/deployments",
+		memory_store: "/memory_stores",
 	};
 
+	supportsResourceNameLookup(type: ResourceType): boolean {
+		return type !== "memory_store";
+	}
+
 	async findResource(type: ResourceType, name: string, id?: string | null): Promise<RemoteResource | null> {
-		const accept = type === "agent" ? (r: Record<string, unknown>) => !isArchivedAgent(r) : undefined;
+		if (!id && !this.supportsResourceNameLookup(type)) return null;
+		const accept =
+			type === "agent"
+				? (r: Record<string, unknown>) => !isArchivedAgent(r)
+				: type === "memory_store"
+					? notArchived
+					: undefined;
 		const raw = await locateRemote(this.client, BailianAdapter.ENDPOINT_MAP[type], name, id, accept);
 		return raw ? toRemoteResource(raw) : null;
 	}
 
 	getDriftSupport(type: ResourceType): DriftSupport {
-		if (type === "agent" || type === "environment") return "full";
+		if (type === "agent" || type === "environment" || type === "memory_store") return "full";
 		if (type === "skill" || type === "vault" || type === "file") return "existence";
 		return "unsupported";
 	}
@@ -142,14 +269,26 @@ export class BailianAdapter implements ProviderAdapter {
 		type: ResourceType,
 		id: string | null,
 		name: string,
+		decl?: unknown,
 	): Promise<ComparableRemoteResource | null> {
-		if (type !== "agent" && type !== "environment") return null;
-		const endpoint = type === "agent" ? "/agents" : "/environments";
-		const accept = type === "agent" ? (r: Record<string, unknown>) => !isArchivedAgent(r) : undefined;
+		if (type !== "agent" && type !== "environment" && type !== "memory_store") return null;
+		if (type === "memory_store" && !id) return null;
+		const endpoint = BailianAdapter.ENDPOINT_MAP[type];
+		const accept =
+			type === "agent"
+				? (r: Record<string, unknown>) => !isArchivedAgent(r)
+				: type === "memory_store"
+					? notArchived
+					: undefined;
 		const raw = await locateRemote(this.client, endpoint, name, id, accept);
 		if (!raw) return null;
 
-		const comparable = this.normalizeRemote(type, raw);
+		const store = type === "memory_store" ? (decl as MemoryStoreDecl | undefined) : undefined;
+		const comparable = this.normalizeRemote(
+			type,
+			store?.entries_mode === "sync" ? { ...raw, entry_hashes: await this.readMemoryEntryHashes(id!, store) } : raw,
+			decl,
+		);
 		return {
 			id: (raw.id as string | undefined) ?? id,
 			type,
@@ -159,7 +298,52 @@ export class BailianAdapter implements ProviderAdapter {
 		};
 	}
 
+	private async readMemoryEntryHashes(
+		storeId: string,
+		declaration: MemoryStoreDecl,
+	): Promise<Record<string, string | null>> {
+		const hashes = new Map<string, string | null>(
+			(declaration.entries ?? []).map((entry) => [`/${entry.key.replace(/^\/+/, "")}`, null]),
+		);
+		if (hashes.size === 0) return {};
+		const seenCursors = new Set<string>();
+		let cursor: string | undefined;
+		do {
+			const page = await this.listMemories(storeId, { limit: 100, page: cursor, view: "basic" });
+			for (const memory of page.data) {
+				if (memory.type === "memory" && hashes.has(memory.path)) {
+					hashes.set(memory.path, memory.content_sha256);
+				}
+			}
+			cursor = page.next_page ?? (page.has_more ? page.next_cursor : undefined);
+			if (cursor && seenCursors.has(cursor)) {
+				throw new UserError("Memory pagination returned a repeated cursor. / 记忆分页返回了重复游标。");
+			}
+			if (cursor) seenCursors.add(cursor);
+		} while (cursor);
+		return Object.fromEntries(hashes);
+	}
+
 	normalizeDesiredResource(type: ResourceType, name: string, decl: unknown, refs?: ResolvedAgentRefs): unknown | null {
+		if (type === "memory_store") {
+			const store = decl as MemoryStoreDecl;
+			return this.normalizeRemote(
+				type,
+				{
+					name: store.name ?? name,
+					description: store.description,
+					metadata: store.metadata ?? {},
+					...(store.entries_mode === "sync"
+						? {
+								entry_hashes: Object.fromEntries(
+									(store.entries ?? []).map((entry) => [`/${entry.key.replace(/^\/+/, "")}`, sha256(entry.content)]),
+								),
+							}
+						: {}),
+				},
+				store,
+			);
+		}
 		if (type === "environment") {
 			return this.normalizeRemote(
 				type,
@@ -178,7 +362,21 @@ export class BailianAdapter implements ProviderAdapter {
 		return null;
 	}
 
-	private normalizeRemote(type: ResourceType, raw: Record<string, unknown>): unknown {
+	private normalizeRemote(type: ResourceType, raw: Record<string, unknown>, decl?: unknown): unknown {
+		if (type === "memory_store") {
+			const metadata = (raw.metadata ?? {}) as Record<string, unknown>;
+			const store = decl as MemoryStoreDecl | undefined;
+			const declaredMetadata = store?.metadata;
+			return compactDeep({
+				name: raw.name,
+				description: raw.description ?? "",
+				metadata:
+					decl === undefined
+						? metadata
+						: Object.fromEntries(Object.keys(declaredMetadata ?? {}).map((key) => [key, metadata[key]])),
+				...(store?.entries_mode === "sync" ? { entry_hashes: raw.entry_hashes } : {}),
+			});
+		}
 		if (type === "environment") {
 			const config = (raw.config ?? {}) as Record<string, unknown>;
 			return compactDeep({
@@ -564,6 +762,70 @@ export class BailianAdapter implements ProviderAdapter {
 		}
 	}
 
+	// --- Memory Store ---
+
+	async createMemoryStore(name: string, decl: MemoryStoreDecl): Promise<RemoteResource> {
+		const response = await this.client.post("/memory_stores", {
+			name,
+			description: decl.description,
+			...(decl.metadata !== undefined ? { metadata: decl.metadata } : {}),
+		});
+		// The executor persists this identity before initializing declared entries.
+		return toRemoteResource(response as Record<string, unknown>);
+	}
+
+	async deleteMemoryStore(id: string): Promise<void> {
+		await this.memoryApi.archiveStore(id);
+	}
+
+	listMemoryStores(options?: MemoryStoreListOptions) {
+		return this.memoryApi.listStores(options);
+	}
+
+	getMemoryStore(id: string) {
+		return this.memoryApi.getStore(id);
+	}
+
+	updateMemoryStore(id: string, input: UpdateMemoryStoreInput) {
+		return this.memoryApi.updateStore(id, input);
+	}
+
+	archiveMemoryStore(id: string) {
+		return this.memoryApi.archiveStore(id);
+	}
+
+	createMemory(storeId: string, input: CreateMemoryInput) {
+		return this.memoryApi.createMemory(storeId, input);
+	}
+
+	listMemories(storeId: string, options?: MemoryListOptions) {
+		return this.memoryApi.listMemories(storeId, options);
+	}
+
+	getMemory(storeId: string, memoryId: string) {
+		return this.memoryApi.getMemory(storeId, memoryId);
+	}
+
+	updateMemory(storeId: string, memoryId: string, input: UpdateMemoryInput) {
+		return this.memoryApi.updateMemory(storeId, memoryId, input);
+	}
+
+	deleteMemory(storeId: string, memoryId: string) {
+		return this.memoryApi.deleteMemory(storeId, memoryId);
+	}
+
+	listMemoryVersions(storeId: string, options?: MemoryVersionListOptions) {
+		return this.memoryApi.listVersions(storeId, options);
+	}
+
+	getMemoryVersion(storeId: string, versionId: string) {
+		return this.memoryApi.getVersion(storeId, versionId);
+	}
+
+	redactMemoryVersion(storeId: string, versionId: string) {
+		return this.memoryApi.redactVersion(storeId, versionId);
+	}
+
 	// --- Vault (Vaults API) ---
 	//
 	// `createVault` / `deleteVault` satisfy the cross-provider ProviderAdapter
@@ -942,7 +1204,9 @@ export class BailianAdapter implements ProviderAdapter {
 	}
 
 	async sendSessionEvents(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult> {
-		const res = (await this.client.post(`/sessions/${sessionId}/events`, { input: events })) as Record<string, unknown>;
+		const res = (await this.client.post(`/sessions/${sessionId}/events`, {
+			input: events,
+		})) as Record<string, unknown>;
 		return {
 			event_ids: extractCreatedEventIds(res),
 			attributes: res,
@@ -1024,6 +1288,9 @@ function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
 	return {
 		id: (res.id as string | undefined) ?? null,
 		status: (res.status as string) ?? "unknown",
+		...(isDeploymentEnvironmentVariableMap(res.environment_variables)
+			? { environment_variables: res.environment_variables }
+			: {}),
 		paused_reason: (res.paused_reason as DeploymentInfo["paused_reason"] | null | undefined) ?? undefined,
 		schedule: schedule
 			? {
@@ -1036,7 +1303,21 @@ function toDeploymentInfo(res: Record<string, unknown>): DeploymentInfo {
 }
 
 export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo {
-	return buildSessionInfo(res, () => []);
+	const sessionInfo = buildSessionInfo(res, (session) =>
+		((session.resources ?? []) as Array<Record<string, unknown>>)
+			.filter((resource) => resource.type === "memory_store" && typeof resource.memory_store_id === "string")
+			.map((resource) => resource.memory_store_id as string),
+	);
+	const environmentVariables = res.environment_variables;
+	if (
+		environmentVariables !== null &&
+		typeof environmentVariables === "object" &&
+		!Array.isArray(environmentVariables) &&
+		Object.values(environmentVariables).every((value) => typeof value === "string")
+	) {
+		sessionInfo.environment_variables = environmentVariables as Record<string, string>;
+	}
+	return sessionInfo;
 }
 
 // Raw Bailian `/skills` item → neutral ProviderSkillInfo. Kept provider-local (not the

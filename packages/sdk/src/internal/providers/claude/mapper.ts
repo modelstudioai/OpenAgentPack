@@ -564,6 +564,7 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 			mount_path: resolveSandboxMountPath("claude", f.mount_path),
 		});
 	for (const resource of bindings.resources ?? []) {
+		if (resource.type !== "github_repository") continue;
 		resources.push(
 			mapGithubRepositorySessionResource(resource, {
 				mapUrl: normalizeGithubRepositoryUrlForClaude,

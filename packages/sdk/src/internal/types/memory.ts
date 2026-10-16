@@ -1,6 +1,7 @@
-export type MemoryMetadata = Record<string, string>;
+export type MemoryMetadata = Record<string, unknown>;
 
 export interface MemoryStoreInfo {
+	[key: string]: unknown;
 	id: string;
 	type: "memory_store";
 	name: string;
@@ -17,6 +18,7 @@ export interface MemoryStoreInfo {
 }
 
 export interface MemoryInfo {
+	[key: string]: unknown;
 	id: string;
 	type: "memory";
 	memory_store_id: string;
@@ -26,7 +28,7 @@ export interface MemoryInfo {
 	content_sha256: string;
 	version?: number;
 	memory_version_id?: string;
-	metadata: MemoryMetadata;
+	metadata?: MemoryMetadata;
 	created_by?: MemoryActor;
 	created_at: string;
 	updated_at: string;
@@ -49,6 +51,7 @@ export interface MemoryActor {
 }
 
 export interface MemoryVersionInfo {
+	[key: string]: unknown;
 	id: string;
 	type: "memory_version";
 	memory_store_id: string;
@@ -66,9 +69,26 @@ export interface MemoryVersionInfo {
 }
 
 export interface MemoryPage<T> {
+	[key: string]: unknown;
 	data: T[];
-	has_more: boolean;
+	/** Portable pagination used by existing providers. Native APIs may omit it. */
+	has_more?: boolean;
 	next_cursor?: string;
+	/** Opaque native page cursor. Null or absence indicates the last page. */
+	next_page?: string | null;
+	/** Child directory prefixes returned by native depth=1 listings. */
+	prefixes?: string[];
+}
+
+export interface MemoryDeleteResult {
+	[key: string]: unknown;
+	id: string;
+	type: "memory_deleted";
+}
+
+export interface MemoryContentPrecondition {
+	type: "content_sha256";
+	content_sha256: string;
 }
 
 export interface MemoryProviderCapabilities {
@@ -82,13 +102,16 @@ export interface MemoryProviderCapabilities {
 export interface MemoryStoreListOptions {
 	limit?: number;
 	cursor?: string;
+	page?: string;
 	include_archived?: boolean;
 }
 
 export interface MemoryListOptions {
 	limit?: number;
 	cursor?: string;
+	page?: string;
 	prefix?: string;
+	path_prefix?: string;
 	depth?: number;
 	view?: "basic" | "full";
 }
@@ -96,7 +119,11 @@ export interface MemoryListOptions {
 export interface MemoryVersionListOptions {
 	limit?: number;
 	cursor?: string;
+	page?: string;
 	memory_id?: string;
+	operation?: MemoryVersionOperation;
+	"created_at.gte"?: string;
+	"created_at.lte"?: string;
 	view?: "basic" | "full";
 }
 
@@ -138,4 +165,5 @@ export interface UpdateMemoryInput {
 	content?: string;
 	metadata?: MemoryMetadata;
 	expected_content_sha256?: string;
+	precondition?: MemoryContentPrecondition;
 }

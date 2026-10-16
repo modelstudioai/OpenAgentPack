@@ -2,7 +2,7 @@ import { buildReverseIndex, memberDeclResolver } from "../multiagent/reverse-ind
 import type { MultiagentMemberDecl } from "../types/config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "../types/dto.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
-import type { ProviderSessionInfo } from "../types/session.ts";
+import type { ProviderSessionInfo, SessionResourceInfo } from "../types/session.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
 import { ApiError, type BaseApiClient } from "./base-client.ts";
@@ -73,6 +73,7 @@ export function buildSessionInfo(
 		title: res.title as string | undefined,
 		vault_ids: extractVaultIds(res),
 		memory_store_ids: memoryStoreIds(res),
+		...(Array.isArray(res.resources) ? { resources: res.resources as SessionResourceInfo[] } : {}),
 		created_at: res.created_at as string,
 		updated_at: res.updated_at as string,
 		attributes: res,

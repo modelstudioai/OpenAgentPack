@@ -135,13 +135,24 @@ export async function buildPlan(
 			: "Resource does not exist in state";
 		const updateSuffix = isExternalReference ? " — external reference, no remote mutation" : "";
 
-		if (!existing) {
+		if (!existing || (address.type === "memory_store" && !existing.remote_id)) {
 			actions.push({
 				action: "create",
 				address,
 				driftKind: "none",
 				readinessImpact: "blocking",
-				reason: createReason,
+				reason: existing ? "Memory Store has no remote ID in state / State 未记录记忆库远端 ID" : createReason,
+				after: { content_hash: desiredHash },
+				dependencies: deps,
+			});
+		} else if (address.type === "memory_store" && existing.memory_initialization) {
+			actions.push({
+				action: "update",
+				address,
+				driftKind: "none",
+				readinessImpact: "blocking",
+				reason: "Continue new Memory Store initialization / 继续初始化新记忆库",
+				before: { content_hash: existing.desired_hash ?? existing.content_hash },
 				after: { content_hash: desiredHash },
 				dependencies: deps,
 			});
@@ -234,7 +245,9 @@ export async function buildPlan(
 			readinessImpact: "blocking",
 			reason: res.externally_managed
 				? "Remove local reference only — externally managed remote resource is left intact"
-				: "Resource removed from configuration",
+				: res.address.provider === "bailian" && res.address.type === "memory_store"
+					? "Archive Memory Store (irreversible) / 归档记忆库（不可逆）"
+					: "Resource removed from configuration",
 			before: { content_hash: res.desired_hash ?? res.content_hash },
 			dependencies: replacement ? [replacement] : [],
 		});

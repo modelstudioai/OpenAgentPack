@@ -1568,6 +1568,12 @@
 								"type": "string",
 								"nullable": true
 							},
+							"environment_variables": {
+								"type": "object",
+								"additionalProperties": {
+									"type": "string"
+								}
+							},
 							"created_at": {
 								"type": "string"
 							},

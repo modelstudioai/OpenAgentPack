@@ -16,7 +16,8 @@ export interface AgentMcpBuildInput {
 	serverType: "official" | "url" | "http";
 	serverUrl?: string;
 	defaultEnabled?: boolean;
-	tools: Array<{ name: string; enabled?: boolean }>;
+	/** Per-tool overrides; omitted or empty uses defaultEnabled for every tool. */
+	tools?: Array<{ name: string; enabled?: boolean }>;
 }
 
 export interface AgentBuildInput {
@@ -59,7 +60,7 @@ export function buildAgentDecl(base: AgentDecl | undefined, input: AgentBuildInp
 		type: "mcp_toolkit",
 		mcp_server_name: binding.serverName,
 		default_config: { enabled: binding.defaultEnabled ?? false },
-		configs: binding.tools.map((tool) => ({ name: tool.name, enabled: tool.enabled ?? true })),
+		configs: (binding.tools ?? []).map((tool) => ({ name: tool.name, enabled: tool.enabled ?? true })),
 	}));
 
 	const mcpServers: McpServerDecl[] = mcp.map((binding) => ({

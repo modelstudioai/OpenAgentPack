@@ -17,6 +17,11 @@ export class ApiError extends Error {
 
 export class ConflictError extends ApiError {}
 
+export interface ApiRequestOptions {
+	headers?: Record<string, string>;
+	signal?: AbortSignal;
+}
+
 export abstract class BaseApiClient {
 	protected abstract baseUrl: string;
 	protected abstract headers(): Record<string, string>;
@@ -34,21 +39,23 @@ export abstract class BaseApiClient {
 		throw new ApiError(res.status, body, this.errorPrefix);
 	}
 
-	async post(path: string, body: unknown, options?: { headers?: Record<string, string> }): Promise<unknown> {
+	async post(path: string, body: unknown, options?: ApiRequestOptions): Promise<unknown> {
 		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers: { ...this.headers(), ...options?.headers },
 			body: JSON.stringify(body),
+			...(options?.signal ? { signal: options.signal } : {}),
 		});
 		await this.throwIfError(res);
 		return res.json();
 	}
 
-	async put(path: string, body: unknown): Promise<unknown> {
+	async put(path: string, body: unknown, options?: ApiRequestOptions): Promise<unknown> {
 		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "PUT",
-			headers: this.headers(),
+			headers: { ...this.headers(), ...options?.headers },
 			body: JSON.stringify(body),
+			...(options?.signal ? { signal: options.signal } : {}),
 		});
 		await this.throwIfError(res);
 		return res.json();
@@ -62,10 +69,22 @@ export abstract class BaseApiClient {
 		await this.throwIfError(res);
 	}
 
-	async get(path: string): Promise<unknown> {
+	/** DELETE endpoints with JSON responses; legacy delete() remains void for 204 endpoints. */
+	async deleteJson(path: string, options?: ApiRequestOptions): Promise<unknown> {
+		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
+			method: "DELETE",
+			headers: { ...this.headers(), ...options?.headers },
+			...(options?.signal ? { signal: options.signal } : {}),
+		});
+		await this.throwIfError(res);
+		return res.json();
+	}
+
+	async get(path: string, options?: ApiRequestOptions): Promise<unknown> {
 		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
 			method: "GET",
-			headers: this.headers(),
+			headers: { ...this.headers(), ...options?.headers },
+			...(options?.signal ? { signal: options.signal } : {}),
 		});
 		await this.throwIfError(res);
 		return res.json();

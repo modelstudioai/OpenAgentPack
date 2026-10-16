@@ -17,6 +17,7 @@ import type { ProviderSessionEvent } from "../../types/session-event.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
 import { permissionOverridesFromWire, resolveBuiltinTools, toPermissionPolicy } from "../../utils/tool-permissions.ts";
+import { assertDeploymentEnvironmentVariables } from "../../validation/deployment-environment.ts";
 import type {
 	MappingOperation,
 	ResolvedAgentRefs,
@@ -277,6 +278,7 @@ export function mapDeployment(
 	projectName?: string,
 	uploadedFiles?: Map<string, string>,
 ): unknown {
+	assertDeploymentEnvironmentVariables("qoder", decl.environment_variables);
 	const body: Record<string, unknown> = {
 		name: decl.name ?? name,
 		agent:
@@ -726,6 +728,7 @@ export function mapSession(bindings: ManagedSessionBindings): unknown {
 	for (const f of bindings.files ?? [])
 		resources.push({ type: "file", file_id: f.file_id, mount_path: resolveSandboxMountPath("qoder", f.mount_path) });
 	for (const resource of bindings.resources ?? []) {
+		if (resource.type !== "github_repository") continue;
 		resources.push(
 			mapGithubRepositorySessionResource(resource, {
 				mapMountPath: (item) => resolveGithubRepositoryMountPath("qoder", item),
