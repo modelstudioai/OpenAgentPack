@@ -80,6 +80,8 @@ jobs:
   publish:
     needs: preflight
     runs-on: ubuntu-latest
+    # Match the npm Trusted Publisher identity; reviewer approval is configured in GitHub Environment settings.
+    environment: npm-release
     permissions:
       contents: write
       id-token: write
