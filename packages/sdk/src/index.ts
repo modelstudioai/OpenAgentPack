@@ -13,6 +13,43 @@ export { ApiError, ConflictError } from "./internal/providers/base-client.ts";
 // globalThis.fetch. Unset → provider clients use the global fetch as before.
 export { setDefaultFetch, type FetchLike } from "./internal/transport.ts";
 
+export { createManagedApiContext } from "./internal/core/managed-api-context.ts";
+export type {
+	CreateManagedApiContextInput,
+	ManagedApiContext,
+} from "./internal/core/managed-api-context.ts";
+export { resolveBailianApiBaseUrl } from "./internal/providers/bailian/api-base-url.ts";
+export type { ResolveBailianApiBaseUrlOptions } from "./internal/providers/bailian/api-base-url.ts";
+export {
+	createRemoteWebhookEndpoint,
+	deleteRemoteWebhookEndpoint,
+	disableRemoteWebhookEndpoint,
+	enableRemoteWebhookEndpoint,
+	getRemoteWebhookEndpoint,
+	listRemoteWebhookEndpoints,
+	listRemoteWebhookEvents,
+	resetRemoteWebhookSecret,
+	testRemoteWebhookEndpoint,
+	updateRemoteWebhookEndpoint,
+} from "./internal/core/webhook-runtime.ts";
+export type {
+	CreateWebhookEndpointInput,
+	UpdateWebhookEndpointInput,
+	WebhookDeleteResult,
+	WebhookDelivery,
+	WebhookEndpoint,
+	WebhookEndpointList,
+	WebhookEndpointWithSecret,
+	WebhookEvent,
+	WebhookEventData,
+	WebhookEventListOptions,
+	WebhookEventPage,
+	WebhookEventWithDelivery,
+	WebhookRequestOptions,
+	WebhookSecretResetResult,
+	WebhookTestResult,
+} from "./internal/types/webhook.ts";
+
 export type {
 	BackendRuntimeInput,
 	ProjectRuntimeContext,
@@ -29,8 +66,11 @@ export type {
 	CredentialNetworking,
 	DeploymentDecl,
 	EnvironmentDecl,
+	MemoryStoreDecl,
 	ProjectConfig,
 	ResolvedProjectConfig,
+	SessionMemoryStoreResourceDecl,
+	SessionResourceDecl,
 	SkillDecl,
 	VaultDecl,
 } from "./internal/types/config.ts";
@@ -208,6 +248,9 @@ export type {
 	CreateMemoryInput,
 	CreateMemoryStoreInput,
 	MemoryInfo,
+	MemoryDeleteResult,
+	MemoryContentPrecondition,
+	MemoryMetadata,
 	MemoryListOptions,
 	MemoryListItem,
 	MemoryPrefixInfo,
@@ -216,6 +259,7 @@ export type {
 	MemoryStoreInfo,
 	MemoryStoreListOptions,
 	MemoryVersionInfo,
+	MemoryVersionOperation,
 	MemoryVersionListOptions,
 	UpdateMemoryInput,
 	UpdateMemoryStoreInput,
@@ -273,7 +317,10 @@ export {
 	streamSessionEvents,
 	uploadFile,
 } from "./internal/core/session-runtime.ts";
-export { resolveSessionProvider } from "./internal/session/session-manager.ts";
+export {
+	parseSessionResources,
+	resolveSessionProvider,
+} from "./internal/session/session-manager.ts";
 export {
 	prependFileHint,
 	prepareInitialSessionPrompt,
@@ -297,7 +344,13 @@ export {
 	type ProviderConfig,
 	type ProviderConfigProvider,
 } from "./internal/provider-config.ts";
-export type { ProviderSessionInfo, SessionFilter, SessionListResult } from "./internal/types/session.ts";
+export type {
+	ProviderSessionInfo,
+	SessionFilter,
+	SessionListResult,
+	SessionMemoryStoreResource,
+	SessionResourceInfo,
+} from "./internal/types/session.ts";
 export type {
 	EventListOptions,
 	EventStreamOptions,

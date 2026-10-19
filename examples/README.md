@@ -66,7 +66,7 @@ extensions, and live-test commands.
 | Skill | native | native | native | native | Claude uploads via `files[]`; others upload zip; Volcengine Ark is create + attach only. |
 | Agent | native | native | native | native | Core managed-agent resource. |
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
-| Memory Store | unsupported | native | native | native | Qoder, Claude (beta), and Volcengine Ark. |
+| Memory Store | native | native | native | native | Bailian, Qoder, Claude (beta), and Volcengine Ark. |
 | Multi-Agent | native | native | native | native | All four providers support the coordinator topology. |
 | Deployment | native | native | native | emulated | Bailian, Qoder, and Claude schedule server-side; Ark expands into a session at `run` time. |
 | Session | native | native | native | native | All four support runtime sessions. |

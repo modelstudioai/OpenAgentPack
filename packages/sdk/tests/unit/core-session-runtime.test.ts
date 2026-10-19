@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import type { ProjectRuntimeContext } from "../../src/internal/core/project-runtime.ts";
+import { describe, expect, mock, test } from "bun:test";
+import { createProjectRuntime, type ProjectRuntimeContext } from "../../src/internal/core/project-runtime.ts";
 import {
 	createSessionForAgent,
 	listSessionEvents,
 	sendSessionMessageAndCollectEvents,
 	startSessionRun,
+	startSessionRunPolling,
 	streamMessageEvents,
 	streamSessionEvents,
 } from "../../src/internal/core/session-runtime.ts";
@@ -14,7 +15,7 @@ import type { ProviderAdapter } from "../../src/internal/providers/interface.ts"
 import { QoderAdapter } from "../../src/internal/providers/qoder/adapter.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
 import type { ProjectConfig } from "../../src/internal/types/config.ts";
-import type { ProviderSessionInfo } from "../../src/internal/types/session.ts";
+import type { ProviderSessionInfo, SessionBindings } from "../../src/internal/types/session.ts";
 import type { ProviderSessionEvent } from "../../src/internal/types/session-event.ts";
 
 function session(id = "sess_1", status = "idle"): ProviderSessionInfo {
@@ -131,6 +132,116 @@ function ctx(provider: ProviderAdapter): ProjectRuntimeContext {
 }
 
 describe("core session runtime", () => {
+	for (const runtimeMethod of ["create", "stream", "poll"] as const) {
+		test(`rejects Bailian Agent defaults before HTTP through ${runtimeMethod}`, async () => {
+			const projectConfig = config();
+			projectConfig.providers = { bailian: { api_key: "test", base_url: "https://bailian.test" } };
+			projectConfig.defaults = { provider: "bailian" };
+			projectConfig.agents!.assistant!.environment_variables = { AGENT_DEFAULT: "not-injected" };
+			const sessionState = state();
+			sessionState.setResource({
+				address: { type: "agent", name: "assistant", provider: "bailian" },
+				remote_id: "agent_1",
+				content_hash: "h",
+			});
+			const runtime = createProjectRuntime({
+				projectName: "test",
+				config: { ...projectConfig, _resolved: true },
+				state: sessionState,
+			});
+			let requestCount = 0;
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = mock(async () => {
+				requestCount += 1;
+				throw new Error("Unexpected HTTP request while rejecting Agent environment defaults");
+			}) as unknown as typeof fetch;
+			try {
+				const options = { agent: "assistant", environmentId: "env_1" };
+				const run =
+					runtimeMethod === "create"
+						? createSessionForAgent(runtime, options)
+						: runtimeMethod === "stream"
+							? startSessionRun(runtime, "do work", options)
+							: startSessionRunPolling(runtime, "do work", options);
+				await expect(run).rejects.toThrow("Agent environment_variables defaults are supported only by Qoder");
+				expect(requestCount).toBe(0);
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
+
+		test(`passes explicit Bailian Session environment variables through ${runtimeMethod}`, async () => {
+			let receivedBindings: SessionBindings | undefined;
+			const provider: ProviderAdapter = {
+				...adapter("bailian", [], true),
+				createSession: async (bindings) => {
+					receivedBindings = bindings;
+					return session();
+				},
+			};
+			const runtime = ctx(provider);
+			runtime.config.providers = { bailian: {} };
+			runtime.config.defaults = { provider: "bailian" };
+			runtime.config.agents!.assistant!.environment_variables = { AGENT_DEFAULT: "not-injected" };
+			runtime.state.setResource({
+				address: { type: "agent", name: "assistant", provider: "bailian" },
+				remote_id: "agent_1",
+				content_hash: "h",
+			});
+			const options = {
+				agent: "assistant",
+				environmentId: "env_1",
+				environmentVariables: { FEATURE_FLAG: "on", EMPTY_VALUE: "" },
+			};
+			if (runtimeMethod === "create") await createSessionForAgent(runtime, options);
+			else if (runtimeMethod === "stream") await startSessionRun(runtime, "do work", options);
+			else await startSessionRunPolling(runtime, "do work", options);
+			expect(receivedBindings?.environment_variables).toEqual(options.environmentVariables);
+		});
+	}
+
+	test("sends only explicit Bailian variables through the real project runtime and adapter", async () => {
+		const projectConfig = config();
+		projectConfig.providers = { bailian: { api_key: "test", base_url: "https://bailian.test" } };
+		projectConfig.defaults = { provider: "bailian" };
+		projectConfig.agents!.assistant!.environment_variables = { AGENT_DEFAULT: "not-injected" };
+		const sessionState = state();
+		sessionState.setResource({
+			address: { type: "agent", name: "assistant", provider: "bailian" },
+			remote_id: "agent_1",
+			content_hash: "h",
+		});
+		const runtime = createProjectRuntime({
+			projectName: "test",
+			config: { ...projectConfig, _resolved: true },
+			state: sessionState,
+		});
+		const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = mock(async (input: string | URL, init?: RequestInit) => {
+			calls.push({ url: String(input), method: init?.method, body: JSON.parse(String(init?.body)) });
+			return new Response(JSON.stringify({ id: "sess_1", agent: { id: "agent_1" }, status: "idle" }), {
+				headers: { "Content-Type": "application/json" },
+			});
+		}) as unknown as typeof fetch;
+		try {
+			await createSessionForAgent(runtime, {
+				agent: "assistant",
+				environmentId: "env_1",
+				environmentVariables: { SESSION_ONLY: "value" },
+			});
+			expect(calls).toEqual([
+				{
+					url: "https://bailian.test/sessions",
+					method: "POST",
+					body: { agent: "agent_1", environment_id: "env_1", environment_variables: { SESSION_ONLY: "value" } },
+				},
+			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
 	test("starts a Forward session with the caller's explicit Identity", async () => {
 		const forwardConfig = config();
 		forwardConfig.agents!.assistant!.delivery = { qoder: { type: "forward" } };

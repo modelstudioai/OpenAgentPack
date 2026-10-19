@@ -129,9 +129,12 @@ export interface CredentialDecl {
 // --- Memory Store ---
 
 export interface MemoryStoreDecl {
+	name?: string;
 	description: string;
 	provider?: ProviderName;
-	metadata?: Record<string, string>;
+	metadata?: Record<string, unknown>;
+	/** Initialize entries only on creation by default; sync explicitly keeps declared paths managed. */
+	entries_mode?: "initialize" | "sync";
 	entries?: MemoryEntryDecl[];
 }
 
@@ -261,7 +264,8 @@ export interface AgentMcpToolkitDecl {
 	type: "mcp_toolkit";
 	mcp_server_name: string;
 	default_config?: { enabled: boolean };
-	configs: Array<{ name: string; enabled: boolean }>;
+	/** Per-tool overrides; omitted or empty uses default_config for every tool. */
+	configs?: Array<{ name: string; enabled: boolean }>;
 }
 
 export interface McpServerDecl {
@@ -294,8 +298,8 @@ export interface DeploymentDecl {
 	description?: string;
 	provider?: ProviderName;
 	metadata?: Record<string, string>;
-	/** Qoder-only deployment-level variables copied into each created session. */
-	environment_variables?: string;
+	/** Variables copied into Deployment sessions: Bailian string maps or Qoder's existing string format. */
+	environment_variables?: string | Record<string, string>;
 }
 
 export type DeploymentResourceDecl =
@@ -309,7 +313,15 @@ export interface SessionGithubRepoResourceDecl extends Omit<DeploymentGithubRepo
 	authorization_token: string;
 }
 
-export type SessionResourceDecl = SessionGithubRepoResourceDecl;
+export type SessionResourceDecl = SessionGithubRepoResourceDecl | SessionMemoryStoreResourceDecl;
+
+export interface SessionMemoryStoreResourceDecl {
+	type: "memory_store";
+	/** Logical key in the project's memory_stores group. */
+	memory_store: string;
+	access?: "read_write" | "read_only";
+	instructions?: string;
+}
 
 export interface DeploymentFileResource {
 	type: "file";
@@ -318,12 +330,7 @@ export interface DeploymentFileResource {
 	mount_path?: string;
 }
 
-export interface DeploymentMemoryStoreResource {
-	type: "memory_store";
-	memory_store: string;
-	access?: "read_write" | "read_only";
-	instructions?: string;
-}
+export type DeploymentMemoryStoreResource = SessionMemoryStoreResourceDecl;
 
 export interface DeploymentGithubRepoResource {
 	type: "github_repository";

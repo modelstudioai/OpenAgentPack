@@ -88,16 +88,13 @@ agents:
         - type: mcp_toolkit
           mcpServerName: WebSearch
           defaultConfig:
-            enabled: false
-          configs:
-            - name: bailian_web_search
-              enabled: true
+            enabled: true
     mcp_servers:
       - type: official
         name: WebSearch
 ```
 
-The `mcp_toolkit` block (under `tools.mcp[]`) selects which tools the official server exposes. It accepts either snake_case (`mcp_server_name`, `default_config`) or camelCase (`mcpServerName`, `defaultConfig`) keys.
+The `mcp_toolkit` block (under `tools.mcp[]`) selects which tools the official server exposes. It accepts either snake_case (`mcp_server_name`, `default_config`) or camelCase (`mcpServerName`, `defaultConfig`) keys. The example enables all tools without listing tool names. `configs` may be omitted or set to `[]`; add entries only to override individual tools, such as `{ name: bailian_web_search, enabled: false }`. If `default_config` is omitted, tools remain disabled unless explicitly enabled in `configs`.
 
 ## Network policy
 

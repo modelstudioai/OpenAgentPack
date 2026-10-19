@@ -1,10 +1,11 @@
 import { resolveAgentMaterialization } from "../core/agent-materialization.ts";
 import { UserError } from "../errors.ts";
 import { requireRef } from "../executor/resolver.ts";
+import { sessionResourcesSchema } from "../parser/schema.ts";
 import { getProvider } from "../providers/registry.ts";
 import type { IStateManager } from "../state/state-manager.ts";
 import type { AgentDecl, ProjectConfig, SessionResourceDecl } from "../types/config.ts";
-import type { SessionBindings } from "../types/session.ts";
+import type { SessionBindings, SessionMemoryStoreResource, SessionResource } from "../types/session.ts";
 import { resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 
 export interface SessionCreateOptions {
@@ -38,8 +39,18 @@ export interface SessionCreateOptions {
 	title?: string;
 	provider?: string;
 	metadata?: Record<string, string>;
-	/** Session-level environment variables. Currently supported by Qoder. */
+	/** Session-level environment variables. Supported by Bailian and Qoder. */
 	environmentVariables?: Record<string, string>;
+}
+
+/** Validate user-provided Session resources without loading a project or credentials. */
+export function parseSessionResources(input: unknown): SessionResourceDecl[] {
+	const parsed = sessionResourcesSchema.safeParse(input);
+	if (!parsed.success) {
+		const details = parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
+		throw new UserError(`Invalid Session resources / 会话资源配置无效: ${details}`);
+	}
+	return parsed.data;
 }
 
 export function resolveSessionProvider(agentName: string, config: ProjectConfig, overrideProvider?: string): string {
@@ -74,10 +85,22 @@ export function buildSessionBindings(
 		throw new UserError(`Agent '${agentName}' not found in config. Available agents: ${available || "(none)"}`);
 	}
 	const sessionResources = options.resources ?? agent.resources;
+	if (sessionResources) {
+		// Keep the existing Git runtime contract, including scp-like SSH remotes.
+		parseSessionResources(sessionResources.filter((resource) => resource.type === "memory_store"));
+	}
 	const sessionFiles = resolveSessionFiles(agentName, agent, provider, state, options.files ?? []);
+	// Agent defaults remain Qoder-only; Bailian variables must be supplied for this Session.
+	if (options.environmentVariables === undefined && agent.environment_variables !== undefined && provider !== "qoder") {
+		throw new UserError(
+			"Agent environment_variables defaults are supported only by Qoder; pass explicit Session environmentVariables instead. / Agent 的 environment_variables 默认值仅支持 Qoder；请在创建 Session 时显式传入环境变量。",
+		);
+	}
 	const environmentVariables = options.environmentVariables ?? agent.environment_variables;
-	if (environmentVariables && provider !== "qoder") {
-		throw new UserError("Session environment variables are supported only by Qoder.");
+	if (environmentVariables && provider !== "qoder" && provider !== "bailian") {
+		throw new UserError(
+			"Session environment variables are supported only by Bailian and Qoder / 会话环境变量仅支持百炼和 Qoder。",
+		);
 	}
 	const providerFeatures = getProvider(provider)?.features;
 	for (const resource of sessionResources ?? []) {
@@ -148,12 +171,13 @@ export function buildSessionBindings(
 		}
 	}
 
-	const msNames = options.memoryStores ?? agent.memory_stores ?? [];
-	const memoryStoreIds: string[] = [];
-	for (const msName of msNames) {
-		validateResourceInConfig(msName, "memory_store", config.memory_stores);
-		memoryStoreIds.push(requireRef(state, { type: "memory_store", name: msName, provider }));
-	}
+	const memoryBindings = resolveSessionMemoryStores(
+		config,
+		provider,
+		state,
+		options.memoryStores ?? agent.memory_stores ?? [],
+		sessionResources,
+	);
 
 	return {
 		agent_id: agentId,
@@ -161,12 +185,87 @@ export function buildSessionBindings(
 		environment_id: environmentId,
 		tunnel_id: tunnelId,
 		vault_ids: vaultIds,
-		memory_store_ids: memoryStoreIds,
+		memory_store_ids: memoryBindings.memoryStoreIds,
 		files: sessionFiles,
-		resources: sessionResources,
+		resources: memoryBindings.resources,
 		title: options.title,
 		metadata: options.metadata,
 		environment_variables: environmentVariables,
+	};
+}
+
+function resolveSessionMemoryStores(
+	config: ProjectConfig,
+	provider: string,
+	state: IStateManager,
+	legacyNames: string[],
+	declaredResources?: SessionResourceDecl[],
+): { memoryStoreIds: string[]; resources?: SessionResource[] } {
+	const resolveStoreId = (name: string): string => {
+		validateResourceInConfig(name, "memory_store", config.memory_stores);
+		const declaration = config.memory_stores![name]!;
+		if (declaration.provider && declaration.provider !== provider) {
+			throw new UserError(
+				`Memory Store '${name}' belongs to provider '${declaration.provider}', not '${provider}' / 记忆库与会话的服务商不一致。`,
+			);
+		}
+		const address = { type: "memory_store" as const, name, provider };
+		if (state.getResource(address)?.memory_initialization) {
+			throw new UserError(
+				`Memory Store '${name}' initialization must complete before creating a Session / 记忆库初始化尚未完成，请先完成 apply。`,
+			);
+		}
+		return requireRef(state, address);
+	};
+	const memoryStoreIds = legacyNames.map(resolveStoreId);
+	if (provider !== "bailian") {
+		return {
+			memoryStoreIds,
+			resources: declaredResources?.filter((resource) => resource.type === "github_repository"),
+		};
+	}
+
+	const mounts = new Map<string, SessionMemoryStoreResource>();
+	for (const storeId of memoryStoreIds) {
+		mounts.set(storeId, { type: "memory_store", memory_store_id: storeId, access: "read_write" });
+	}
+	const explicitIds = new Set<string>();
+	for (const resource of declaredResources ?? []) {
+		if (resource.type !== "memory_store") continue;
+		if (resource.access !== undefined && resource.access !== "read_only" && resource.access !== "read_write") {
+			throw new UserError(
+				"Memory Store access must be read_only or read_write / 记忆库访问权限必须是 read_only 或 read_write。",
+			);
+		}
+		if (resource.instructions !== undefined && resource.instructions.length > 4096) {
+			throw new UserError(
+				"Memory Store instructions must not exceed 4096 characters / 记忆库挂载说明不能超过 4096 字符。",
+			);
+		}
+		const storeId = resolveStoreId(resource.memory_store);
+		if (explicitIds.has(storeId)) {
+			throw new UserError(
+				`Memory Store '${resource.memory_store}' is declared more than once in Session resources / 会话资源中不能重复声明同一记忆库。`,
+			);
+		}
+		explicitIds.add(storeId);
+		mounts.set(storeId, {
+			type: "memory_store",
+			memory_store_id: storeId,
+			access: resource.access ?? "read_write",
+			...(resource.instructions !== undefined ? { instructions: resource.instructions } : {}),
+		});
+	}
+	if (mounts.size > 8) {
+		throw new UserError("A Bailian Session can mount at most 8 Memory Stores / 百炼会话最多挂载 8 个记忆库。");
+	}
+	const resolvedResources: SessionResource[] = [
+		...(declaredResources?.filter((resource) => resource.type === "github_repository") ?? []),
+		...mounts.values(),
+	];
+	return {
+		memoryStoreIds: [...mounts.keys()],
+		...(declaredResources !== undefined || resolvedResources.length ? { resources: resolvedResources } : {}),
 	};
 }
 

@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { ProjectConfig } from "../types/config.ts";
+import type { MemoryStoreDecl, ProjectConfig } from "../types/config.ts";
 import type { ResourceAddress, ResourceState } from "../types/state.ts";
 import { collectFiles } from "../utils/collect-files.ts";
 import { contentHash } from "../utils/hash.ts";
@@ -30,7 +30,20 @@ export async function computeResourceHash(
 		return contentHash({ decl, apiMode });
 	}
 
-	if (address.type === "environment" || address.type === "vault" || address.type === "memory_store") {
+	if (address.type === "memory_store") {
+		const { entries, entries_mode, ...storeProperties } = decl as MemoryStoreDecl;
+		const entriesMode = entries_mode ?? "initialize";
+		return contentHash({
+			decl: {
+				...storeProperties,
+				entries_mode: entriesMode,
+				...(entriesMode === "sync" ? { entries } : {}),
+			},
+			apiMode: resolveQoderApiMode(address.type, address.name, address.provider, config),
+		});
+	}
+
+	if (address.type === "environment" || address.type === "vault") {
 		return contentHash({ decl, apiMode: resolveQoderApiMode(address.type, address.name, address.provider, config) });
 	}
 

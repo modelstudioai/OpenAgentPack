@@ -30,6 +30,7 @@ deployments:
 | `agent` | yes | Agent name to run. |
 | `agent_version` | no | Pin a versioned agent. |
 | `environment` | no | Override the agent's environment. |
+| `environment_variables` | no | Bailian: string-valued map. Qoder: its existing `KEY=VALUE` string format. |
 | `vaults` | no | Vault bindings. |
 | `memory_stores` | no | Memory store bindings. |
 | `resources` | no | `file`, `memory_store`, or `github_repository` resources to mount. |
@@ -65,7 +66,27 @@ agents deployment unpause <name>        # resume scheduled runs (native provider
 agents deployment run <name>            # trigger a run
 ```
 
-Qoder deployments may also declare `environment_variables` as a semicolon- or newline-separated `KEY=VALUE` string. Qoder copies these variables into every Session created by that deployment; Claude does not support this extension.
+## Environment variables
+
+Bailian deployments accept `environment_variables` as a string-valued map. The variables are injected into the sandbox for deployment runs and can be read by name:
+
+```yaml
+deployments:
+  daily-report:
+    provider: bailian
+    agent: reporter
+    environment_variables:
+      REPORT_REGION: "cn-hangzhou"
+      REPORT_FORMAT: "markdown"
+      FEATURE_ENABLED: "true"
+    initial_events:
+      - type: user.message
+        content: "Generate the daily report."
+```
+
+All values must be strings; quote numeric or boolean-looking values. The reserved map key `__proto__` is not supported. Run `agents plan` and `agents apply` after changing the map. When a Bailian deployment declaration removes `environment_variables` or sets it to `{}`, the next update sends an empty variable map to clear the deployment's variables.
+
+Qoder continues to use a semicolon- or newline-separated `KEY=VALUE` string, for example `environment_variables: "REPORT_REGION=cn-hangzhou;REPORT_FORMAT=markdown"`. Qoder copies these variables into every Session created by the deployment. Claude and Ark do not support deployment environment variables.
 
 ## Native vs. emulated
 

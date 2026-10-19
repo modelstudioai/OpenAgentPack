@@ -1,5 +1,5 @@
 import { basename, dirname } from "node:path";
-import { isScalar, parseDocument, visit } from "yaml";
+import { isMap, isPair, isScalar, parseDocument, Scalar, visit } from "yaml";
 import { resolveProjectConfigFromObject } from "../parser/resolve-project-config.ts";
 import type { Diagnostic } from "../types/dto.ts";
 import { validateProjectConfig } from "./validate-config.ts";
@@ -109,10 +109,15 @@ function redactDocumentSource(
 	document: ReturnType<typeof parseDocument>,
 	secrets: Set<string>,
 ): string {
-	if (secrets.size === 0) return source;
 	const redactedDocument = document.clone();
+	const environmentRedaction = redactEnvironmentVariableNodes(redactedDocument);
+	if (secrets.size === 0 && !environmentRedaction.changed) return source;
 	visit(redactedDocument, (_key, node) => {
-		if (isScalar(node) && (typeof node.value === "string" || typeof node.value === "number")) {
+		if (
+			isScalar(node) &&
+			!environmentRedaction.references.has(node) &&
+			(typeof node.value === "string" || typeof node.value === "number")
+		) {
 			const value = String(node.value);
 			const redacted = redactText(value, secrets);
 			if (redacted !== value) {
@@ -125,6 +130,47 @@ function redactDocumentSource(
 	});
 	redactComments(redactedDocument, secrets);
 	return redactedDocument.toString();
+}
+
+/** Mask environment values at their YAML nodes so short values never rewrite keys or unrelated text. */
+function redactEnvironmentVariableNodes(document: ReturnType<typeof parseDocument>): {
+	changed: boolean;
+	references: WeakSet<object>;
+} {
+	let changed = false;
+	const references = new WeakSet<object>();
+	visit(document, (_key, node) => {
+		if (!isPair(node) || !isScalar(node.key) || node.key.value !== "environment_variables") return;
+		if (isMap(node.value)) {
+			for (const entry of node.value.items) {
+				if (
+					isScalar(entry.value) &&
+					typeof entry.value.value === "string" &&
+					ENVIRONMENT_REFERENCE.test(entry.value.value)
+				) {
+					references.add(entry.value);
+					continue;
+				}
+				entry.value = redactEnvironmentValue(entry.value);
+				changed = true;
+			}
+			return;
+		}
+		if (isScalar(node.value) && typeof node.value.value === "string" && ENVIRONMENT_REFERENCE.test(node.value.value)) {
+			references.add(node.value);
+			return;
+		}
+		node.value = redactEnvironmentValue(node.value);
+		changed = true;
+	});
+	return { changed, references };
+}
+
+function redactEnvironmentValue(value: unknown): Scalar<string> {
+	const redacted = new Scalar(REDACTED);
+	// References elsewhere in the preview must still resolve to the masked value.
+	if (isScalar(value)) redacted.anchor = value.anchor;
+	return redacted;
 }
 
 function redactText(source: string, secrets: Set<string>): string {

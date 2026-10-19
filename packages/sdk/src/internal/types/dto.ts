@@ -311,6 +311,8 @@ export const SessionSchema = z.object({
 	// The base sandbox a session runs inside. Optional: not every transport echoes it on
 	// list. The resource center uses it to mark which environment the current playbook uses.
 	environment_id: z.string().nullish(),
+	// Variables available to code running in the Session sandbox.
+	environment_variables: z.record(z.string(), z.string()).optional(),
 	created_at: z.string().optional(),
 	updated_at: z.string().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
@@ -338,12 +340,15 @@ export const CreateSessionRequestSchema = z.object({
 	agent_id: z.string(),
 	title: z.string().optional(),
 	metadata: z.record(z.string(), z.string()).optional(),
+	// Variables injected into this Session's sandbox at creation.
+	environment_variables: z.record(z.string(), z.string()).optional(),
 });
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
 
 export const CreateSessionResponseSchema = z.object({
 	session_id: z.string(),
 	created_at: z.string().optional(),
+	environment_variables: z.record(z.string(), z.string()).optional(),
 });
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>;
 

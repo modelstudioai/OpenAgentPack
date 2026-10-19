@@ -25,7 +25,7 @@ export type ProviderCapabilities = Record<ResourceKind, CapabilityEntry>;
 /** Fine-grained behavior nested inside resource kinds, used for early config validation. */
 export interface ProviderFeatures {
 	tool_permissions: boolean;
-	session_resources: readonly "github_repository"[];
+	session_resources: readonly ("github_repository" | "memory_store")[];
 }
 
 /**

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import { DeploymentCreateConflictError } from "../../src/internal/providers/depl
 import type { ProviderAdapter, RemoteResource } from "../../src/internal/providers/interface.ts";
 import type { IStateManager } from "../../src/internal/state/state-manager.ts";
 import { StateManager } from "../../src/internal/state/state-manager.ts";
-import type { ProjectConfig } from "../../src/internal/types/config.ts";
+import type { MemoryStoreDecl, ProjectConfig } from "../../src/internal/types/config.ts";
 import type { ExecutionPlan } from "../../src/internal/types/plan.ts";
 
 function tmpPath(): string {
@@ -58,8 +58,332 @@ function makeCtx(
 
 const existingResource: RemoteResource = { id: "env_existing", type: "environment", version: 3 };
 
+const bailianMemoryConfig: ProjectConfig = {
+	version: "1",
+	providers: { bailian: { api_key: "test", workspace_id: "ws" } },
+	defaults: { provider: "bailian" },
+	memory_stores: { notes: { description: "Updated notes" } },
+};
+
+const memoryStoreAddress = { type: "memory_store" as const, name: "notes", provider: "bailian" };
+
+function memoryStorePlan(action: "create" | "update"): ExecutionPlan {
+	return {
+		actions: [
+			{
+				action,
+				address: memoryStoreAddress,
+				reason: action === "create" ? "Resource does not exist in state" : "Local config changed",
+				after: { content_hash: "new-memory-hash" },
+				dependencies: [],
+			},
+		],
+		diagnostics: [],
+	};
+}
+
+function makeBailianMemoryProvider() {
+	const methods = {
+		name: "bailian",
+		supportsResourceNameLookup: (resourceType: string) => resourceType !== "memory_store",
+		findResource: mock(async () => ({ id: "memstore_same_name", type: "memory_store" })),
+		createMemoryStore: mock(async (_storeName: string, _declaration: MemoryStoreDecl) => ({
+			id: "memstore_new",
+			type: "memory_store",
+		})),
+		deleteMemoryStore: mock(async () => {}),
+		updateMemoryStore: mock(async (storeId: string) => ({
+			id: storeId,
+			type: "memory_store",
+			name: "notes",
+			description: "Updated notes",
+			metadata: {},
+			created_at: "",
+			updated_at: "",
+		})),
+		listMemories: mock(async () => ({ data: [], has_more: false })),
+		createMemory: mock(async () => ({ id: "mem_seed", type: "memory" })),
+		updateMemory: mock(async () => ({ id: "mem_seed", type: "memory" })),
+		deleteMemory: mock(async () => {}),
+	};
+	return { ...methods, provider: methods as unknown as ProviderAdapter };
+}
+
 describe("executor conflict-adopt", () => {
-	test("memory store conflict adopts and reconciles without deleting learned memories", async () => {
+	test("Bailian memory store without state creates and records a new id despite a same-name store", async () => {
+		const memoryProvider = makeBailianMemoryProvider();
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(
+			memoryStorePlan("create"),
+			makeCtx(memoryProvider.provider, state, bailianMemoryConfig),
+		);
+
+		expect(result.partial).toBe(false);
+		expect(result.results[0]?.status).toBe("success");
+		expect(memoryProvider.createMemoryStore).toHaveBeenCalledTimes(1);
+		expect(memoryProvider.findResource).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.listMemories).not.toHaveBeenCalled();
+		expect(memoryProvider.createMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemory).not.toHaveBeenCalled();
+		expect(state.getResource(memoryStoreAddress)?.remote_id).toBe("memstore_new");
+	});
+
+	test("new Bailian memory store checkpoints its id and initializes entries separately", async () => {
+		const memoryProvider = makeBailianMemoryProvider();
+		const declaration: MemoryStoreDecl = {
+			description: "Initial notes",
+			entries: [{ key: "seed.md", content: "Initial content" }],
+		};
+		const memoryConfig: ProjectConfig = { ...bailianMemoryConfig, memory_stores: { notes: declaration } };
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(memoryStorePlan("create"), makeCtx(memoryProvider.provider, state, memoryConfig));
+
+		expect(result.partial).toBe(false);
+		expect(memoryProvider.createMemoryStore).toHaveBeenCalledWith("notes", declaration, undefined);
+		expect(memoryProvider.updateMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.listMemories).toHaveBeenCalledTimes(1);
+		expect(memoryProvider.createMemory).toHaveBeenCalledWith(
+			"memstore_new",
+			{ path: "/seed.md", content: "Initial content" },
+			undefined,
+		);
+		expect(memoryProvider.updateMemory).not.toHaveBeenCalled();
+		expect(state.getResource(memoryStoreAddress)?.remote_id).toBe("memstore_new");
+		expect(state.getResource(memoryStoreAddress)?.memory_initialization).toBeUndefined();
+	});
+
+	test("Bailian memory store with a recorded id reconciles that id without name lookup or creation", async () => {
+		const memoryProvider = makeBailianMemoryProvider();
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({ address: memoryStoreAddress, remote_id: "memstore_tracked", content_hash: "old-memory-hash" });
+		const result = await executePlan(
+			memoryStorePlan("update"),
+			makeCtx(memoryProvider.provider, state, bailianMemoryConfig),
+		);
+
+		expect(result.partial).toBe(false);
+		expect(result.results[0]?.status).toBe("success");
+		expect(memoryProvider.updateMemoryStore).toHaveBeenCalledTimes(1);
+		expect(memoryProvider.updateMemoryStore).toHaveBeenCalledWith(
+			"memstore_tracked",
+			{ name: "notes", description: "Updated notes", metadata: {} },
+			undefined,
+		);
+		expect(memoryProvider.listMemories).not.toHaveBeenCalled();
+		expect(memoryProvider.createMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.findResource).not.toHaveBeenCalled();
+		expect(memoryProvider.createMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
+		expect(state.getResource(memoryStoreAddress)?.remote_id).toBe("memstore_tracked");
+	});
+
+	const initializationOnlyChanges: Array<{ change: string; declaration: MemoryStoreDecl }> = [
+		{
+			change: "description and metadata change",
+			declaration: {
+				description: "Updated description",
+				metadata: { topic: "updated" },
+				entries: [{ key: "seed.md", content: "Original seed" }],
+			},
+		},
+		{
+			change: "entry addition",
+			declaration: {
+				description: "notes",
+				entries: [
+					{ key: "seed.md", content: "Original seed" },
+					{ key: "new.md", content: "Additional seed" },
+				],
+			},
+		},
+		{
+			change: "entry content change",
+			declaration: { description: "notes", entries: [{ key: "seed.md", content: "Changed seed" }] },
+		},
+		{
+			change: "entry removal",
+			declaration: { description: "notes", entries: [] },
+		},
+		{
+			change: "explicit initialize mode",
+			declaration: {
+				description: "notes",
+				entries_mode: "initialize",
+				entries: [{ key: "seed.md", content: "Changed seed" }],
+			},
+		},
+	];
+
+	test.each(initializationOnlyChanges)("existing memory store preserves its memories after $change", async ({
+		declaration,
+	}) => {
+		const memoryProvider = makeBailianMemoryProvider();
+		const memoryConfig: ProjectConfig = { ...bailianMemoryConfig, memory_stores: { notes: declaration } };
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({ address: memoryStoreAddress, remote_id: "memstore_tracked", content_hash: "old-memory-hash" });
+		const result = await executePlan(memoryStorePlan("update"), makeCtx(memoryProvider.provider, state, memoryConfig));
+
+		expect(result.partial).toBe(false);
+		expect(memoryProvider.updateMemoryStore).toHaveBeenCalledWith(
+			"memstore_tracked",
+			{ name: "notes", description: declaration.description, metadata: declaration.metadata ?? {} },
+			undefined,
+		);
+		expect(memoryProvider.listMemories).not.toHaveBeenCalled();
+		expect(memoryProvider.createMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.createMemoryStore).not.toHaveBeenCalled();
+		expect(state.getResource(memoryStoreAddress)?.remote_id).toBe("memstore_tracked");
+	});
+
+	test.each([
+		null,
+		"",
+	])("Bailian memory store update without a remote id (%p) creates and records a new store", async (remoteId) => {
+		const memoryProvider = makeBailianMemoryProvider();
+		const state = StateManager.initialize(tmpPath());
+		state.setResource({ address: memoryStoreAddress, remote_id: remoteId, content_hash: "old-memory-hash" });
+		const result = await executePlan(
+			memoryStorePlan("update"),
+			makeCtx(memoryProvider.provider, state, bailianMemoryConfig),
+		);
+
+		expect(result.partial).toBe(false);
+		expect(result.results[0]?.status).toBe("success");
+		expect(memoryProvider.createMemoryStore).toHaveBeenCalledTimes(1);
+		expect(memoryProvider.findResource).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
+		expect(state.getResource(memoryStoreAddress)?.remote_id).toBe("memstore_new");
+	});
+
+	test("Bailian memory store conflict preserves the original error without adopting a same-name store", async () => {
+		const memoryProvider = makeBailianMemoryProvider();
+		const originalError = new ConflictError(409, "Memory store creation was rejected", "Bailian API");
+		memoryProvider.createMemoryStore.mockRejectedValue(originalError);
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(
+			memoryStorePlan("create"),
+			makeCtx(memoryProvider.provider, state, bailianMemoryConfig),
+		);
+
+		expect(result.partial).toBe(true);
+		expect(result.results[0]?.status).toBe("failed");
+		expect(result.results[0]?.error).toBe(originalError);
+		expect(memoryProvider.findResource).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
+		expect(memoryProvider.listMemories).not.toHaveBeenCalled();
+		expect(state.getResource(memoryStoreAddress)).toBeUndefined();
+	});
+
+	test("default memory store conflict adoption updates attributes without reading or overwriting memories", async () => {
+		const memoryProvider = makeBailianMemoryProvider();
+		memoryProvider.createMemoryStore.mockRejectedValue(new ConflictError(409, "exists", "Qoder API"));
+		const provider = {
+			...memoryProvider.provider,
+			name: "qoder",
+			supportsResourceNameLookup: () => true,
+		} as unknown as ProviderAdapter;
+		const memoryConfig: ProjectConfig = {
+			version: "1",
+			providers: { qoder: {} },
+			defaults: { provider: "qoder" },
+			memory_stores: { notes: { description: "Updated notes", entries: [{ key: "seed.md", content: "YAML seed" }] } },
+		};
+		const address = { ...memoryStoreAddress, provider: "qoder" };
+		const plan: ExecutionPlan = {
+			actions: [{ ...memoryStorePlan("create").actions[0]!, address }],
+			diagnostics: [],
+		};
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(plan, {
+			config: memoryConfig,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state,
+		});
+
+		expect(result.partial).toBe(false);
+		expect(memoryProvider.findResource).toHaveBeenCalledTimes(1);
+		expect(memoryProvider.findResource).toHaveBeenCalledWith("memory_store", "notes", undefined, "managed");
+		expect(memoryProvider.updateMemoryStore).toHaveBeenCalledWith(
+			"memstore_same_name",
+			{ name: "notes", description: "Updated notes", metadata: {} },
+			"managed",
+		);
+		expect(memoryProvider.listMemories).not.toHaveBeenCalled();
+		expect(memoryProvider.createMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.updateMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemory).not.toHaveBeenCalled();
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
+		expect(state.getResource(address)?.remote_id).toBe("memstore_same_name");
+	});
+
+	test.each([
+		true,
+		false,
+	])("memory store conflict only searches the actual creation name (matching store exists: %p)", async (matchingStoreExists) => {
+		const memoryProvider = makeBailianMemoryProvider();
+		memoryProvider.createMemoryStore.mockRejectedValue(new ConflictError(409, "exists", "Qoder API"));
+		const findResource = mock(async (_resourceType: string, resourceName: string): Promise<RemoteResource | null> => {
+			if (resourceName === "Shared notes" && matchingStoreExists) {
+				return { id: "memstore_shared", type: "memory_store" };
+			}
+			if (resourceName === "notes") {
+				return { id: "memstore_unrelated", type: "memory_store" };
+			}
+			return null;
+		});
+		const provider = {
+			...memoryProvider.provider,
+			name: "qoder",
+			supportsResourceNameLookup: () => true,
+			findResource,
+		} as unknown as ProviderAdapter;
+		const declaration: MemoryStoreDecl = { name: "Shared notes", description: "Updated notes" };
+		const memoryConfig: ProjectConfig = {
+			version: "1",
+			providers: { qoder: {} },
+			defaults: { provider: "qoder" },
+			memory_stores: { notes: declaration },
+		};
+		const address = { ...memoryStoreAddress, provider: "qoder" };
+		const plan: ExecutionPlan = {
+			actions: [{ ...memoryStorePlan("create").actions[0]!, address }],
+			diagnostics: [],
+		};
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(plan, {
+			config: memoryConfig,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state,
+		});
+
+		expect(memoryProvider.createMemoryStore).toHaveBeenCalledWith("Shared notes", declaration, "managed");
+		expect(findResource).toHaveBeenCalledTimes(1);
+		expect(findResource).toHaveBeenCalledWith("memory_store", "Shared notes", undefined, "managed");
+		expect(result.partial).toBe(!matchingStoreExists);
+		if (matchingStoreExists) {
+			expect(memoryProvider.updateMemoryStore).toHaveBeenCalledWith(
+				"memstore_shared",
+				{ name: "Shared notes", description: "Updated notes", metadata: {} },
+				"managed",
+			);
+			expect(state.getResource(address)?.remote_id).toBe("memstore_shared");
+		} else {
+			expect(memoryProvider.updateMemoryStore).not.toHaveBeenCalled();
+			expect(state.getResource(address)).toBeUndefined();
+		}
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
+	});
+
+	test("explicit sync memory store conflict reconciles seed entries without deleting learned memories", async () => {
 		const calls: string[] = [];
 		let storeMetadata: Record<string, string> | undefined;
 		const provider = {
@@ -84,7 +408,7 @@ describe("executor conflict-adopt", () => {
 					updated_at: "",
 				};
 			},
-			listMemories: async () => ({
+			listMemories: mock(async () => ({
 				data: [
 					{
 						id: "mem_seed",
@@ -110,7 +434,7 @@ describe("executor conflict-adopt", () => {
 					},
 				],
 				has_more: false,
-			}),
+			})),
 			updateMemory: async (_storeId: string, id: string) => {
 				calls.push(`update-memory:${id}`);
 				return { id, type: "memory" };
@@ -121,7 +445,9 @@ describe("executor conflict-adopt", () => {
 			version: "1",
 			providers: { qoder: {} },
 			defaults: { provider: "qoder" },
-			memory_stores: { notes: { description: "notes", entries: [{ key: "seed.md", content: "new" }] } },
+			memory_stores: {
+				notes: { description: "notes", entries_mode: "sync", entries: [{ key: "seed.md", content: "new" }] },
+			},
 		};
 		const plan: ExecutionPlan = {
 			actions: [
@@ -145,6 +471,11 @@ describe("executor conflict-adopt", () => {
 		expect(result.partial).toBe(false);
 		expect(calls).toEqual(["update-store:memstore_existing", "update-memory:mem_seed"]);
 		expect(storeMetadata).toEqual({});
+		expect(provider.listMemories).toHaveBeenCalledWith(
+			"memstore_existing",
+			expect.objectContaining({ limit: 100 }),
+			"managed",
+		);
 	});
 
 	test("ConflictError → findResource finds existing → onExisting rebuilds via updateEnvironment", async () => {

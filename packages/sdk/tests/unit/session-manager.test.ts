@@ -76,6 +76,55 @@ function makeState(): StateManager {
 }
 
 describe("buildSessionBindings", () => {
+	test.each([{ FEATURE_FLAG: "on", COMPLEX_VALUE: "alpha=beta;中文" }, {}] satisfies Record<
+		string,
+		string
+	>[])("accepts explicit Bailian Session environment variables %j", (environmentVariables) => {
+		const state = makeState();
+		state.setResource({
+			address: { type: "agent", name: "minimal", provider: "bailian" },
+			remote_id: "agent_bailian",
+			content_hash: "h",
+		});
+		const config = makeConfig({ providers: { bailian: {} } });
+		config.agents!.minimal!.environment_variables = { AGENT_DEFAULT: "not-injected" };
+		const bindings = buildSessionBindings("minimal", config, "bailian", state, {
+			environmentId: "env_bailian",
+			environmentVariables,
+		});
+		expect(bindings.environment_variables).toEqual(environmentVariables);
+	});
+
+	for (const provider of ["bailian", "claude", "ark"]) {
+		test.each([{ AGENT_DEFAULT: "not-injected" }, {}] satisfies Record<
+			string,
+			string
+		>[])(`rejects Agent environment variable defaults on ${provider} %j`, (environmentVariables) => {
+			const config = makeConfig();
+			config.agents!.minimal!.environment_variables = environmentVariables;
+			expect(() =>
+				buildSessionBindings("minimal", config, provider, makeState(), { environmentId: "env_remote" }),
+			).toThrow("Agent environment_variables defaults are supported only by Qoder");
+		});
+	}
+
+	test.each(["claude", "ark"])("rejects explicit Session environment variables on %s", (provider) => {
+		expect(() =>
+			buildSessionBindings("minimal", makeConfig(), provider, makeState(), {
+				environmentVariables: { FEATURE_FLAG: "on" },
+			}),
+		).toThrow("Session environment variables are supported only by Bailian and Qoder");
+	});
+
+	test("explicit Qoder Session environment variables override declared defaults", () => {
+		const config = makeConfig();
+		config.agents!.minimal!.environment_variables = { DEFAULT: "value" };
+		const bindings = buildSessionBindings("minimal", config, "qoder", makeState(), {
+			environmentVariables: { SESSION: "value" },
+		});
+		expect(bindings.environment_variables).toEqual({ SESSION: "value" });
+	});
+
 	test("inherits environment, vault, memory_stores from agent declaration", () => {
 		const config = makeConfig();
 		config.agents!.researcher!.environment_variables = { FEATURE_FLAG: "on" };

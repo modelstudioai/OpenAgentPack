@@ -32,7 +32,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 | Skill | native | native | native | native | Claude 使用 files[]；其余 Provider 上传 zip |
 | Agent | native | native | native | native | 核心资源 |
 | MCP Server | native | native | native | native | 通过 Agent 的 MCP 配置挂载 |
-| Memory Store | unsupported | native | native | native | Qoder、Claude（beta）、方舟均已接入 |
+| Memory Store | native | native | native | native | 四家均已接入；百炼支持 Session 挂载，销毁时归档记忆库 |
 | Multi-Agent | native | native | native | native | 四家 Provider 均支持 coordinator 拓扑 |
 | Deployment | native | native | native | emulated | 百炼、Qoder 和 Claude 使用原生 Deployment；火山方舟在 `run` 时展开为 Session |
 | Session | native | native | native | native | 四者均原生支持 |
@@ -112,7 +112,7 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 | Agent | full | full | 待验证 | existence | 火山方舟 当前执行存在性检查 |
 | Skill | existence | existence | existence | existence | 可发现缺失/删除，不比较包内容 |
 | Vault | existence | existence | existence | existence | 凭证内容通常不可读回，不比较内容 |
-| Memory Store | unsupported | existence | existence | existence | 可发现资源缺失 |
+| Memory Store | full | existence | existence | existence | 百炼比较库属性；仅显式 `entries_mode: sync` 比较声明的正文路径 |
 | Deployment | unsupported | native | native 路径待验证 | unsupported | 百炼 Deployment 为原生资源但不比较内容；火山方舟的 emulated Deployment 仅为本地记录 |
 
 Claude 的 drift detection 接口路径已预留；本仓库中的 live baseline 因 Anthropic API 账号余额不足未完成 Agent 创建验证。
@@ -125,13 +125,7 @@ Claude 的 drift detection 接口路径已预留；本仓库中的 live baseline
 - `plan` 阶段会跳过该资源，不生成操作
 - 诊断信息中包含替代方案建议（`remediation`）
 
-示例诊断输出：
-
-```
-bailian.memory_store.unsupported:
-  no memory store primitive on Bailian
-  use skill knowledge or MCP for persistent context
-```
+百炼 Memory Store 已原生支持，Session 可挂载记忆库；百炼 Deployment 当前仍只支持文件资源。
 
 ### 模拟（emulated）资源的能力降级
 

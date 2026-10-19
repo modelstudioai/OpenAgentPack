@@ -17,6 +17,7 @@ import { addressKey } from "../types/state.ts";
 import { contentHash, sha256 } from "../utils/hash.ts";
 import { skillNameFromFiles } from "../utils/skill-manifest.ts";
 import type { ExecContext } from "./context.ts";
+import { initializeBailianMemories, memoryInitializationEntries } from "./memory-initialization.ts";
 import { resolveAgentRefs, resolveChannelRefs, resolveDeploymentRefs, resolveTemplateRefs } from "./resolver.ts";
 import { resolveSkillFiles } from "./skill-resolver.ts";
 
@@ -266,8 +267,21 @@ type ResourceExecAdapter = ResourceCrudAdapter & DriftReadAdapter;
 async function executeAction(action: PlannedAction, provider: ResourceExecAdapter, ctx: ExecContext): Promise<boolean> {
 	try {
 		return await executeActionInner(action, provider, ctx);
-	} catch (err) {
-		if (action.action !== "update" || !ApiError.isNotFound(err)) throw err;
+	} catch (error) {
+		if (action.action !== "update" || !ApiError.isNotFound(error)) throw error;
+		if (action.address.provider === "bailian" && action.address.type === "memory_store") {
+			// A Memory file can disappear during sync while its owning Store still exists.
+			const existing = ctx.state.getResource(action.previousAddress ?? action.address);
+			if (!existing?.remote_id || !provider.getMemoryStore) throw error;
+			let storeMissing = false;
+			try {
+				await provider.getMemoryStore(existing.remote_id, existing.api_mode);
+			} catch (lookupError) {
+				if (!ApiError.isNotFound(lookupError)) throw lookupError;
+				storeMissing = true;
+			}
+			if (!storeMissing) throw error;
+		}
 		emitRuntimeFeedback(ctx.onFeedback, {
 			type: "resource_already_gone",
 			level: "warning",
@@ -521,34 +535,81 @@ async function executeActionInner(
 			const deleteMemoryStore = provider.deleteMemoryStore?.bind(provider);
 			if (!createMemoryStore || !deleteMemoryStore) throw memoryStoreUnsupported(address.provider);
 			const decl = ctx.config.memory_stores![name]!;
-			if (!provider.updateMemoryStore || !provider.listMemories || !provider.createMemory || !provider.updateMemory) {
+			const remoteName = decl.name ?? name;
+			if (!provider.updateMemoryStore) throw memoryStoreUnsupported(address.provider);
+			if (address.provider === "bailian" && !existingId) {
+				const entries = memoryInitializationEntries(decl);
+				if (entries.length && (!provider.listMemories || !provider.createMemory)) {
+					throw memoryStoreUnsupported(address.provider);
+				}
+				result = await createMemoryStore(remoteName, decl, apiMode);
+				if (!result.id) throw new UserError("Memory Store creation returned no ID. / 记忆库创建未返回 ID。");
+				const hash = await computeResourceHash(address, ctx.config, ctx.configPath, ctx.state);
+				ctx.state.setResource({
+					address,
+					remote_id: result.id,
+					content_hash: hash,
+					desired_hash: hash,
+					...(entries.length
+						? {
+								memory_initialization: {
+									pending_entries: entries.map((entry) => ({
+										path: entry.path,
+										content_sha256: sha256(entry.content),
+									})),
+								},
+							}
+						: {}),
+				});
+				await ctx.state.save();
+				await initializeBailianMemories(ctx, address, provider, decl, apiMode);
+				break;
+			}
+			if (
+				decl.entries_mode === "sync" &&
+				(!provider.listMemories || !provider.createMemory || !provider.updateMemory)
+			) {
 				throw memoryStoreUnsupported(address.provider);
 			}
 			const reconcile = async (storeId: string): Promise<RemoteResource> => {
+				const metadata =
+					address.provider === "bailian" && provider.getMemoryStore
+						? { ...(await provider.getMemoryStore(storeId, apiMode)).metadata, ...decl.metadata }
+						: (decl.metadata ?? {});
 				const store = await provider.updateMemoryStore!(
 					storeId,
 					{
-						name,
+						name: remoteName,
 						description: decl.description,
-						metadata: decl.metadata ?? {},
+						metadata,
 					},
 					apiMode,
 				);
 
-				// Declarative entries are managed seeds. Update/create those paths in place,
-				// while preserving memories learned by agents at runtime.
+				// Existing and imported stores retain runtime-written content unless sync is explicitly requested.
+				if (decl.entries_mode !== "sync") return store;
+
+				// Explicit sync manages declared paths while preserving additional runtime memories.
 				const current = new Map<string, { id: string; content_sha256: string }>();
+				const seenCursors = new Set<string>();
+				// Bailian's Memory-file listing has a lower limit than the other providers.
+				const pageSize = address.provider === "bailian" ? 20 : 100;
 				let cursor: string | undefined;
 				do {
-					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" }, apiMode);
+					const page = await provider.listMemories!(storeId, { limit: pageSize, cursor, view: "basic" }, apiMode);
 					for (const memory of page.data) {
 						if (memory.type === "memory") current.set(memory.path, memory);
 					}
-					cursor = page.has_more ? page.next_cursor : undefined;
+					cursor = page.next_page ?? (page.has_more ? page.next_cursor : undefined);
+					if (cursor && seenCursors.has(cursor)) {
+						throw new UserError("Memory pagination returned a repeated cursor. / 记忆分页返回了重复游标。");
+					}
+					if (cursor) seenCursors.add(cursor);
 				} while (cursor);
 
 				for (const entry of decl.entries ?? []) {
-					const existing = current.get(entry.key.replace(/^\/+/, ""));
+					const key = entry.key.replace(/^\/+/, "");
+					const existing = current.get(address.provider === "bailian" ? `/${key}` : key);
 					if (existing) {
 						if (existing.content_sha256 !== sha256(entry.content)) {
 							await provider.updateMemory!(
@@ -568,15 +629,19 @@ async function executeActionInner(
 				return store;
 			};
 			if (apiModeChanged) {
-				result = await createMemoryStore(name, decl, apiMode);
+				result = await createMemoryStore(remoteName, decl, apiMode);
 				if (existingId) await deleteMemoryStore(existingId, priorApiMode).catch(() => undefined);
-			} else if (isUpdate) {
-				result = await reconcile(existingId!);
+			} else if (existingId) {
+				if (address.provider === "bailian") {
+					await initializeBailianMemories(ctx, address, provider, decl, apiMode);
+				}
+				result = await reconcile(existingId);
 			} else {
 				try {
-					result = await createMemoryStore(name, decl, apiMode);
+					result = await createMemoryStore(remoteName, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						searchNames: [remoteName],
 						mode: apiMode,
 						createOnly: ctx.createOnly,
 						onExisting: async (existing) => reconcile(existing.id!),
@@ -884,7 +949,7 @@ async function findExistingByNames(
 async function adoptOnConflict(
 	err: unknown,
 	address: ResourceAddress,
-	provider: Pick<ResourceCrudAdapter, "findResource">,
+	provider: Pick<ResourceCrudAdapter, "findResource" | "supportsResourceNameLookup">,
 	onFeedback: RuntimeFeedbackSink | undefined,
 	opts: {
 		searchNames?: string[];
@@ -893,7 +958,7 @@ async function adoptOnConflict(
 		onExisting: (existing: RemoteResource) => Promise<RemoteResource>;
 	},
 ): Promise<RemoteResource> {
-	if (!(err instanceof ConflictError)) throw err;
+	if (!(err instanceof ConflictError) || provider.supportsResourceNameLookup?.(address.type) === false) throw err;
 
 	const candidates = opts.searchNames?.length ? opts.searchNames : [address.name];
 	if (opts.createOnly) throw createOnlyExistingResourceError(address, candidates.join('" / "'));

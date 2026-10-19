@@ -98,6 +98,15 @@ test("validates tunnel references and limits tunnels to Qoder", () => {
 	expect(diagnostics.some((d) => d.code === "claude.agent.tunnel.unsupported")).toBe(true);
 });
 
+test("continues rejecting Bailian Agent environment variable defaults", () => {
+	const config = fixture();
+	config.agents!.assistant!.environment_variables = { FEATURE_FLAG: "on" };
+	const diagnostics = validateProjectConfig(config);
+	expect(diagnostics.some((diagnostic) => diagnostic.code === "bailian.agent.environment_variables.unsupported")).toBe(
+		true,
+	);
+});
+
 test("limits Agent environment variables to Qoder", () => {
 	const config: ProjectConfig = {
 		version: "1",

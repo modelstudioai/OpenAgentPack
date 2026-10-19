@@ -293,6 +293,13 @@ describe("Claude toSessionInfo", () => {
 });
 
 describe("Qoder toSessionInfo", () => {
+	test("keeps provider string environment variables only in raw attributes", () => {
+		const response = { id: "sess_q_env", environment_variables: "FEATURE_FLAG=on;LOG_LEVEL=debug" };
+		const info = qoderToSessionInfo(response);
+		expect(info).not.toHaveProperty("environment_variables");
+		expect(info.attributes).toBe(response);
+	});
+
 	test("full response with flat fields", () => {
 		const info = qoderToSessionInfo({
 			id: "sess_q1",
@@ -350,6 +357,29 @@ describe("Qoder toSessionInfo", () => {
 });
 
 describe("Bailian toSessionInfo", () => {
+	test.each([{ FEATURE_FLAG: "on", EMPTY_VALUE: "" }, {}] satisfies Record<
+		string,
+		string
+	>[])("preserves environment variables and raw attributes %j", (environmentVariables) => {
+		const response = { id: "sess_b_env", environment_variables: environmentVariables };
+		const info = bailianToSessionInfo(response);
+		expect(info.environment_variables).toEqual(environmentVariables);
+		expect(info.attributes).toBe(response);
+	});
+
+	test.each([
+		{ environmentVariables: undefined },
+		{ environmentVariables: null },
+		{ environmentVariables: "FEATURE_FLAG=on" },
+		{ environmentVariables: ["on"] },
+		{ environmentVariables: { FEATURE_FLAG: 1 } },
+	])("does not lift absent or non-string-map environment variables %j", ({ environmentVariables }) => {
+		const response = { id: "sess_b_env", environment_variables: environmentVariables };
+		const info = bailianToSessionInfo(response);
+		expect(info).not.toHaveProperty("environment_variables");
+		expect(info.attributes).toBe(response);
+	});
+
 	test("full response with nested agent", () => {
 		const info = bailianToSessionInfo({
 			id: "sess_b1",

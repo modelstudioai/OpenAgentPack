@@ -13,7 +13,7 @@ OpenAgentPack targets multiple agent platforms behind one declarative config. Ea
 | Skill | native | native | native | native | Claude uploads via `files[]`; the other providers upload zip archives. Volcengine Ark is create + attach only. |
 | Agent | native | native | native | native | Core managed-agent resource. |
 | MCP Server | native | native | native | native | Bailian uses official managed servers referenced by name. |
-| Memory Store | unsupported | native | native | native | Qoder, Claude (beta), and Ark adapters implement the complete upstream lifecycle. |
+| Memory Store | native | native | native | native | All four providers support Memory Stores. Bailian supports Session mounts and archives stores on destroy. |
 | Multi-Agent | native | native | native | native | Coordinator topology is available on all four providers. |
 | Deployment | native | native | native | emulated | Bailian, Qoder, and Claude use native deployments; Ark expands a deployment into a session at `run` time. |
 | Session | native | native | native | native | Runtime sessions are native on every provider. |

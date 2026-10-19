@@ -12,6 +12,10 @@ export interface ResourceState {
 	externally_managed?: boolean;
 	/** Provider API domain that owns the remote resource (currently relevant to Qoder). */
 	api_mode?: "managed" | "forward" | "auto";
+	/** New-store initialization checkpoint; existing and imported stores never acquire it. */
+	memory_initialization?: {
+		pending_entries: Array<{ path: string; content_sha256: string }>;
+	};
 	version?: number;
 	/**
 	 * Backward-compatible alias for desired_hash. Kept while older state files

@@ -14,7 +14,7 @@ rule:
     - pattern: const $NAME = z.union($$$ARGS)
 constraints:
   NAME:
-    regex: ^(ResourceAddress|Diagnostic|ActionType|DriftKind|PlannedAction|AgentReadinessStatus|AgentDriftSeverity|AgentSkillRef|AgentModel|AgentDefinition|AgentReadiness|AgentWithReadiness|AgentRecoveryAction|SessionEventType|SafeSessionEvent|SafeSessionEventList|AgentSyncStatus|AgentSyncResult|AgentSyncRun|SessionContentBlock|SessionEvent|Session|CreateSessionRequest|CreateSessionResponse|GetSessionRequest|ListSessionsRequest|ListSessionsResponse|ListSessionEventsRequest|ListSessionEventsResponse|SendEventRequest|SendEventResponse)(Schema)?$
+    regex: ^(ResourceAddress|Diagnostic|ActionType|DriftKind|PlannedAction|AgentReadinessStatus|AgentDriftSeverity|AgentSkillRef|AgentModel|AgentDefinition|AgentReadiness|AgentWithReadiness|AgentRecoveryAction|SessionEventType|SafeSessionEvent|SafeSessionEventList|AgentSyncStatus|AgentSyncResult|AgentSyncRun|SessionContentBlock|SessionEvent|Session|CreateSessionRequest|CreateSessionResponse|GetSessionRequest|ListSessionsRequest|ListSessionsResponse|ListSessionEventsRequest|ListSessionEventsResponse|SendEventRequest|SendEventResponse|CreateWebhookEndpointInput|UpdateWebhookEndpointInput|WebhookEndpoint|WebhookEndpointWithSecret|WebhookEndpointList|WebhookDeleteResult|WebhookSecretResetResult|WebhookEventData|WebhookEvent|WebhookTestResult|WebhookDelivery|WebhookEventWithDelivery|WebhookEventPage)(Schema)?$
 note: >-
   This rule is deliberately name-based and scoped outside packages/sdk. New shared
   DTOs should be added to @openagentpack/sdk and, when necessary, to this rule's owned-name

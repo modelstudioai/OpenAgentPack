@@ -7,8 +7,8 @@ export const BAILIAN_CAPABILITIES: ProviderCapabilities = {
 	agent: { tier: "native", reason: "agents API with versioned updates" },
 	template: { tier: "unsupported", reason: "no Forward Template equivalent on Bailian" },
 	memory_store: {
-		tier: "unsupported",
-		reason: "no memory store primitive on Bailian",
+		tier: "native",
+		reason: "memory stores, file memories and historical versions API; stores are archived on destroy",
 	},
 	mcp_server: { tier: "native", reason: "mcp_servers field on agent (official servers)" },
 	multiagent: { tier: "native", reason: "coordinator + roster topology" },

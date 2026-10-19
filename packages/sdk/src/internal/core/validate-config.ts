@@ -12,6 +12,7 @@ import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
 import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
+import { getDeploymentEnvironmentVariablesIssue } from "../validation/deployment-environment.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 
 export interface ValidateProjectConfigOptions {
@@ -89,7 +90,18 @@ export function collectReferenceDiagnostics(config: ProjectConfig, diagnostics: 
 				diagnostics.error("config.agent.file.unknown", `agent.${name}: references unknown file '${fileName}'`);
 			}
 		}
-		for (const memory of agent.memory_stores ?? []) {
+		const explicitMemoryResources = (agent.resources ?? []).filter((resource) => resource.type === "memory_store");
+		const explicitMemoryNames = new Set<string>();
+		for (const resource of explicitMemoryResources) {
+			if (explicitMemoryNames.has(resource.memory_store)) {
+				diagnostics.error(
+					"config.agent.memory_store.duplicate",
+					`agent.${name}: duplicate Memory Store '${resource.memory_store}' in resources / 会话资源不能重复声明同一记忆库。`,
+				);
+			}
+			explicitMemoryNames.add(resource.memory_store);
+		}
+		for (const memory of new Set([...(agent.memory_stores ?? []), ...explicitMemoryNames])) {
 			if (!memoryNames.has(memory)) {
 				diagnostics.error(
 					"config.agent.memory_store.unknown",
@@ -387,6 +399,7 @@ export function collectProviderCapabilities(
 						address,
 					);
 				}
+				if (resource.type === "memory_store") continue;
 				const mountPrefix = providerMountPrefix(providerName);
 				if (
 					mountPrefix &&
@@ -397,6 +410,21 @@ export function collectProviderCapabilities(
 					diagnostics.error(
 						`${providerName}.agent.session_resource.mount_path.invalid`,
 						`agent.${name}: ${providerName} Session resource mount_path must start with '${mountPrefix}/'.`,
+						address,
+					);
+				}
+			}
+			if (providerName === "bailian") {
+				const effectiveMemoryStores = new Set([
+					...(agent.memory_stores ?? []),
+					...(agent.resources ?? []).flatMap((resource) =>
+						resource.type === "memory_store" ? [resource.memory_store] : [],
+					),
+				]);
+				if (effectiveMemoryStores.size > 8) {
+					diagnostics.error(
+						"bailian.agent.memory_store.limit",
+						`agent.${name}: a Session can mount at most 8 Memory Stores / 百炼会话最多挂载 8 个记忆库。`,
 						address,
 					);
 				}
@@ -546,6 +574,26 @@ export function collectProviderCapabilities(
 					name,
 					provider: providerName,
 				};
+				const effectiveMemoryStores = new Set([
+					...(deployment.memory_stores ?? []),
+					...(deployment.resources ?? []).flatMap((resource) =>
+						resource.type === "memory_store" ? [resource.memory_store] : [],
+					),
+				]);
+				if (!effectiveMemoryStores.size) {
+					const deployedAgent = config.agents?.[deployment.agent];
+					for (const memoryStore of deployedAgent?.memory_stores ?? []) effectiveMemoryStores.add(memoryStore);
+					for (const resource of deployedAgent?.resources ?? []) {
+						if (resource.type === "memory_store") effectiveMemoryStores.add(resource.memory_store);
+					}
+				}
+				if (effectiveMemoryStores.size) {
+					diagnostics.error(
+						"bailian.deployment.memory_store.unsupported",
+						`deployment.${name}: Bailian Deployment resources accept files only; create a Session to mount Memory Stores / 百炼 Deployment 仅支持文件资源，请通过 Session 挂载记忆库。`,
+						addr,
+					);
+				}
 
 				if (deployment.initial_events?.some((event) => event.type === "user.define_outcome")) {
 					diagnostics.warning(
@@ -612,6 +660,18 @@ export function collectProviderCapabilities(
 			}
 		}
 
+		for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
+			if (deployment.provider && deployment.provider !== providerName) continue;
+			const issue = getDeploymentEnvironmentVariablesIssue(providerName, deployment.environment_variables);
+			if (issue) {
+				diagnostics.error(
+					`${providerName}.deployment.environment_variables.${issue.kind}`,
+					`deployment.${name}: ${issue.message}`,
+					{ type: "deployment", name, provider: providerName },
+				);
+			}
+		}
+
 		if (providerName !== "qoder") {
 			for (const [name, env] of Object.entries(config.environments ?? {})) {
 				// External references are never sent to the provider API, so a
@@ -651,14 +711,6 @@ export function collectProviderCapabilities(
 			}
 			for (const [name, deployment] of Object.entries(config.deployments ?? {})) {
 				if (deployment.provider && deployment.provider !== providerName) continue;
-				if (deployment.environment_variables !== undefined) {
-					diagnostics.error(
-						`${providerName}.deployment.environment_variables.unsupported`,
-						`deployment.${name}: environment_variables is supported only by Qoder deployments; ` +
-							`remove it or pin this deployment to the qoder provider.`,
-						{ type: "deployment", name, provider: providerName },
-					);
-				}
 				if (deployment.tunnel && (!deployment.provider || deployment.provider === providerName)) {
 					diagnostics.error(
 						`${providerName}.deployment.tunnel.unsupported`,
