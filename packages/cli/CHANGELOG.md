@@ -1,5 +1,18 @@
 # @openagentpack/cli
 
+## 0.9.0
+
+### Patch Changes
+
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+  - @openagentpack/sdk@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

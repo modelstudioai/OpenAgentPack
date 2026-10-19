@@ -18,7 +18,7 @@
     },
     "apps/server": {
       "name": "@openagentpack/server",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "dependencies": {
         "@hono/zod-openapi": "^1.4.0",
         "@openagentpack/sdk": "workspace:*",
@@ -68,7 +68,7 @@
     },
     "packages/cli": {
       "name": "@openagentpack/cli",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "bin": {
         "agents": "dist/bin/agents.js",
       },
@@ -95,7 +95,7 @@
     },
     "packages/playground": {
       "name": "@openagentpack/playground",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "bin": {
         "agents-playground": "dist/bin/playground.js",
       },
@@ -118,7 +118,7 @@
     },
     "packages/sdk": {
       "name": "@openagentpack/sdk",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "dependencies": {
         "jszip": "^3.10.1",
         "yaml": "^2.9.0",
