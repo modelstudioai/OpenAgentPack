@@ -80,7 +80,6 @@ jobs:
   publish:
     needs: preflight
     runs-on: ubuntu-latest
-    environment: npm-release
     permissions:
       contents: write
       id-token: write
