@@ -310,6 +310,7 @@ describe("executor conflict-adopt", () => {
 
 		expect(result.partial).toBe(false);
 		expect(memoryProvider.findResource).toHaveBeenCalledTimes(1);
+		expect(memoryProvider.findResource).toHaveBeenCalledWith("memory_store", "notes", undefined, "managed");
 		expect(memoryProvider.updateMemoryStore).toHaveBeenCalledWith(
 			"memstore_same_name",
 			{ name: "notes", description: "Updated notes", metadata: {} },
@@ -321,6 +322,65 @@ describe("executor conflict-adopt", () => {
 		expect(memoryProvider.deleteMemory).not.toHaveBeenCalled();
 		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
 		expect(state.getResource(address)?.remote_id).toBe("memstore_same_name");
+	});
+
+	test.each([
+		true,
+		false,
+	])("memory store conflict only searches the actual creation name (matching store exists: %p)", async (matchingStoreExists) => {
+		const memoryProvider = makeBailianMemoryProvider();
+		memoryProvider.createMemoryStore.mockRejectedValue(new ConflictError(409, "exists", "Qoder API"));
+		const findResource = mock(async (_resourceType: string, resourceName: string): Promise<RemoteResource | null> => {
+			if (resourceName === "Shared notes" && matchingStoreExists) {
+				return { id: "memstore_shared", type: "memory_store" };
+			}
+			if (resourceName === "notes") {
+				return { id: "memstore_unrelated", type: "memory_store" };
+			}
+			return null;
+		});
+		const provider = {
+			...memoryProvider.provider,
+			name: "qoder",
+			supportsResourceNameLookup: () => true,
+			findResource,
+		} as unknown as ProviderAdapter;
+		const declaration: MemoryStoreDecl = { name: "Shared notes", description: "Updated notes" };
+		const memoryConfig: ProjectConfig = {
+			version: "1",
+			providers: { qoder: {} },
+			defaults: { provider: "qoder" },
+			memory_stores: { notes: declaration },
+		};
+		const address = { ...memoryStoreAddress, provider: "qoder" };
+		const plan: ExecutionPlan = {
+			actions: [{ ...memoryStorePlan("create").actions[0]!, address }],
+			diagnostics: [],
+		};
+		const state = StateManager.initialize(tmpPath());
+		const result = await executePlan(plan, {
+			config: memoryConfig,
+			configPath: "/tmp/agents.yaml",
+			providers: new Map([["qoder", provider]]),
+			state,
+		});
+
+		expect(memoryProvider.createMemoryStore).toHaveBeenCalledWith("Shared notes", declaration, "managed");
+		expect(findResource).toHaveBeenCalledTimes(1);
+		expect(findResource).toHaveBeenCalledWith("memory_store", "Shared notes", undefined, "managed");
+		expect(result.partial).toBe(!matchingStoreExists);
+		if (matchingStoreExists) {
+			expect(memoryProvider.updateMemoryStore).toHaveBeenCalledWith(
+				"memstore_shared",
+				{ name: "Shared notes", description: "Updated notes", metadata: {} },
+				"managed",
+			);
+			expect(state.getResource(address)?.remote_id).toBe("memstore_shared");
+		} else {
+			expect(memoryProvider.updateMemoryStore).not.toHaveBeenCalled();
+			expect(state.getResource(address)).toBeUndefined();
+		}
+		expect(memoryProvider.deleteMemoryStore).not.toHaveBeenCalled();
 	});
 
 	test("explicit sync memory store conflict reconciles seed entries without deleting learned memories", async () => {
@@ -348,7 +408,7 @@ describe("executor conflict-adopt", () => {
 					updated_at: "",
 				};
 			},
-			listMemories: async () => ({
+			listMemories: mock(async () => ({
 				data: [
 					{
 						id: "mem_seed",
@@ -374,7 +434,7 @@ describe("executor conflict-adopt", () => {
 					},
 				],
 				has_more: false,
-			}),
+			})),
 			updateMemory: async (_storeId: string, id: string) => {
 				calls.push(`update-memory:${id}`);
 				return { id, type: "memory" };
@@ -411,6 +471,11 @@ describe("executor conflict-adopt", () => {
 		expect(result.partial).toBe(false);
 		expect(calls).toEqual(["update-store:memstore_existing", "update-memory:mem_seed"]);
 		expect(storeMetadata).toEqual({});
+		expect(provider.listMemories).toHaveBeenCalledWith(
+			"memstore_existing",
+			expect.objectContaining({ limit: 100 }),
+			"managed",
+		);
 	});
 
 	test("ConflictError → findResource finds existing → onExisting rebuilds via updateEnvironment", async () => {

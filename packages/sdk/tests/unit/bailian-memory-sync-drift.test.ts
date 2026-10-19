@@ -19,7 +19,8 @@ const entries = [
 afterEach(() => setDefaultFetch(undefined));
 
 function fixture(entriesMode: MemoryStoreDecl["entries_mode"] = "sync") {
-	const calls: Array<{ method: string; path: string; page: string | null; view: string | null }> = [];
+	const calls: Array<{ method: string; path: string; page: string | null; view: string | null; limit: string | null }> =
+		[];
 	const memories = new Map<string, { id: string; content: string }>();
 	const control = { repeatCursor: false };
 	const remoteStore = {
@@ -42,6 +43,7 @@ function fixture(entriesMode: MemoryStoreDecl["entries_mode"] = "sync") {
 			path,
 			page: url.searchParams.get("page"),
 			view: url.searchParams.get("view"),
+			limit: url.searchParams.get("limit"),
 		});
 		if (path === "/memory_stores" && request.method === "POST") return Response.json(remoteStore);
 		if (path === "/memory_stores/memstore_notes") {
@@ -53,6 +55,10 @@ function fixture(entriesMode: MemoryStoreDecl["entries_mode"] = "sync") {
 				const memoryPath = body!.path as string;
 				memories.set(memoryPath, { id: `mem_${++memorySequence}`, content: body!.content as string });
 				return Response.json({ id: memories.get(memoryPath)!.id, type: "memory", path: memoryPath });
+			}
+			const limit = Number(url.searchParams.get("limit"));
+			if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+				return Response.json({ message: "limit must be between 1 and 20" }, { status: 400 });
 			}
 			const all = [...memories.entries()].map(([memoryPath, memory]) => ({
 				id: memory.id,
@@ -131,6 +137,7 @@ describe("Bailian explicit Memory sync drift", () => {
 		expect((await current.refresh()).actions[0]?.action).toBe("no-op");
 		const memoryReads = current.calls.filter((call) => call.method === "GET" && call.path.endsWith("/memories"));
 		expect(memoryReads.every((call) => call.view === "basic")).toBe(true);
+		expect(memoryReads.every((call) => call.limit === "20")).toBe(true);
 		expect(memoryReads.some((call) => call.page === "opaque page +/1")).toBe(true);
 		const serialized = JSON.stringify(current.runtime.state.getStateFile());
 		for (const entry of entries) expect(serialized).not.toContain(entry.content);

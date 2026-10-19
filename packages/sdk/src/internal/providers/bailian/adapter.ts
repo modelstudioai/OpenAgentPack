@@ -309,7 +309,8 @@ export class BailianAdapter implements ProviderAdapter {
 		const seenCursors = new Set<string>();
 		let cursor: string | undefined;
 		do {
-			const page = await this.listMemories(storeId, { limit: 100, page: cursor, view: "basic" });
+			// Memory-file listing accepts at most 20 entries per page.
+			const page = await this.listMemories(storeId, { limit: 20, page: cursor, view: "basic" });
 			for (const memory of page.data) {
 				if (memory.type === "memory" && hashes.has(memory.path)) {
 					hashes.set(memory.path, memory.content_sha256);

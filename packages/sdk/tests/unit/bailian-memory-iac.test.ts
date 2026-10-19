@@ -33,7 +33,13 @@ async function fixture(
 	directories.push(directory);
 	const statePath = join(directory, "state.json");
 	const state = StateManager.initialize(statePath);
-	const calls: Array<{ method: string; path: string; body?: Record<string, unknown> }> = [];
+	const calls: Array<{
+		method: string;
+		path: string;
+		body?: Record<string, unknown>;
+		limit: string | null;
+		page: string | null;
+	}> = [];
 	const memories = new Map<string, { id: string; content: string }>();
 	let storeCount = 0;
 	const remoteStore = {
@@ -61,7 +67,13 @@ async function fixture(
 		const path = url.pathname.replace("/api/v1/agentstudio", "");
 		const rawBody = await request.text();
 		const body = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : undefined;
-		calls.push({ method: request.method, path, body });
+		calls.push({
+			method: request.method,
+			path,
+			body,
+			limit: url.searchParams.get("limit"),
+			page: url.searchParams.get("page"),
+		});
 		if (path === "/memory_stores" && request.method === "POST") {
 			storeCount++;
 			Object.assign(remoteStore, body, { id: `memstore_${storeCount}`, archived_at: null });
@@ -93,6 +105,10 @@ async function fixture(
 			return Response.json({ id: memories.get(memoryPath)!.id, type: "memory", path: memoryPath });
 		}
 		if (path.endsWith("/memories")) {
+			const limit = Number(url.searchParams.get("limit"));
+			if (!Number.isInteger(limit) || limit < 1 || limit > 20) {
+				return Response.json({ message: "limit must be between 1 and 20" }, { status: 400 });
+			}
 			const all = [...memories.entries()].map(([memoryPath, memory]) => ({
 				id: memory.id,
 				type: "memory",
@@ -157,6 +173,7 @@ describe("Bailian Memory Store IaC", () => {
 		current.control.failPath = "/notes/second.md";
 		const first = await current.apply();
 		expect(first.partial).toBe(true);
+		expect(first.results[0]?.error?.message).toContain("seed unavailable");
 		const checkpoint = await StateManager.load(current.statePath);
 		expect(checkpoint.getResource(address)?.remote_id).toBe("memstore_1");
 		expect(checkpoint.getResource(address)?.memory_initialization?.pending_entries).toEqual([
@@ -179,6 +196,9 @@ describe("Bailian Memory Store IaC", () => {
 		expect(current.memories.get("/notes/first.md")?.content).toBe("Agent's newer content");
 		expect(current.memories.get("/notes/second.md")?.content).toBe("Agent wrote the pending path");
 		expect(current.runtime.state.getResource(address)?.memory_initialization).toBeUndefined();
+		const memoryReads = current.calls.filter((call) => call.method === "GET" && call.path.endsWith("/memories"));
+		expect(memoryReads.every((call) => call.limit === "20")).toBe(true);
+		expect(memoryReads.some((call) => call.page === "second-page")).toBe(true);
 		current.memories.delete("/notes/first.md");
 		current.runtime.config.memory_stores!.notes!.entries!.push({ key: "new.md", content: "Later initializer" });
 		await current.apply();

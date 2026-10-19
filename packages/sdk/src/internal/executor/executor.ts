@@ -592,9 +592,11 @@ async function executeActionInner(
 				// Explicit sync manages declared paths while preserving additional runtime memories.
 				const current = new Map<string, { id: string; content_sha256: string }>();
 				const seenCursors = new Set<string>();
+				// Bailian's Memory-file listing has a lower limit than the other providers.
+				const pageSize = address.provider === "bailian" ? 20 : 100;
 				let cursor: string | undefined;
 				do {
-					const page = await provider.listMemories!(storeId, { limit: 100, cursor, view: "basic" }, apiMode);
+					const page = await provider.listMemories!(storeId, { limit: pageSize, cursor, view: "basic" }, apiMode);
 					for (const memory of page.data) {
 						if (memory.type === "memory") current.set(memory.path, memory);
 					}
@@ -639,6 +641,7 @@ async function executeActionInner(
 					result = await createMemoryStore(remoteName, decl, apiMode);
 				} catch (err) {
 					result = await adoptOnConflict(err, address, provider, ctx.onFeedback, {
+						searchNames: [remoteName],
 						mode: apiMode,
 						createOnly: ctx.createOnly,
 						onExisting: async (existing) => reconcile(existing.id!),
