@@ -143,11 +143,12 @@ describe("open-source repository invariants", () => {
 		expect(unpinned).toEqual([]);
 	});
 
-	test("npm publishing auto-starts stable releases without an approval gate and cannot be cancelled", () => {
+	test("npm publishing uses its trusted environment, auto-starts stable releases, and cannot be cancelled", () => {
 		const workflow = readFileSync(resolve(root, ".github/workflows/release.yml"), "utf8");
+		const publishJob = workflow.split("\n  publish:\n")[1]?.split(/\n {2}\S/)[0];
 		expect(workflow).toMatch(/\n {2}push:\n {4}branches: \[main\]/);
 		expect(workflow).toContain("contains(github.event.head_commit.message, 'chore: release packages')");
-		expect(workflow).not.toContain("environment:");
+		expect(publishJob).toContain("    environment: npm-release");
 		expect(workflow).toContain("vars.NPM_RELEASE_ENABLED == 'true'");
 		expect(workflow).toContain("inputs.confirm == 'PUBLISH'");
 		expect(workflow).toContain(["dist-tag: $", "{{ steps.release.outputs.dist-tag }}"].join(""));

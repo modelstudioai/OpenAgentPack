@@ -6,7 +6,7 @@ OpenAgentPack 将 `@openagentpack/sdk`、`@openagentpack/playground` 和 `@opena
 
 组织管理员需要先在组织的 Actions 设置中允许 GitHub Actions 创建 Pull Request，再在 **仓库 Settings → Actions → General** 打开对应选项。Release PR 工作流使用仓库自带的 `GITHUB_TOKEN`，不需要个人 token。
 
-无需配置审批 Environment。发布 job 不引用任何 GitHub `environment:`，因此没有人工审批环节。发布仍然受 npmjs.com 的 Trusted Publisher 配置和 `NPM_RELEASE_ENABLED` 开关保护。
+创建或保留名为 `npm-release` 的 GitHub Environment。发布 job 引用它，以匹配 npm Trusted Publisher 的身份配置。是否需要人工审批由该 Environment 设置中的 **Required reviewers** 单独控制。若希望免审批发布，关闭 Required reviewers，同时保留工作流的 `environment: npm-release` 绑定。发布仍然受 npmjs.com 的 Trusted Publisher 配置和 `NPM_RELEASE_ENABLED` 开关保护。
 
 在 npmjs.com 分别进入三个包的设置，为每个包配置相同的 Trusted Publisher：
 
@@ -16,8 +16,9 @@ OpenAgentPack 将 `@openagentpack/sdk`、`@openagentpack/playground` 和 `@opena
 | Organization | `modelstudioai` |
 | Repository | `OpenAgentPack` |
 | Workflow filename | `release.yml` |
+| Environment | `npm-release` |
 
-npmjs.com 上 Trusted Publisher 的 Environment 字段留空即可；工作流 job 已不再引用任何 environment。
+npmjs.com 上 Trusted Publisher 的 Environment 必须与工作流 job 的 `environment: npm-release` 绑定完全一致。
 
 工作流使用 GitHub-hosted runner、Node.js 24、npm 12、`id-token: write` 和 provenance，不需要 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。npm 只允许为已存在的包配置 Trusted Publisher。
 
@@ -37,11 +38,11 @@ bun run changeset
 
 1. 打开 GitHub 的 **Actions → Publish npm → Run workflow**。
 2. 选择要发布的准确分支，channel 选择 `beta`，输入 `PUBLISH`，然后运行。
-3. 在运行页面检查提交、自动生成的精确版本和 job 信息。
+3. 在运行页面检查提交、自动生成的精确版本和 job 信息。如果 `npm-release` 启用了 Required reviewers，需批准 deployment 后才会继续发布。
 
 工作流根据所选提交和完整 ref 生成不修改 Git 历史的不可变版本，例如 `0.4.0-beta-a1b2c3d-24767cc1-20260827`，并创建对应的不可变 Git tag。从 `main` 发布时仍使用 npm 的共享 `beta` dist-tag；从其他分支发布时使用分支独立标签，例如 `beta-feat-managed-agent-api-commands-24767cc1`。精确版本和分支标签都包含完整 ref 的稳定哈希，因此不同 ref 即使指向同一提交，或规范化后的可读部分相同，也不会共用版本或标签；同一 ref 和提交重跑仍然幂等。job 信息会输出准确标签。随后，它会在 Linux、Windows、macOS 的 Node.js 22 和 24 环境中，从公共 npm registry 安装该精确版本。只有六个消费者 job 全部通过，才创建 GitHub prerelease。
 
-需要下一个 Beta 时，从更新后的分支再次运行 **Publish npm**。每个新提交都会生成新的不可变快照版本，并且不会消费 changeset。
+需要下一个 Beta 时，从更新后的分支再次运行 **Publish npm**。每个新提交都会生成新的不可变快照版本，并且不会消费 changeset。如果 `npm-release` 限制了 deployment branch，需允许目标 Beta 分支。
 
 可以使用 job 输出的分支标签安装，例如 `npm install @openagentpack/sdk@beta-feat-managed-agent-api-commands-24767cc1`；固定自动生成的精确版本最可复现。
 
@@ -49,7 +50,7 @@ bun run changeset
 
 1. 审核并合并自动生成的 `chore: release packages` PR。
 2. 合并提交到达 `main` 后，**Publish npm** 会自动启动。
-3. 在运行摘要中核对准确的包版本。
+3. 在运行摘要中核对准确的包版本。如果 `npm-release` 启用了 Required reviewers，需批准 deployment 后才会继续发布。
 
 如果发布中途失败，可在 **Actions → Publish npm → Run workflow** 中选择 `main`、channel `stable`，输入 `PUBLISH` 手动重跑。已经成功发布的精确包版本会被跳过。
 
@@ -104,7 +105,7 @@ npm install @openagentpack/sdk
 
 ## 故障恢复
 
-- npm 认证失败：逐字检查 Trusted Publisher 的仓库和 workflow 文件名是否与上表一致。
+- npm 认证失败：逐字检查 Trusted Publisher 的仓库、workflow 文件名和 Environment 是否与上表一致。
 - 部分包成功、部分包失败：从同一个提交重新运行同一个工作流，已发布的精确版本会被跳过。
 - 所有包都已发布，但发布后消费者 job 失败：保留不可变 tag，不执行 unpublish、不移动 tag，也不创建 GitHub Release。修复兼容性问题后发布新的 patch 版本；npm 上的版本不能被覆盖。
 - registry 可见性会重试五分钟，之后才判定 release 失败。只有确认失败原因是 npm 同步延迟而不是包兼容性时，才从同一个提交重试。
