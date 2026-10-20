@@ -10,7 +10,7 @@ import type { EventListOptions, ProviderSessionEvent, ProviderSessionEventList }
  * `has_more`.
  */
 export async function listSessionEventsPaged(
-	client: { get(path: string): Promise<unknown> },
+	client: { get(path: string, options?: { signal?: AbortSignal }): Promise<unknown> },
 	sessionId: string,
 	options: EventListOptions | undefined,
 	toEvent: (raw: Record<string, unknown>) => ProviderSessionEvent,
@@ -30,7 +30,11 @@ export async function listSessionEventsPaged(
 	if (pageCursor) params.set("page", pageCursor);
 	if (config?.forwardAfterId && options?.after_id) params.set("after_id", options.after_id);
 	const qs = params.toString();
-	const res = (await client.get(`/sessions/${sessionId}/events${qs ? `?${qs}` : ""}`)) as Record<string, unknown>;
+	const path = `/sessions/${sessionId}/events${qs ? `?${qs}` : ""}`;
+	const res = (await (options?.signal ? client.get(path, { signal: options.signal }) : client.get(path))) as Record<
+		string,
+		unknown
+	>;
 	const data = (res.data ?? []) as Record<string, unknown>[];
 	const nextPage = (res.next_page as string | null | undefined) ?? undefined;
 	return {

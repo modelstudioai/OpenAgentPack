@@ -19,6 +19,13 @@ Interface packages such as `@openagentpack/cli` and `@openagentpack/webui` shoul
 SDK as a domain service layer, not as a bag of parser, state, provider, planner,
 or executor primitives.
 
+## 浏览器事件转换边界
+
+`./session-events` 提供 `createBailianSessionEventNormalizer` 这一纯领域转换服务，
+将已经解帧的百炼业务 JSON 归并为现有 `SessionEvent`。公开面仅有
+`push`、`seed`、`clear`，不暴露内部累加器或 Provider 类型，不包含 HTTP、凭据和重试策略。
+已有单事件 mapper 与 sanitizer 继续保留；SDK 主入口和调用方默认行为不变。
+
 ## Service APIs
 
 The public entry exposes domain workflows that return structured domain results.

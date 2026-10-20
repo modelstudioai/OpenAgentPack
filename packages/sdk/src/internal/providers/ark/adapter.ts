@@ -45,6 +45,7 @@ import type {
 } from "../interface.ts";
 import { ProviderMemoryApi } from "../memory-api.ts";
 import { arkEnvironmentWireNameAttempt, normalizeWireResourceName } from "../resource-naming.ts";
+import { assertEventOptions, assertStreamOptions } from "../session-event-options.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
@@ -458,7 +459,8 @@ export class ArkAdapter implements ProviderAdapter {
 		return extractCreatedEventId(res);
 	}
 
-	async *streamSessionEvents(sessionId: string, _options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+	async *streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+		assertStreamOptions(this.name, options);
 		// Like claude/bailian: the stream pushes only post-connect events and rejects a
 		// cursor param; reconnection replays history via listSessionEvents + de-dup by id.
 		for await (const raw of this.client.sse(`/sessions/${sessionId}/events/stream`)) {
@@ -467,6 +469,7 @@ export class ArkAdapter implements ProviderAdapter {
 	}
 
 	async listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList> {
+		assertEventOptions(this.name, options);
 		return listSessionEventsPaged(this.client, sessionId, options, toSessionEvent);
 	}
 

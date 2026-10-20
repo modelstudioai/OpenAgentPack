@@ -1,6 +1,8 @@
-import type { SessionEventType } from "./dto.ts";
+import type { SessionEvent, SessionEventType } from "./dto.ts";
 
 export interface ProviderSessionEvent {
+	/** Opt-in cumulative contract snapshot. raw remains the actual triggering provider frame. */
+	snapshot?: SessionEvent;
 	type: SessionEventType;
 	raw_type: string;
 	/** Stable per-event id when the provider supplies one; used to de-dupe history replay vs. live stream. */
@@ -23,7 +25,12 @@ export interface ProviderSessionEvent {
 	raw: Record<string, unknown>;
 }
 
+export type SessionEventFormat = "legacy" | "snapshot";
+
 export interface EventListOptions {
+	/** Bailian structured event conversion; defaults to legacy. */
+	event_format?: SessionEventFormat;
+	signal?: AbortSignal;
 	limit?: number;
 	after_id?: string;
 	// Opaque forward cursor echoed verbatim from a prior response's `next_page`.
@@ -40,6 +47,18 @@ export interface EventListOptions {
 
 export interface EventStreamOptions {
 	after_id?: string;
+	/** Bailian only. Nonempty event_deltas selects snapshot unless explicitly conflicting. */
+	event_format?: SessionEventFormat;
+	event_deltas?: ("message" | "reasoning")[];
+	signal?: AbortSignal;
+	/** Called once per successful connection, before the first business event. */
+	onReady?: () => void;
+	/** Bailian snapshot mode only; defaults to false. Never resends a user message. */
+	reconnect?: boolean;
+	/** Snapshot mode default: 30 seconds. */
+	connectTimeoutMs?: number;
+	/** Snapshot mode default: 180 seconds; comments and heartbeats count as activity. */
+	idleTimeoutMs?: number;
 }
 
 export interface ProviderSessionEventList {

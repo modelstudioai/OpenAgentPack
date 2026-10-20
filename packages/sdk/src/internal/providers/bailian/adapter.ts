@@ -99,6 +99,7 @@ import type {
 	ResolvedDeploymentRefs,
 } from "../interface.ts";
 import { ProviderMemoryApi } from "../memory-api.ts";
+import { assertEventOptions } from "../session-event-options.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
@@ -111,6 +112,7 @@ import {
 	toRestFileInfo,
 } from "../shared.ts";
 import { BailianClient } from "./client.ts";
+import { correlateBailianHistoryEvents } from "./history-event-correlation.ts";
 import {
 	agentToDecl,
 	envToDecl,
@@ -127,10 +129,12 @@ import {
 	toSessionEvent,
 	vaultToDecl,
 } from "./mapper.ts";
+import { streamBailianSessionEvents } from "./session-stream.ts";
 
 export class BailianAdapter implements ProviderAdapter {
 	readonly name = "bailian" as const;
 	readonly eventResume = false;
+	readonly streamReady = true;
 	readonly memoryCapabilities = {
 		archive_store: true,
 		batch_create: false,
@@ -1213,13 +1217,8 @@ export class BailianAdapter implements ProviderAdapter {
 		};
 	}
 
-	async *streamSessionEvents(sessionId: string, _options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
-		// AGENTSTUDIO's stream pushes only post-connect events and accepts no cursor
-		// param; reconnection is done by replaying history via listSessionEvents and
-		// de-duplicating by event id, so `after_id` is intentionally not forwarded.
-		for await (const raw of this.client.sse(`/sessions/${sessionId}/events/stream`)) {
-			yield toSessionEvent(raw);
-		}
+	streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+		return streamBailianSessionEvents(this.client, sessionId, options);
 	}
 
 	async listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList> {
@@ -1227,7 +1226,19 @@ export class BailianAdapter implements ProviderAdapter {
 		// http 200 with the full unfiltered list rather than rejecting), so forwarding it
 		// buys nothing; it is never sent (mirrors claude). Shared page-cursor handling
 		// lives in listSessionEventsPaged.
-		return listSessionEventsPaged(this.client, sessionId, options, toSessionEvent, { forwardTypes: false });
+		assertEventOptions(this.name, options);
+		const result = await listSessionEventsPaged(
+			this.client,
+			sessionId,
+			options,
+			(raw) => toSessionEvent(raw, options),
+			{
+				forwardTypes: false,
+			},
+		);
+		return options?.event_format === "snapshot"
+			? { ...result, events: correlateBailianHistoryEvents(result.events) }
+			: result;
 	}
 
 	// --- Files ---

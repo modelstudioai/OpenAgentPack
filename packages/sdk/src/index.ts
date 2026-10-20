@@ -354,6 +354,7 @@ export type {
 export type {
 	EventListOptions,
 	EventStreamOptions,
+	SessionEventFormat,
 	ProviderSessionEvent,
 	ProviderSessionEventList,
 } from "./internal/types/session-event.ts";

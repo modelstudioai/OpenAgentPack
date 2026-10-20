@@ -1,5 +1,6 @@
 import { defaultFileUploadPurpose, enrichProviderFileInfo } from "../../file-lifecycle.ts";
 import { UserError } from "../errors.ts";
+import { assertEventOptions, assertStreamOptions, sessionEventFormat } from "../providers/session-event-options.ts";
 import type { SessionCreateOptions } from "../session/session-manager.ts";
 import { buildSessionBindings, resolveSessionProvider } from "../session/session-manager.ts";
 import type { ProviderFileInfo } from "../types/file.ts";
@@ -15,6 +16,7 @@ import { prepareInitialSessionPrompt } from "../utils/sandbox-mount.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider } from "./project-runtime.ts";
+import { streamReadyBeforeSend } from "./session-stream-runtime.ts";
 
 export interface SessionWorkflowAdapter {
 	readonly name: string;
@@ -23,6 +25,8 @@ export interface SessionWorkflowAdapter {
 	 * resume after. true → send-then-stream with `afterId`; false → connect-before-send.
 	 */
 	readonly eventResume: boolean;
+	/** Optional internal capability: onReady fires after the HTTP stream is established. */
+	readonly streamReady?: boolean;
 	createSession(bindings: SessionBindings): Promise<ProviderSessionInfo>;
 	listSessions(filter?: SessionFilter): Promise<SessionListResult>;
 	getSession(id: string): Promise<ProviderSessionInfo>;
@@ -61,11 +65,13 @@ export interface SessionRuntimeTarget {
 export interface SessionRuntimeCreateOptions extends SessionCreateOptions, SessionRuntimeTarget {}
 
 export interface SessionRuntimeRunOptions extends SessionRuntimeCreateOptions {
+	stream?: EventStreamOptions;
 	pollIntervalMs?: number;
 	pollTimeoutMs?: number;
 }
 
 export interface SessionRuntimeSendOptions extends SessionRuntimeTarget {
+	stream?: EventStreamOptions;
 	pollIntervalMs?: number;
 	pollTimeoutMs?: number;
 }
@@ -166,6 +172,7 @@ export async function startSessionRun(
 	options: SessionRuntimeRunOptions = {},
 ): Promise<StreamingSessionRun> {
 	const { agentName, provider, adapter } = resolveSessionRuntime(ctx, options);
+	assertStreamOptions(adapter.name, options.stream);
 	const bindings = buildSessionBindings(agentName, ctx.config, provider, ctx.state, {
 		identityId: options.identityId,
 		environment: options.environment,
@@ -186,7 +193,12 @@ export async function startSessionRun(
 		agentName,
 		provider,
 		session,
-		events: streamMessageEvents(adapter, session.id, prepareInitialSessionPrompt(prompt, bindings, provider)),
+		events: streamMessageEvents(
+			adapter,
+			session.id,
+			prepareInitialSessionPrompt(prompt, bindings, provider),
+			options.stream,
+		),
 	};
 }
 
@@ -194,7 +206,10 @@ export function streamMessageEvents(
 	adapter: SessionWorkflowAdapter,
 	sessionId: string,
 	message: string,
+	options: EventStreamOptions = {},
 ): AsyncIterable<ProviderSessionEvent> {
+	assertStreamOptions(adapter.name, options);
+	if (adapter.streamReady) return streamReadyBeforeSend(adapter, sessionId, message, options);
 	if (adapter.eventResume) {
 		return streamWithResume(adapter, sessionId, message);
 	}
@@ -208,7 +223,7 @@ export async function sendSessionMessageStreaming(
 	options: SessionRuntimeSendOptions = {},
 ): Promise<AsyncIterable<ProviderSessionEvent>> {
 	const adapter = resolveDirectAdapter(ctx, options.provider);
-	return streamMessageEvents(adapter, sessionId, message);
+	return streamMessageEvents(adapter, sessionId, message, options.stream);
 }
 
 export async function startSessionRunPolling(
@@ -386,6 +401,10 @@ export async function listSessionEvents(
 	options: SessionRuntimeTarget & EventListOptions = {},
 ): Promise<ProviderSessionEventList> {
 	const listOptions: EventListOptions = {};
+	const adapter = resolveDirectAdapter(ctx, options.provider);
+	assertEventOptions(adapter.name, options);
+	if (options.event_format !== undefined) listOptions.event_format = options.event_format;
+	if (options.signal !== undefined) listOptions.signal = options.signal;
 	if (options.limit !== undefined) listOptions.limit = options.limit;
 	if (options.order !== undefined) listOptions.order = options.order;
 	if (options.types !== undefined) listOptions.types = options.types;
@@ -395,7 +414,7 @@ export async function listSessionEvents(
 	if (options.created_at_lte !== undefined) listOptions.created_at_lte = options.created_at_lte;
 	const pageToken = options.page_token ?? options.page;
 	if (pageToken !== undefined) listOptions.page_token = pageToken;
-	const result = await resolveDirectAdapter(ctx, options.provider).listSessionEvents(
+	const result = await adapter.listSessionEvents(
 		sessionId,
 		Object.keys(listOptions).length > 0 ? listOptions : undefined,
 	);
@@ -521,11 +540,14 @@ export function streamSessionEvents(
 	options: SessionRuntimeTarget & EventStreamOptions = {},
 ): AsyncIterable<ProviderSessionEvent> {
 	const adapter = resolveDirectAdapter(ctx, options.provider);
-	if (options.after_id && !adapter.eventResume) {
+	assertStreamOptions(adapter.name, options);
+	if (options.after_id && !adapter.eventResume && sessionEventFormat(options) === "legacy") {
+		if (options.signal || options.onReady || options.connectTimeoutMs || options.idleTimeoutMs) {
+			throw new UserError("Stream lifecycle controls with after_id require snapshot event format.");
+		}
 		return replaySessionEventsByPolling(adapter, sessionId, options.after_id);
 	}
-	const streamOptions: EventStreamOptions = {};
-	if (options.after_id !== undefined) streamOptions.after_id = options.after_id;
+	const { provider: _provider, agent: _agent, ...streamOptions } = options;
 	return adapter.streamSessionEvents(sessionId, Object.keys(streamOptions).length > 0 ? streamOptions : undefined);
 }
 
