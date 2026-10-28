@@ -179,8 +179,7 @@ export async function* streamBailianSessionEvents(
 				throwIfAborted(options.signal);
 				const event = accumulator.push(raw);
 				if (event) {
-					if (event.id && raw.object !== "content" && (raw.status === "completed" || raw.status === undefined))
-						lastCompletedId = event.id;
+					if (event.id && accumulator.isCompleted(event.id)) lastCompletedId = event.id;
 					accumulator.markDelivered(event);
 					yield event;
 				}

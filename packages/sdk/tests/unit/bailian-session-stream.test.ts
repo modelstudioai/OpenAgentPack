@@ -104,6 +104,58 @@ test("Bailian explicit deltas produce cumulative snapshots and only send event_d
 	expect(source.cancelled()).toBe(true);
 });
 
+test("BMA envelopes survive EOF recovery and only complete on the authoritative message", async () => {
+	const start = {
+		type: "event_start",
+		event: { id: "pending", type: "reasoning" },
+		object: "message",
+		status: "in_progress",
+	};
+	const delta = {
+		type: "event_delta",
+		event_id: "pending",
+		delta: { type: "reasoning_delta", index: 0, reasoning: "partial" },
+		object: "content",
+		status: "in_progress",
+	};
+	const final = { ...message("pending", "complete reasoning"), type: "reasoning", thread_id: "thread-main" };
+	const idle = {
+		object: "message",
+		status: "completed",
+		id: "status",
+		type: "session_status",
+		content: [{ type: "data", data: { session_status: "idle", stop_reason: "end_turn" } }],
+	};
+	const resumed = feed([start, delta, final, idle]);
+	let connections = 0;
+	setDefaultFetch(async (input) => {
+		if (url(input).pathname.endsWith("/stream")) {
+			return ++connections === 1 ? feed([message("marker"), start, delta], true).response : resumed.response;
+		}
+		return Response.json({ data: [message("marker"), final], next_page: null });
+	});
+	const abort = new AbortController();
+	const stream = iterator({ event_deltas: ["reasoning", "message"], reconnect: true, signal: abort.signal });
+	const guard = setTimeout(() => abort.abort(), 1500);
+	try {
+		const events = await take(stream, 5);
+		expect(events.map((event) => event.id)).toEqual(["marker", "pending", "pending", "pending", "status"]);
+		expect(events[1]?.snapshot).toMatchObject({ type: "reasoning", metadata: { event_status: "in_progress" } });
+		expect(events[2]?.content).toBe("partial");
+		expect(events[2]?.raw).toEqual(delta);
+		expect(events[3]?.snapshot).toMatchObject({
+			content: [{ type: "text", text: "complete reasoning" }],
+			metadata: { event_status: "completed", thread_id: "thread-main" },
+		});
+		expect(events[4]?.status).toBe("idle");
+		expect(connections).toBe(2);
+	} finally {
+		clearTimeout(guard);
+		abort.abort();
+		await stream.return?.();
+	}
+});
+
 test("reconnect paginates more than 100 events with opaque cursors and deduplicates live overlap", async () => {
 	const history = Array.from({ length: 102 }, (_, index) => message(`e${index.toString().padStart(3, "0")}`));
 	const cursor = "opaque page + / = ?";

@@ -76,7 +76,10 @@ sanitizeSessionEvents(events, { ...completeContent, includeRaw: true });
 
 此能力针对百炼 BMA Session 的 `/sessions/{session_id}/events/stream` 协议。
 SSE 是传输方式；`event_deltas` 决定是否订阅消息生成期间的正文和推理分片。
-本能力不解析 CMA 的 `event_start/event_delta` 或 Responses API 的流式格式。
+2026-10-28 的 BMA 实测流使用混合 envelope：生成期间发送 `event_start/event_delta`，
+完成时仍发送完整 `object: "message", status: "completed"` 事件，最后由独立的
+`session_status` 表示会话状态。SDK 同时兼容既有 `object: "content" / msg_id / delta` 分片。
+这里只覆盖该 BMA 合同，不表示支持任意 CMA envelope 或 Responses API 流式格式。
 
 ### 默认行为与显式选项
 
@@ -152,6 +155,11 @@ async function sendMessage(ctx: ProjectRuntimeContext, sessionId: string, signal
 - `content[]` 保留正文、推理、工具数据、多模态和未知内容块；`delta: true` 追加到
   对应索引，`delta: false` 替换该块。最终消息显式携带的 `content` 具有权威性。
   空字符串或 `content: []` 表示清空，字段缺失表示保留已有值。
+- BMA `event_start.event` 提供业务事件的 `id/type`，可选角色、线程与时间字段原样保留；
+  缺失字段不猜测，待完整事件补齐。`event_delta.event_id` 关联同一事件：
+  `reasoning_delta.reasoning` 累积推理文本，`content_delta.content` 按 `index` 累积文本内容。
+  这些 envelope 不作为独立业务事件输出，也不推进完成游标；先到的分片有界暂存，直到身份到达。
+  实测结束帧是完整消息，不据此定义 `event_end` 行为，更不把消息完成当作会话结束。
 - `metadata.event_status` 是消息生命周期，如 `in_progress/completed`；
   `metadata.status` 是会话运行状态，如 `running/idle`，两者不能互相替代。
 - 工具调用通过 `call_id` 关联，保留参数和输出的字符串或对象形态、错误标记、MCP 信息；

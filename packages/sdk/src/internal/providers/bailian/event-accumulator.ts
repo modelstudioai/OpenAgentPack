@@ -1,5 +1,6 @@
 import type { SessionContentBlock } from "../../types/dto.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
+import { expandBailianEventFrame, isBailianEventFrame } from "./event-frame.ts";
 import { toSessionEvent } from "./event-mapper.ts";
 import {
 	BailianEventProtocolError,
@@ -12,7 +13,7 @@ import {
 interface MessageState {
 	identity?: Record<string, unknown>;
 	blocks: Map<number, SessionContentBlock>;
-	pending: Record<string, unknown>[];
+	pending: { raw: Record<string, unknown>; content?: SessionContentBlock }[];
 	completed: boolean;
 	needsAuthoritativeContent?: boolean;
 	lastSnapshot?: string;
@@ -44,12 +45,22 @@ export class BailianEventAccumulator {
 	}
 
 	push(raw: Record<string, unknown>): ProviderSessionEvent | undefined {
-		return this.ingest(raw, false);
+		const expanded = expandBailianEventFrame(raw);
+		const event = expanded.content
+			? this.ingestContent(expanded.event, expanded.content)
+			: this.ingest(expanded.event, false);
+		if (event) event.raw = raw;
+		return event;
+	}
+
+	/** Only complete business events can advance the stream's recovery marker. */
+	isCompleted(id: string): boolean {
+		return this.messages.get(id)?.completed === true;
 	}
 
 	/** History entries are authoritative completed events, even when lifecycle fields are absent. */
 	seed(raw: Record<string, unknown>): ProviderSessionEvent | undefined {
-		if (raw.object === "content") {
+		if (raw.object === "content" || isBailianEventFrame(raw)) {
 			throw new BailianEventProtocolError("Bailian history must contain complete events.");
 		}
 		return this.ingest(raw, true);
@@ -61,7 +72,7 @@ export class BailianEventAccumulator {
 	 * Kept separate from seed() so existing server recovery behavior remains unchanged.
 	 */
 	seedSnapshot(raw: Record<string, unknown>): ProviderSessionEvent | undefined {
-		if (raw.object === "content") {
+		if (raw.object === "content" || isBailianEventFrame(raw)) {
 			throw new BailianEventProtocolError("Bailian history must contain complete events.");
 		}
 		const id = typeof raw.id === "string" ? raw.id : raw.event_id;
@@ -181,7 +192,7 @@ export class BailianEventAccumulator {
 		if (state.pending.length) {
 			// A final explicit content array supersedes all older orphaned fragments.
 			if (!completes || raw.content === undefined) {
-				for (const frame of state.pending) this.applyContent(state, frame);
+				for (const frame of state.pending) this.applyContent(state, frame.raw, frame.content);
 			}
 			this.pendingCount -= state.pending.length;
 			state.pending = [];
@@ -193,7 +204,7 @@ export class BailianEventAccumulator {
 		return this.emit(state, raw);
 	}
 
-	private ingestContent(raw: Record<string, unknown>): ProviderSessionEvent | undefined {
+	private ingestContent(raw: Record<string, unknown>, content?: SessionContentBlock): ProviderSessionEvent | undefined {
 		if (typeof raw.msg_id !== "string" || !raw.msg_id) {
 			throw new BailianEventProtocolError("Bailian content frame is missing msg_id.");
 		}
@@ -209,26 +220,27 @@ export class BailianEventAccumulator {
 			if (this.pendingCount >= this.maxEntries) {
 				throw new BailianEventProtocolError("Bailian orphan content buffer exceeded its limit.");
 			}
-			state.pending.push(cloneEventValue(raw));
+			state.pending.push({ raw: cloneEventValue(raw), ...(content ? { content: cloneEventValue(content) } : {}) });
 			state.needsAuthoritativeContent = this.recovering;
 			this.pendingCount++;
 			return undefined;
 		}
-		this.applyContent(state, raw);
+		this.applyContent(state, raw, content);
 		return this.emit(state, raw);
 	}
 
-	private applyContent(state: MessageState, raw: Record<string, unknown>): void {
+	private applyContent(state: MessageState, raw: Record<string, unknown>, content?: SessionContentBlock): void {
 		const index = raw.index as number;
 		if (this.boundContentBlocks && !state.blocks.has(index) && state.blocks.size >= this.maxEntries) {
 			throw new BailianEventProtocolError("Bailian content block buffer exceeded its limit.");
 		}
 		const prior = state.blocks.get(index);
-		const fields = Object.fromEntries(Object.entries(raw).filter(([key]) => !CONTENT_ENVELOPE_FIELDS.has(key)));
+		const fields =
+			content ?? Object.fromEntries(Object.entries(raw).filter(([key]) => !CONTENT_ENVELOPE_FIELDS.has(key)));
 		const baseline = raw.delta === true ? prior : prior ? { type: prior.type } : undefined;
 		const block = normalizeContent([{ ...baseline, ...fields }])[0]!;
-		if (raw.delta === true && typeof raw.text === "string") {
-			block.text = (prior?.text ?? "") + raw.text;
+		if (raw.delta === true && typeof fields.text === "string") {
+			block.text = (prior?.text ?? "") + fields.text;
 		}
 		state.blocks.set(index, block);
 	}
