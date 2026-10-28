@@ -16,6 +16,17 @@ export async function listSessionEventsPaged(
 	toEvent: (raw: Record<string, unknown>) => ProviderSessionEvent,
 	config?: { forwardAfterId?: boolean; forwardTypes?: boolean },
 ): Promise<ProviderSessionEventList> {
+	return listEventsAtPathPaged(client, `/sessions/${sessionId}/events`, options, toEvent, config);
+}
+
+/** Shared query and envelope handling for Session and child-thread event history. */
+export async function listEventsAtPathPaged(
+	client: { get(path: string, options?: { signal?: AbortSignal }): Promise<unknown> },
+	path: string,
+	options: EventListOptions | undefined,
+	toEvent: (raw: Record<string, unknown>) => ProviderSessionEvent,
+	config?: { forwardAfterId?: boolean; forwardTypes?: boolean },
+): Promise<ProviderSessionEventList> {
 	const params = new URLSearchParams();
 	if (options?.limit) params.set("limit", String(options.limit));
 	if (options?.order) params.set("order", options.order);
@@ -30,8 +41,8 @@ export async function listSessionEventsPaged(
 	if (pageCursor) params.set("page", pageCursor);
 	if (config?.forwardAfterId && options?.after_id) params.set("after_id", options.after_id);
 	const qs = params.toString();
-	const path = `/sessions/${sessionId}/events${qs ? `?${qs}` : ""}`;
-	const res = (await (options?.signal ? client.get(path, { signal: options.signal }) : client.get(path))) as Record<
+	const url = `${path}${qs ? `?${qs}` : ""}`;
+	const res = (await (options?.signal ? client.get(url, { signal: options.signal }) : client.get(url))) as Record<
 		string,
 		unknown
 	>;

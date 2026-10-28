@@ -13,7 +13,7 @@ export interface ProviderSessionEvent {
 	tool_input?: string;
 	status?: string;
 	stop_reason?: string;
-	/** Child-agent thread id when a Managed Agents multi-agent event carries one. */
+	/** Provider thread reference; snapshot metadata.thread_id retains actual event ownership. */
 	session_thread_id?: string;
 	/**
 	 * A file the agent delivered to the provider's Files API (qoder DeliverArtifacts /

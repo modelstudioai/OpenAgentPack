@@ -54,11 +54,14 @@ export async function listRemoteAgents(
 export async function getRemoteAgent(
 	ctx: ProjectRuntimeContext,
 	id: string,
-	options: ManagedApiTarget & { version?: number } = {},
+	options: ManagedApiTarget & { version?: number; signal?: AbortSignal } = {},
 ) {
 	const adapter = resolveAdapter(ctx, options.provider);
 	const method = requiredMethod(adapter.getRemoteAgent, adapter.name, "agent lookup");
-	return method.call(adapter, id, options.version);
+	options.signal?.throwIfAborted();
+	const result = await method.call(adapter, id, options.version, { signal: options.signal });
+	options.signal?.throwIfAborted();
+	return result;
 }
 
 export async function listRemoteAgentVersions(
@@ -292,7 +295,7 @@ const UNSUPPORTED_THREAD: ManagedAgentOperationCapability = {
 	supported: false,
 	auth: null,
 	reason:
-		"Managed Agents exposes child-thread ids and lifecycle events through Session Events, but no independent Thread resource API.",
+		"This SDK currently supports child-thread listing and event history; thread lookup and archive are not implemented.",
 };
 const UNSUPPORTED_OAUTH: ManagedAgentOperationCapability = {
 	supported: false,
@@ -364,10 +367,10 @@ const BAILIAN_OPERATIONS: Record<string, ManagedAgentOperationCapability> = {
 	"file.delete": API_KEY,
 	"model.list": UNSUPPORTED_MODEL,
 	"model.search": UNSUPPORTED_MODEL,
-	"session_thread.list": UNSUPPORTED_THREAD,
+	"session_thread.list": API_KEY,
 	"session_thread.get": UNSUPPORTED_THREAD,
 	"session_thread.archive": UNSUPPORTED_THREAD,
-	"session_thread.events": UNSUPPORTED_THREAD,
+	"session_thread.events": API_KEY,
 	"mcp.oauth_login": UNSUPPORTED_OAUTH,
 };
 

@@ -12,3 +12,4 @@ export {
 	createBailianSessionEventNormalizer,
 } from "./internal/providers/bailian/event-normalizer.ts";
 export type { SessionEvent } from "./internal/types/dto.ts";
+export type { SessionThread, SessionThreadListOptions, SessionThreadPage } from "./internal/types/session-thread.ts";

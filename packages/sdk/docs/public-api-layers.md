@@ -37,9 +37,10 @@ New CLI and WebUI behavior should start here.
 - Managed-resource reads: environment, skill/version/download, vault, and file
   metadata/content APIs with opaque cursor preservation.
 - Session workflows: creation, list/get/update/archive/delete, runs, follow-up
-  messages, raw event send/list/stream, and summaries. Managed Agents child
-  threads remain event metadata (`session_thread_id`); there is no independent
-  public Thread resource API.
+  messages, raw event send/list/stream, and summaries. 百炼子 Agent 的
+  `listSessionThreads` 与 `listSessionThreadEvents` 提供 Thread 列表和分页历史；
+  主 Agent 不在子线程列表中，实时事件仍通过 Session 流获取。SDK 不提供 Thread
+  创建、归档或独立流。事件与线程类型复用公开合同，浏览器只从 `./session-events` 导入。
 - Deployment workflows: list/get/search, run history, run, pause, and unpause.
 - Operation capabilities: provider-scoped support/auth/reason metadata for
   API-oriented command hosts.

@@ -63,6 +63,7 @@ import type {
 	ProviderSessionEvent,
 	ProviderSessionEventList,
 } from "../../types/session-event.ts";
+import type { SessionThreadListOptions, SessionThreadPage } from "../../types/session-thread.ts";
 import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
@@ -130,6 +131,7 @@ import {
 	vaultToDecl,
 } from "./mapper.ts";
 import { streamBailianSessionEvents } from "./session-stream.ts";
+import { listBailianSessionThreadEvents, listBailianSessionThreads } from "./session-threads.ts";
 
 export class BailianAdapter implements ProviderAdapter {
 	readonly name = "bailian" as const;
@@ -532,10 +534,10 @@ export class BailianAdapter implements ProviderAdapter {
 		return cursorPage(res, toCloudAgent);
 	}
 
-	async getRemoteAgent(id: string, version?: number): Promise<CloudAgent> {
+	async getRemoteAgent(id: string, version?: number, options?: { signal?: AbortSignal }): Promise<CloudAgent> {
 		const params = new URLSearchParams();
 		if (version !== undefined) params.set("version", String(version));
-		const res = (await this.client.get(withQuery(`/agents/${id}`, params))) as Record<string, unknown>;
+		const res = (await this.client.get(withQuery(`/agents/${id}`, params), options)) as Record<string, unknown>;
 		return toCloudAgent(res);
 	}
 
@@ -1239,6 +1241,18 @@ export class BailianAdapter implements ProviderAdapter {
 		return options?.event_format === "snapshot"
 			? { ...result, events: correlateBailianHistoryEvents(result.events) }
 			: result;
+	}
+
+	listSessionThreads(sessionId: string, options?: SessionThreadListOptions): Promise<SessionThreadPage> {
+		return listBailianSessionThreads(this.client, sessionId, options);
+	}
+
+	listSessionThreadEvents(
+		sessionId: string,
+		threadId: string,
+		options?: EventListOptions,
+	): Promise<ProviderSessionEventList> {
+		return listBailianSessionThreadEvents(this.client, sessionId, threadId, options);
 	}
 
 	// --- Files ---

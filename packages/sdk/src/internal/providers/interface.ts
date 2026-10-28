@@ -61,6 +61,7 @@ import type {
 	ProviderSessionEvent,
 	ProviderSessionEventList,
 } from "../types/session-event.ts";
+import type { SessionThreadListOptions, SessionThreadPage } from "../types/session-thread.ts";
 import type { SkillFile } from "../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
@@ -234,7 +235,7 @@ export interface ProviderAdapter {
 	listAgents?(filter?: { prefix?: string; limit?: number }): Promise<CloudAgent[]>;
 	/** Cursor-preserving API listing used by command surfaces. */
 	listAgentResources?(options?: AgentListOptions): Promise<AgentPage>;
-	getRemoteAgent?(id: string, version?: number): Promise<CloudAgent>;
+	getRemoteAgent?(id: string, version?: number, options?: { signal?: AbortSignal }): Promise<CloudAgent>;
 	listAgentVersions?(id: string, options?: AgentVersionListOptions): Promise<AgentPage>;
 	// Raw cloud environment list (full remote objects). Optional: only providers that can
 	// enumerate their remote environments implement it. Environments are a shared base
@@ -448,6 +449,12 @@ export interface ProviderAdapter {
 	sendSessionEvents?(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult>;
 	streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent>;
 	listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList>;
+	listSessionThreads?(sessionId: string, options?: SessionThreadListOptions): Promise<SessionThreadPage>;
+	listSessionThreadEvents?(
+		sessionId: string,
+		threadId: string,
+		options?: EventListOptions,
+	): Promise<ProviderSessionEventList>;
 
 	listModels?(): Promise<ModelInfo[]>;
 

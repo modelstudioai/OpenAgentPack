@@ -359,6 +359,8 @@ export type {
 	ProviderSessionEventList,
 } from "./internal/types/session-event.ts";
 export type { ProviderFileInfo } from "./internal/types/file.ts";
+export { listSessionThreadEvents, listSessionThreads } from "./internal/core/session-thread-runtime.ts";
+export type { SessionThread, SessionThreadListOptions, SessionThreadPage } from "./internal/types/session-thread.ts";
 export type { ProviderSkillInfo } from "./internal/types/skill-info.ts";
 
 export { parseStateAddress } from "./internal/core/state-runtime.ts";

@@ -16,6 +16,7 @@ import { prepareInitialSessionPrompt } from "../utils/sandbox-mount.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 import type { ProjectRuntimeContext } from "./project-runtime.ts";
 import { getRuntimeProvider } from "./project-runtime.ts";
+import { filterSessionEventPage, sessionEventListOptions } from "./session-event-list-options.ts";
 import { streamReadyBeforeSend } from "./session-stream-runtime.ts";
 
 export interface SessionWorkflowAdapter {
@@ -400,27 +401,10 @@ export async function listSessionEvents(
 	sessionId: string,
 	options: SessionRuntimeTarget & EventListOptions = {},
 ): Promise<ProviderSessionEventList> {
-	const listOptions: EventListOptions = {};
 	const adapter = resolveDirectAdapter(ctx, options.provider);
 	assertEventOptions(adapter.name, options);
-	if (options.event_format !== undefined) listOptions.event_format = options.event_format;
-	if (options.signal !== undefined) listOptions.signal = options.signal;
-	if (options.limit !== undefined) listOptions.limit = options.limit;
-	if (options.order !== undefined) listOptions.order = options.order;
-	if (options.types !== undefined) listOptions.types = options.types;
-	if (options.created_at_gt !== undefined) listOptions.created_at_gt = options.created_at_gt;
-	if (options.created_at_gte !== undefined) listOptions.created_at_gte = options.created_at_gte;
-	if (options.created_at_lt !== undefined) listOptions.created_at_lt = options.created_at_lt;
-	if (options.created_at_lte !== undefined) listOptions.created_at_lte = options.created_at_lte;
-	const pageToken = options.page_token ?? options.page;
-	if (pageToken !== undefined) listOptions.page_token = pageToken;
-	const result = await adapter.listSessionEvents(
-		sessionId,
-		Object.keys(listOptions).length > 0 ? listOptions : undefined,
-	);
-	if (!options.types || options.types.length === 0) return result;
-	const allowedTypes = new Set(options.types);
-	return { ...result, events: result.events.filter((event) => allowedTypes.has(event.raw_type)) };
+	const result = await adapter.listSessionEvents(sessionId, sessionEventListOptions(options));
+	return filterSessionEventPage(result, options.types);
 }
 
 /**

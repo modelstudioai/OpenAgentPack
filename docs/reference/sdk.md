@@ -69,7 +69,7 @@ sanitizeSessionEvents(events, { ...completeContent, includeRaw: true });
   `code`、`id`、`status` 等字段仍按所选策略脱敏和截断，包括 `metadata.tool_input` 与可选 raw。
 - 仅关闭内容策略不会开启增量或补齐旧 `legacy` 投影；需要结构化内容时同时选择
   下文的 `snapshot` 模式。
-- `streamSessionEvents()` 和 `listSessionEvents()` 返回 `ProviderSessionEvent`；
+- `streamSessionEvents()`、`listSessionEvents()` 和 `listSessionThreadEvents()` 返回 `ProviderSessionEvent`；
   内容策略在转换为契约 `SessionEvent` 时传入，不是 Provider 请求参数。
 
 ## 百炼 Session SSE 与累计快照
@@ -188,6 +188,56 @@ const mapped = toBailianSessionEvent(rawCompleteEvent, { event_format: "snapshot
 `./session-events` 子路径保持浏览器安全，提供纯映射、累计转换与 sanitizer；
 网络订阅和高层 Session 工作流使用 SDK 主入口，不应导入 `internal/*`。
 
+### 子 Agent 线程与历史查询
+
+百炼 Multi-Agent 的子 Agent 执行使用独立的 `sthr_*` Thread；主 Agent 的 `thrd_*`
+不是线程列表中的子资源。同一 Agent 可以对应多条 Thread，调用方应按 Thread ID 区分执行实例。
+两个 SDK 查询入口使用百炼的 Session Threads REST 路径：
+
+| SDK 方法 | 百炼路径 | 结果 |
+| --- | --- | --- |
+| `listSessionThreads(ctx, sessionId, options)` | `GET /sessions/{session_id}/threads` | `SessionThreadPage`，即 `CursorPage<SessionThread>` |
+| `listSessionThreadEvents(ctx, sessionId, threadId, options)` | `GET /sessions/{session_id}/threads/{thread_id}/events` | `ProviderSessionEventList` |
+
+这些路径由百炼 [Multi-Agent 教程](https://docs.agent.bailian.aliyun.com/zh/managed-agents/best-practices/multiagent-proposal)
+说明，尚未纳入正式公开 API 参考；不能据此假设其他 Provider 也支持。当前 SDK 仅百炼实现，
+其他 Provider 返回明确的 unsupported 错误。`ctx` 可用现有 `ProjectRuntimeContext`，
+也可用只包含 Provider 配置的 `ManagedApiContext`。
+
+```ts
+import { listSessionThreads, listSessionThreadEvents } from "@openagentpack/sdk";
+import { sanitizeSessionEvents } from "@openagentpack/sdk/session-events";
+
+const threads = await listSessionThreads(ctx, sessionId, {
+  provider: "bailian", limit: 100, page: previousThreadPage, signal,
+});
+const history = await listSessionThreadEvents(ctx, sessionId, selectedThreadId, {
+  provider: "bailian", event_format: "snapshot", order: "desc",
+  limit: 50, page_token: previousEventPage, signal,
+});
+const events = sanitizeSessionEvents(history.events, { redact: false, truncate: false });
+```
+
+`SessionThread` 保留 `id/session_id/parent_thread_id`、绑定的 `agent.id/version`、状态和时间，
+Provider 有名称时也保留 `agent.name` 或 `agent_name`。列表按 `limit/page` 分页；历史查询
+复用 `EventListOptions`，`page_token` 优先于兼容别名 `page`，请求时均映射为 `page`。
+两者下一页都回传不透明的 `next_page`。历史 `types` 在 SDK 内本地过滤，保留原页游标；
+过滤后空页不等于查询结束。两者都支持 `AbortSignal`。
+
+需要补齐线程绑定 Agent 的名称时，可调用
+`getRemoteAgent(ctx, thread.agent.id, { version: thread.agent.version, signal })`。
+百炼实现会把 `signal` 传入实际 GET 请求，取消线程列表时应一并取消这些补充查询。
+
+历史默认仍为 `legacy`；选择 `snapshot` 后复用完整事件转换、工具关联和 sanitizer。
+子线程历史页不要求包含 `session_status`。事件的 `metadata.thread_id` 是实际所属线程，
+`metadata.session_thread_id`、`to_session_thread_id/from_session_thread_id` 可能是被引用的子线程，
+不能直接用引用字段替换实际归属。
+
+此处只提供列表与历史读取，不新增 Thread 创建、归档、发送或独立 SSE。实时事件继续从
+Session 的单一事件流获取；子线程状态不表示主会话执行结束。`SessionThread`、
+`SessionThreadListOptions` 和 `SessionThreadPage` 也通过 `./session-events` 导出类型，
+浏览器可复用合同而无需加载 SDK 主入口或 Provider 凭据。
+
 ### 自建后端原始事件的浏览器转换
 
 自建后端透传百炼 SSE 时，调用方负责 HTTP、SSE 解帧、订阅就绪、历史分页与重试。
@@ -262,7 +312,7 @@ The public entry exposes domain workflows that return structured domain results 
 | Sync & migrate | `resolveSyncProvider`, `syncProviderResourcesFromContext`, `syncProviderResourcesFromEnv`, `migrateConfig` |
 | Destroy | `planDestroyProjectContext`, `destroyPlannedProjectResources` |
 | Agent | `buildAgentDecl`, `getAgent`, `listAgentsWithReadiness`, `listCloudAgents`, `archiveCloudAgent`, `syncAgentResourcesWithStateBackend`, `createCloudEnvironment`, `deleteCloudEnvironment`, `listCloudEnvironments`, `createCloudVault`, `deleteCloudVault`, `listCloudVaults` |
-| Session | `createSessionForAgent`, `startSessionRun`, `startSessionRunPolling`, `sendSessionMessageStreaming`, `sendSessionMessagePolling`, `streamSessionEvents`, `getSession`, `listSessionSummaries`, `listSessionEvents`, `deleteSession`, `isTerminalSessionStatus`, `resolveSessionProvider` |
+| Session | `createSessionForAgent`, `startSessionRun`, `startSessionRunPolling`, `sendSessionMessageStreaming`, `sendSessionMessagePolling`, `streamSessionEvents`, `getSession`, `listSessionSummaries`, `listSessionEvents`, `listSessionThreads`, `listSessionThreadEvents`, `deleteSession`, `isTerminalSessionStatus`, `resolveSessionProvider` |
 | Files & skills | `uploadFile`, `listFiles`, `getFileInfo`, `getFileDownloadUrl`, `deleteFile`, `createSkillFromFileId`, `listSkills`, `getSkillInfo`, `deleteSkill` |
 | Deployment | `listDeploymentsForContext`, `getDeploymentDetailsForContext`, `getDeploymentRuntimeProviderForContext`, `runDeploymentForContext` |
 | Models | `listProviderModelsForContext`, `listProviderNames` |
