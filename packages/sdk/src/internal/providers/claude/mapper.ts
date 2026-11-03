@@ -1,4 +1,5 @@
 import { UserError } from "../../errors.ts";
+import { externalMultiagentMemberId } from "../../multiagent/model.ts";
 import { reverseMultiagentDecl } from "../../multiagent/reverse-index.ts";
 import type {
 	AgentDecl,
@@ -294,7 +295,7 @@ export function mapAgent(
 	if (decl.multiagent && refs.multiagent) {
 		body.multiagent = {
 			type: "coordinator",
-			agents: refs.multiagent.members.map((member) => member.remote_id),
+			agents: refs.multiagent.members.map(externalMultiagentMemberId),
 		};
 	}
 

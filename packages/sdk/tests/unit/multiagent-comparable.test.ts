@@ -10,6 +10,15 @@ function roster(members: ResolvedMultiagentRoster["members"]): ResolvedMultiagen
 }
 
 describe("canonicalizeDesiredRoster", () => {
+	test("keeps native Self separate from an external member whose id is self", () => {
+		const desired = canonicalizeDesiredRoster(
+			roster([{ type: "self" }, { resource_type: "agent", remote_id: "self" }]),
+		);
+		expect(desired).toEqual({ type: "coordinator", member_ids: ["self"], self: true });
+		const raw = { type: "coordinator", agents: [{ type: "self" }, { type: "agent", id: "self" }] };
+		expect(canonicalizeRemoteRoster(raw, "managed", true)).toEqual({ supported: true, roster: desired });
+		expect(canonicalizeRemoteRoster(raw, "forward", true)).toEqual({ supported: false });
+	});
 	test("emits sorted unique member ids", () => {
 		const canonical = canonicalizeDesiredRoster(
 			roster([

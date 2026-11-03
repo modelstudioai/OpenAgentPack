@@ -11,7 +11,10 @@ import type { ProjectConfig } from "../types/config.ts";
 import type { Diagnostic } from "../types/plan.ts";
 import type { ResourceAddress } from "../types/state.ts";
 import { providerMountPrefix, resolveSandboxMountPath } from "../utils/sandbox-mount.ts";
-import { findMissingBailianMcpToolConfigs } from "../validation/bailian.ts";
+import {
+	collectBailianSubagentToolPermissionDiagnostics,
+	findMissingBailianMcpToolConfigs,
+} from "../validation/bailian.ts";
 import { getDeploymentEnvironmentVariablesIssue } from "../validation/deployment-environment.ts";
 import { resolveAgentMaterialization } from "./agent-materialization.ts";
 
@@ -498,9 +501,20 @@ export function collectProviderCapabilities(
 				}
 			}
 
+			if (
+				providerName !== "bailian" &&
+				agent.multiagent?.agents.some((member) => typeof member !== "string" && "type" in member)
+			) {
+				diagnostics.error(
+					`${providerName}.agent.multiagent.self.unsupported`,
+					`agent.${name}: Self requires Bailian managed delivery.`,
+					address,
+				);
+			}
 			if (providerName === "qoder" && agent.multiagent) {
 				const coordinatorMode = resolveAgentMaterialization(providerName, agent).mode;
 				for (const memberName of agent.multiagent.agents) {
+					if (typeof memberName !== "string" && "type" in memberName) continue;
 					if (typeof memberName !== "string") {
 						if (coordinatorMode === "forward") {
 							diagnostics.error(
@@ -721,6 +735,7 @@ export function collectProviderCapabilities(
 			}
 		}
 
+		collectBailianSubagentToolPermissionDiagnostics(config, providerName, diagnostics);
 		for (const missing of findMissingBailianMcpToolConfigs(config, providerName)) {
 			diagnostics.error(
 				`${providerName}.agent.mcp_toolkit_missing`,

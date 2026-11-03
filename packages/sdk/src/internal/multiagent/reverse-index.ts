@@ -1,5 +1,6 @@
 import { UserError } from "../errors.ts";
 import type { MultiagentMemberDecl } from "../types/config.ts";
+import { isSelfRosterMember } from "./model.ts";
 
 /** One `/agents` listing entry, keyed by remote agent id. */
 export interface ReverseIndexEntry {
@@ -82,6 +83,7 @@ export function memberDeclResolver(index: ReverseIndex): (memberId: string) => M
 export function reverseMultiagentDecl(
 	raw: unknown,
 	resolveMember?: (memberId: string) => MultiagentMemberDecl,
+	allowSelf = false,
 ): { type: "coordinator"; agents: MultiagentMemberDecl[] } | undefined {
 	if (raw === null || raw === undefined) return undefined;
 	if (typeof raw !== "object") return undefined;
@@ -92,14 +94,16 @@ export function reverseMultiagentDecl(
 		);
 	}
 	if (!Array.isArray(roster.agents) || roster.agents.length === 0) return undefined;
-	if (!resolveMember) {
+	if (!resolveMember && roster.agents.some((member) => !(allowSelf && isSelfRosterMember(member)))) {
 		throw new UserError(
 			"sync.multiagent.member.unresolved: reverse-mapping a multi-agent roster requires a member name resolver.",
 		);
 	}
 	return {
 		type: "coordinator",
-		agents: roster.agents.map((member) => resolveMember(rosterMemberId(member))),
+		agents: roster.agents.map((member) =>
+			allowSelf && isSelfRosterMember(member) ? { type: "self" } : resolveMember!(rosterMemberId(member)),
+		),
 	};
 }
 
