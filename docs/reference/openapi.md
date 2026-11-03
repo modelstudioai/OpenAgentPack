@@ -29,6 +29,7 @@
 | Files | `routes/files.ts` |
 | Skills | `routes/skills.ts` |
 | Models | `routes/models.ts` |
+| Usage | `routes/usage.ts` |
 
 Routes are defined with `@hono/zod-openapi`'s `createRoute`, so request validation, typed responses,
 and OpenAPI generation share the same Zod schemas. Multipart files and skill uploads use the same

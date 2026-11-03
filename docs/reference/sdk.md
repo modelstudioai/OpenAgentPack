@@ -246,6 +246,44 @@ Session 的单一事件流获取；子线程状态不表示主会话执行结束
 `SessionThreadListOptions` 和 `SessionThreadPage` 也通过 `./session-events` 导出类型，
 浏览器可复用合同而无需加载 SDK 主入口或 Provider 凭据。
 
+### 资源用量查询
+
+资源用量（模型调用明细 / 工具调用明细）对接百炼 app-control 的
+`usage.listModelUsage` 与 `usage.listToolUsage`，按 scope 维度返回聚合行。REST 映射
+与百炼侧约定为 AgentStudio 资源风格（`POST /usage/models`、`POST /usage/tools`，
+顶层请求体）；公网 AgentStudio 环境尚未启用这两个端点（网关 404），启用后无需改动
+即可调通：
+
+| SDK 方法 | 百炼路径 | 结果 |
+| --- | --- | --- |
+| `listModelUsage(ctx, request, options)` | `POST /usage/models` | `ModelUsagePage` |
+| `listToolUsage(ctx, request, options)` | `POST /usage/tools` | `ToolUsagePage` |
+
+`scope` 按 `type` 区分三种形态：`workspace`（必传非空 `workspace_ids`，可加 `agent_id`）、
+`agent`（必传 `agent_id`，可加 `workspace_ids` 与 `agent_version`）、`session`（必传
+`session_id`）。`time_range` 为毫秒级 Unix 区间：workspace/agent 必传，session 禁止
+（复用 Session 自身窗口）；校验在发起请求前完成。模型明细支持
+`model_name` 过滤与 `call_count/failed_count/input_tokens/output_tokens` 排序；工具明细
+支持 `source`（`builtin/mcp/custom`）与 `tool_name` 过滤，排序仅限调用次数相关字段。
+分页 `page_no` 从 1 开始，`page_size` 限 1..100；表头总数取 `total_call_count`，分页总数取
+`total`，无匹配时 `items` 为空、总数为 0。两者均支持 `AbortSignal`。当前仅百炼实现，
+其他 Provider 返回明确的 unsupported 错误。
+
+```ts
+import { listModelUsage, listToolUsage } from "@openagentpack/sdk";
+
+const models = await listModelUsage(ctx, {
+  scope: { type: "workspace", workspace_ids: [workspaceId] },
+  time_range: { start_time, end_time },
+  page_no: 1, page_size: 20, sort_by: "call_count", sort_order: "desc",
+});
+const tools = await listToolUsage(ctx, {
+  scope: { type: "agent", agent_id },
+  time_range: { start_time, end_time },
+  source: "mcp", tool_name: "file-parser",
+});
+```
+
 ### 自建后端原始事件的浏览器转换
 
 自建后端透传百炼 SSE 时，调用方负责 HTTP、SSE 解帧、订阅就绪、历史分页与重试。
@@ -324,6 +362,7 @@ The public entry exposes domain workflows that return structured domain results 
 | Files & skills | `uploadFile`, `listFiles`, `getFileInfo`, `getFileDownloadUrl`, `deleteFile`, `createSkillFromFileId`, `listSkills`, `getSkillInfo`, `deleteSkill` |
 | Deployment | `listDeploymentsForContext`, `getDeploymentDetailsForContext`, `getDeploymentRuntimeProviderForContext`, `runDeploymentForContext` |
 | Models | `listProviderModelsForContext`, `listProviderNames` |
+| Usage | `listModelUsage`, `listToolUsage` |
 | State | `StateManager`, `LocalFileStateBackend`, `parseStateAddress` |
 | Runtime context | `createProjectRuntime`, `readProjectRuntime`, `writeProjectRuntime` |
 | Provider config | `resolveProviderConfigFromEnv`, `applyProviderConfigToEnv`, `loadDotEnv`, `bootstrapRuntimeCredentials` (and sync variants), `resolveActiveProvider`, `AGENTS_CONFIG_PROVIDERS`, `AGENTS_PROVIDER_FIELDS` |
