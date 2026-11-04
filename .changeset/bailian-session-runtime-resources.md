@@ -11,3 +11,6 @@ Session 动态追加文件：`mountRemoteSessionResource`、`listRemoteSessionRe
 （`sesrsc_…`，卸载凭据）。挂载与卸载不产生会话事件；provider 返回的 `file_id` 是服务端内部副本
 id，完整载荷保留在 `attributes` 中。运行时挂载不进入 `getSession` 的 `resources` 回显，对账请
 使用列表端点。合同经 2026-11-02 live 实测校准。
+
+上述四个 SDK 入口接受仅含 Provider 配置的 `ManagedApiContext`，无需项目配置或本地 State；
+现有 `ProjectRuntimeContext` 调用保持兼容。

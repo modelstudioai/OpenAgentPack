@@ -36,6 +36,7 @@ import type {
 import type { ProviderSessionInfo, SessionResourceInfo } from "../types/session.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import {
+	type ManagedApiContext,
 	requireManagedApiMethod as requiredMethod,
 	resolveManagedApiAdapter as resolveAdapter,
 } from "./managed-api-context.ts";
@@ -213,7 +214,7 @@ export async function archiveRemoteSession(
 }
 
 export async function mountRemoteSessionResource(
-	ctx: ProjectRuntimeContext,
+	ctx: ManagedApiContext,
 	sessionId: string,
 	input: SessionResourceMountInput,
 	options: ManagedApiTarget = {},
@@ -224,7 +225,7 @@ export async function mountRemoteSessionResource(
 }
 
 export async function listRemoteSessionResources(
-	ctx: ProjectRuntimeContext,
+	ctx: ManagedApiContext,
 	sessionId: string,
 	options: ManagedApiTarget & SessionResourceListOptions = {},
 ): Promise<SessionResourcePage> {
@@ -234,7 +235,7 @@ export async function listRemoteSessionResources(
 }
 
 export async function getRemoteSessionResource(
-	ctx: ProjectRuntimeContext,
+	ctx: ManagedApiContext,
 	sessionId: string,
 	resourceId: string,
 	options: ManagedApiTarget = {},
@@ -245,7 +246,7 @@ export async function getRemoteSessionResource(
 }
 
 export async function unmountRemoteSessionResource(
-	ctx: ProjectRuntimeContext,
+	ctx: ManagedApiContext,
 	sessionId: string,
 	resourceId: string,
 	options: ManagedApiTarget = {},
