@@ -110,7 +110,8 @@ async function promptForProjectOptions(
 	}
 	const normalizedAgentName = agentName.trim();
 	if (!normalizedAgentName) throw new UserError("Agent name cannot be empty.");
-	return { provider: parseProvider(provider), agentName: normalizedAgentName };
+	// @clack/prompts 1.8 的 isCancel 谓词不再收窄 string | symbol；取消分支已提前退出，此处必为 string。
+	return { provider: parseProvider(provider as string), agentName: normalizedAgentName };
 }
 
 export async function initCommand(options: InitCommandOptions): Promise<void> {

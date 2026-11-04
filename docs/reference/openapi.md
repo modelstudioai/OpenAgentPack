@@ -29,6 +29,7 @@
 | Files | `routes/files.ts` |
 | Skills | `routes/skills.ts` |
 | Models | `routes/models.ts` |
+| Usage | `routes/usage.ts` |
 
 Routes are defined with `@hono/zod-openapi`'s `createRoute`, so request validation, typed responses,
 and OpenAPI generation share the same Zod schemas. Multipart files and skill uploads use the same
@@ -55,3 +56,7 @@ bun run dev                # server + webui together
 ```
 
 The server reads the same provider credentials as the CLI (`.env` and `~/.agents/config.json`); see [Provider reference](./providers.md).
+
+用量接口使用当前目录项目解析后的 Provider 配置和项目本地 `.env`，与项目 Session 使用相同的配置来源。
+通过 `AGENTS_PROJECT_ROOT` 指定项目目录时，无需另行设置进程级 `AGENTS_PROVIDER` 或复制凭据。
+缺失或无效的项目返回 `422`，不会回退到进程环境中的其他 Provider。

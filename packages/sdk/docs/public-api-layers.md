@@ -36,6 +36,11 @@ New CLI and WebUI behavior should start here.
   planning, and sync.
 - Managed-resource reads: environment, skill/version/download, vault, and file
   metadata/content APIs with opaque cursor preservation.
+- Usage analytics: 百炼的 `listModelUsage` 与 `listToolUsage` 提供 workspace/agent/session
+  scope 的模型调用与工具调用聚合（调用/失败次数、Token 明细、来源与名称过滤、分页排序）。
+  REST 映射与百炼侧约定为 `POST /usage/models`、`POST /usage/tools`（顶层请求体）；
+  公网 AgentStudio 环境尚未启用（网关 404），启用后调用即通。仅百炼实现，其他
+  Provider 返回明确的 unsupported 错误。
 - Session workflows: creation, list/get/update/archive/delete, runs, follow-up
   messages, raw event send/list/stream, and summaries. 百炼子 Agent 的
   `listSessionThreads` 与 `listSessionThreadEvents` 提供 Thread 列表和分页历史；

@@ -4,6 +4,7 @@ import { jsonError } from "@/lib/http-error";
 import { operationsRoute } from "@/routes/operations";
 import { projectRoute } from "@/routes/project";
 import { projectSessionsRoute } from "@/routes/project-sessions";
+import { usageRoute } from "@/routes/usage";
 import { projectRuntimeManager } from "@/services/project-manager";
 
 export const app = new OpenAPIHono();
@@ -34,6 +35,7 @@ app.use("/api/*", async (context, next) => {
 app.route("/api", projectRoute);
 app.route("/api", projectSessionsRoute);
 app.route("/api", operationsRoute);
+app.route("/api", usageRoute);
 
 // OpenAPI document
 app.doc("/openapi.json", {
