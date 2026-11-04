@@ -279,8 +279,8 @@ export interface MultiagentDecl {
 	agents: MultiagentMemberDecl[];
 }
 
-/** A project-owned logical Agent name, or an externally owned Managed Agent id. */
-export type MultiagentMemberDecl = string | { agent_id: string };
+/** A project logical name, an external Managed Agent id, or Bailian's native Self member. */
+export type MultiagentMemberDecl = string | { agent_id: string } | { type: "self" };
 
 // --- Deployment ---
 

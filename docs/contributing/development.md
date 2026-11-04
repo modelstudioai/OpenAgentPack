@@ -4,7 +4,9 @@ How to set up the repo, run the CLI/WebUI from source, run verification, and res
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) `1.3.5` — the pinned workspace runtime and package manager.
+- [Bun](https://bun.sh) `1.4.4` — the pinned workspace runtime and package manager, matching CI.
+
+Upgrade Bun before installing dependencies: the committed v2 lockfile cannot be read by Bun 1.3.
 
 ## Setup
 
@@ -14,6 +16,12 @@ cd OpenAgentPack
 git remote add upstream https://github.com/modelstudioai/OpenAgentPack.git
 bun install
 ```
+
+`minimatch` stays pinned to the security-fixed 11.x release. The Bun patch for
+`@redocly/openapi-core@1.34.22` adapts its CommonJS import to the named `minimatch`
+export, preserving remote OpenAPI header matching without downgrading to a vulnerable
+5.x release. When upgrading Redocly, verify `apps/webui/tests/openapi-remote.test.ts`
+and remove the patch once the upstream import is compatible.
 
 Run the CLI from source without a global install:
 

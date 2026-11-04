@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
-import { listModelUsage, listToolUsage } from "@openagentpack/sdk";
+import { listModelUsage, listToolUsage, readProjectRuntime } from "@openagentpack/sdk";
 import { errorResponses } from "@/schemas/common";
 import {
 	ListModelUsageRequestSchema,
@@ -7,8 +7,7 @@ import {
 	ModelUsagePageSchema,
 	ToolUsagePageSchema,
 } from "@/schemas/usage";
-import { DEFAULT_AGENT_ID } from "@/services/agents/catalog";
-import { withAgentRuntime } from "@/services/runtime-factory";
+import { projectRuntimeManager } from "@/services/project-manager";
 
 export const usageRoute = new OpenAPIHono();
 
@@ -33,7 +32,8 @@ const listModelUsageRoute = createRoute({
 
 usageRoute.openapi(listModelUsageRoute, async (c) => {
 	const request = c.req.valid("json");
-	const page = await withAgentRuntime(DEFAULT_AGENT_ID, async (ctx) => {
+	await projectRuntimeManager.ensureStarted();
+	const page = await readProjectRuntime(projectRuntimeManager.requireRuntimeInput(), (ctx) => {
 		const provider = ctx.config.defaults?.provider;
 		return listModelUsage(ctx, request, { provider });
 	});
@@ -58,7 +58,8 @@ const listToolUsageRoute = createRoute({
 
 usageRoute.openapi(listToolUsageRoute, async (c) => {
 	const request = c.req.valid("json");
-	const page = await withAgentRuntime(DEFAULT_AGENT_ID, async (ctx) => {
+	await projectRuntimeManager.ensureStarted();
+	const page = await readProjectRuntime(projectRuntimeManager.requireRuntimeInput(), (ctx) => {
 		const provider = ctx.config.defaults?.provider;
 		return listToolUsage(ctx, request, { provider });
 	});

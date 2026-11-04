@@ -1,4 +1,5 @@
 import { UserError } from "../../errors.ts";
+import { externalMultiagentMemberId } from "../../multiagent/model.ts";
 import { reverseMultiagentDecl } from "../../multiagent/reverse-index.ts";
 import type {
 	AgentDecl,
@@ -283,7 +284,7 @@ export function mapAgent(
 		// not a bare id string array (bare strings → 400 "Mismatch type agent.AgentRef").
 		body.multiagent = {
 			type: "coordinator",
-			agents: refs.multiagent.members.map(({ remote_id }) => ({ type: "agent", id: remote_id })),
+			agents: refs.multiagent.members.map((member) => ({ type: "agent", id: externalMultiagentMemberId(member) })),
 		};
 	}
 

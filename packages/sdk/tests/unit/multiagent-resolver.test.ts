@@ -168,7 +168,9 @@ describe("materialization-aware reference resolution", () => {
 
 		const refs = resolveTemplateRefs("lead", forwardConfig, "qoder", state);
 
-		expect(refs.multiagent?.members.every((member) => member.resource_type === "template")).toBe(true);
+		expect(refs.multiagent?.members.every((member) => !("type" in member) && member.resource_type === "template")).toBe(
+			true,
+		);
 		expect(refs.environment_id).toBe("env_dev");
 	});
 });

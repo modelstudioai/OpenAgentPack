@@ -65,6 +65,11 @@ function resolveMultiagentRoster(
 	return {
 		type: "coordinator",
 		members: (agent.multiagent?.agents ?? []).map((member) => {
+			if (typeof member !== "string" && "type" in member) {
+				if (provider !== "bailian" || resourceType !== "agent")
+					throw new UserError("multiagent.self.unsupported: Self requires Bailian managed delivery.");
+				return { type: "self" as const };
+			}
 			if (typeof member !== "string") {
 				if (resourceType === "template") {
 					throw new UserError(

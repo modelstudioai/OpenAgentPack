@@ -28,6 +28,15 @@ This matrix is verified against the SDK capability declarations in `packages/sdk
 
 The resource matrix above answers whether a declaration can be applied. The table below answers a different question: which optional workflows the **current OpenAgentPack adapter** actually implements. It is intentionally scoped to this repository, rather than every feature a provider may advertise.
 
+Bailian supports builtin-tool approval through `tools.default_permission` and per-tool `tools.permissions` (`allow` / `ask`).
+The adapter maps them to `permission_policy: {type: "always_allow" | "always_ask"}`; omitted tool overrides inherit the toolkit default.
+Effective policy changes participate in Agent drift comparison, while equivalent inherited and explicit policies compare equally.
+Approval applies to the main Agent only; existing Sessions retain the Agent version used at creation.
+Validation rejects effective `ask` policies on project-declared roster members and delegated Self; defaults fully overridden by `allow` remain valid.
+Export preserves toolkit defaults and enabled-tool overrides. A default-enabled toolkit with approval policies cannot be represented losslessly by an explicit tool list, so export stops with a diagnostic; explicitly select its tools first.
+See the official [Agent tools](https://help.aliyun.com/zh/model-studio/managed-agents-builtin-tools) and
+[Create Agent API](https://help.aliyun.com/zh/model-studio/agent-create) contracts.
+
 | Adapter workflow | Bailian | Qoder | Claude | Volcengine Ark | Implementation notes |
 |------------------|:-------:|:-----:|:------:|:--------------:|----------------------|
 | List agents, environments, and vaults | yes | yes | yes | yes | Powers resource discovery in the Web UI. |
@@ -45,6 +54,8 @@ The resource matrix above answers whether a declaration can be applied. The tabl
 `yes` means the corresponding optional `ProviderAdapter` facet is implemented. `no` means OpenAgentPack currently soft-degrades that workflow; it does not necessarily mean the upstream platform can never support it. `limited` means the workflow is implemented with the restriction described in the notes.
 
 ### Notable provider-specific behavior
+
+- **Bailian Self:** `multiagent.agents` accepts a single `{ type: self }` entry, alone or mixed with other members. It delegates as the current coordinator, counts toward the roster limit, and survives export and drift comparison without creating another managed Agent. Other providers reject this declaration until their Self contract is implemented.
 
 - **Bailian:** skill upload uses the Files API and supports scan-status polling; agent updates create provider-side versions. Official MCP servers are referenced by name. Deployments are native, with server-side cron schedules, manual runs, and pause/unpause. Multi-agent members run in parallel and share the coordinator's file system; the coordinator roster omits versions so each child Thread resolves the latest member and pins it for its lifetime.
 - **Qoder:** tool names are translated from the lowercase config vocabulary to PascalCase. Session sends return a cursor, enabling resumable event consumption. Deployments are native and support manual or scheduled runs. Multi-agent coordinators work in both delivery modes — Managed Agents reference members by `id`, Forward Templates by `template_id`, and members must share the coordinator's delivery type.

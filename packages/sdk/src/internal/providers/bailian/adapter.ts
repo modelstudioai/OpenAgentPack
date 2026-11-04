@@ -420,7 +420,7 @@ export class BailianAdapter implements ProviderAdapter {
 			instructions: raw.system,
 			tools: normalizeBailianTools(raw.tools),
 			mcp_servers: normalizeBailianMcpServers(raw.mcp_servers),
-			multiagent: comparableMultiagentField(raw.multiagent, "managed"),
+			multiagent: comparableMultiagentField(raw.multiagent, "managed", true),
 			metadata: stripAgentsMetadata(raw.metadata),
 		});
 	}
@@ -1533,6 +1533,10 @@ function normalizeBailianModel(value: unknown): unknown {
 	return value;
 }
 
+function bailianPermissionType(value: unknown): unknown {
+	return value && typeof value === "object" ? (value as Record<string, unknown>).type : value;
+}
+
 function normalizeBailianTools(value: unknown): unknown {
 	if (!Array.isArray(value)) return undefined;
 	const builtins = value.find(
@@ -1542,12 +1546,21 @@ function normalizeBailianTools(value: unknown): unknown {
 
 	const configs = builtins.configs;
 	if (!Array.isArray(configs)) return undefined;
-	const enabled = configs
+	const enabledConfigs = configs
 		.map((c) => c as Record<string, unknown>)
-		.filter((c) => c.enabled !== false && typeof c.name === "string")
-		.map((c) => c.name as string);
+		.filter((c) => c.enabled !== false && typeof c.name === "string");
+	const enabled = enabledConfigs.map((c) => c.name as string);
+	const defaults = builtins.default_config as { permission_policy?: unknown } | undefined;
+	const inherited = bailianPermissionType(defaults?.permission_policy) ?? "always_allow";
+	const permissions = Object.fromEntries(
+		enabledConfigs.flatMap((tool) => {
+			const permission = bailianPermissionType(tool.permission_policy) ?? inherited;
+			// Keep legacy allow-only baselines stable while detecting effective approval changes.
+			return permission === "always_allow" ? [] : [[tool.name as string, permission] as const];
+		}),
+	);
 
-	return enabled.length ? { builtin: enabled } : undefined;
+	return enabled.length ? { builtin: enabled, ...(Object.keys(permissions).length ? { permissions } : {}) } : undefined;
 }
 
 function normalizeBailianMcpServers(value: unknown): unknown {

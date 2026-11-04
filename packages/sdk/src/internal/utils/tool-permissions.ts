@@ -48,6 +48,18 @@ export function toPermissionPolicy(permission: ToolPermission): { type: "always_
 	return { type: permission === "ask" ? "always_ask" : "always_allow" };
 }
 
+export function permissionFromWire(rawPolicy: unknown): ToolPermission | undefined {
+	const type =
+		typeof rawPolicy === "string"
+			? rawPolicy
+			: rawPolicy && typeof rawPolicy === "object"
+				? (rawPolicy as { type?: unknown }).type
+				: undefined;
+	if (type === "always_ask") return "ask";
+	if (type === "always_allow") return "allow";
+	return undefined;
+}
+
 /** Preserve remote permission policies when syncing provider tool configs back to YAML. */
 export function permissionOverridesFromWire(
 	configs: Array<{ name: string; enabled?: boolean; permission_policy?: unknown }>,
@@ -56,15 +68,8 @@ export function permissionOverridesFromWire(
 	const permissions: Record<string, ToolPermission> = {};
 	for (const config of configs) {
 		if (config.enabled === false) continue;
-		const rawPolicy = config.permission_policy;
-		const type =
-			typeof rawPolicy === "string"
-				? rawPolicy
-				: rawPolicy && typeof rawPolicy === "object"
-					? (rawPolicy as { type?: unknown }).type
-					: undefined;
-		if (type === "always_ask") permissions[toConfigName(config.name)] = "ask";
-		else if (type === "always_allow") permissions[toConfigName(config.name)] = "allow";
+		const permission = permissionFromWire(config.permission_policy);
+		if (permission) permissions[toConfigName(config.name)] = permission;
 	}
 	return Object.keys(permissions).length ? permissions : undefined;
 }

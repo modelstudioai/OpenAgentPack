@@ -423,7 +423,7 @@ If the preflight cannot resolve the Identity, Template, or Store lookup, destroy
 | `delivery.<provider>.type` | `"managed"` \| `"forward"` | no | Per-provider remote materialization. Omitted means the managed Agent resource. `forward` (Qoder only) materializes the agent as a Forward Template; Qoder multi-agent members must use the same delivery type as their coordinator. |
 | `resources` | SessionResource[] | no | Resources attached to every managed Session created for the Agent. |
 | `multiagent.type` | `"coordinator"` | no | Declare a coordinator agent. |
-| `multiagent.agents` | (string \| `{ agent_id: string }`)[] | yes (with multiagent) | Project logical names and, for Managed delivery, explicitly referenced external Agent ids. |
+| `multiagent.agents` | (string \| `{ agent_id: string }` \| `{ type: "self" }`)[] | yes (with multiagent) | Project logical names, external Managed Agent ids, and Bailian's native Self member. |
 | `metadata` | map<string,string> | no | Free-form metadata. |
 
 For Qoder Forward delivery, a locally declared Environment is created only through the Forward Environment API. An
@@ -458,6 +458,8 @@ Phase 1 rules, enforced at plan time on every provider:
 
 - A string member is a project logical name. OpenAgentPack resolves it to the materialized remote resource and manages its lifecycle.
 - `{ agent_id: ... }` explicitly references an external Managed Agent. It does not need a local `agents` declaration or state entry and OpenAgentPack never creates, updates, or destroys it.
+- **Bailian Managed only:** `{ type: self }` delegates to the current coordinator as a native Self member. It can be used alone or alongside other members, counts toward the 20-member limit, and may appear only once. It carries no id, version, or extra fields, creates no additional resource or dependency, and remains Self when exported or copied. Other providers reject it.
+- Bailian tool approval is main-Agent only. Project-declared roster members and delegated Self must not have effective builtin `ask` policies; remove those policies or run the member as a main Agent. Explicit `allow` overrides may cancel a default `ask`. External `{ agent_id }` policies cannot be inspected by offline validation.
 - Qoder Forward does not accept `{ agent_id }`, because its roster requires Template ids. External Forward Templates are not exposed by the common schema yet.
 - For project logical-name members, self references, nested coordinators, and any direct or indirect cycle are rejected. External members are non-owned leaves in the topology.
 - A roster carries at most 20 members (Qoder and Bailian platform limits).
@@ -473,7 +475,7 @@ Update and clear semantics are hidden by the provider adapters: removing `multia
 
 Bailian child agents run in **parallel over a shared file system**: files written by one member are visible to the others. Declare file/directory ownership in the coordinator's `instructions` (and in each member's) to keep parallel members from writing the same path.
 
-`self` references, Qoder Advisors, explicit member versions, external Forward Templates, and Thread management are not exposed by the common schema yet.
+Qoder Self and Advisors, explicit member versions, external Forward Templates, and Thread management are not exposed by the common schema yet.
 
 `agents sync` reverse-maps project-owned members to logical names via the `agents.project`/`agents.resource` metadata OpenAgentPack injects, and preserves non-owned members as `{ agent_id }`. The sync fails closed — without touching your existing file — when a project-owned roster member is archived, missing from the account listing, lacks a logical name, or when two remote agents claim the same logical name.
 
