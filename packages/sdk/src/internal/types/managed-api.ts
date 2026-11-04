@@ -1,6 +1,7 @@
 import type { CredentialInjectionLocation, CredentialNetworking } from "./config.ts";
 import type { CloudAgent, CloudEnvironment, CloudVault } from "./dto.ts";
 import type { ProviderFileInfo } from "./file.ts";
+import type { SessionResourceInfo } from "./session.ts";
 import type { ProviderSkillInfo } from "./skill-info.ts";
 
 export interface CursorPage<T> {
@@ -86,6 +87,18 @@ export interface SessionUpdateInput {
 	title?: string;
 	metadata?: Record<string, string>;
 }
+
+/** One resource to mount into a RUNNING session (provider session-resources API). */
+export interface SessionResourceMountInput {
+	type: "file";
+	file_id: string;
+	/** Sandbox path inside the session, e.g. `/mnt/session/uploads/report.csv`. */
+	mount_path: string;
+}
+
+export type SessionResourceListOptions = CursorListOptions;
+
+export type SessionResourcePage = CursorPage<SessionResourceInfo>;
 
 /** Raw AgentStudio message/event input. Provider adapters preserve the wire shape. */
 export type SessionEventInput = Record<string, unknown>;
