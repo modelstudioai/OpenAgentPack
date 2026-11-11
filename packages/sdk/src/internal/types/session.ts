@@ -24,6 +24,8 @@ export type SessionResource = SessionGithubRepositoryResource | SessionMemorySto
 
 /** Provider response resource, including server-assigned sandbox mount paths. */
 export interface SessionResourceInfo extends Record<string, unknown> {
+	/** Provider-assigned resource id (`sesrsc_…`); required to unmount a runtime-mounted resource. */
+	id?: string;
 	type: string;
 	mount_path?: string;
 	memory_store_id?: string;

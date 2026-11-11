@@ -9,7 +9,7 @@
   - Qoder — `QODER_PAT`
   - 百炼（阿里云百炼 AgentStudio）— `DASHSCOPE_API_KEY` 与 `BAILIAN_WORKSPACE_ID`
   - 火山方舟（火山引擎方舟 Managed Agents）— `ARK_API_KEY`
-- 从源码运行需要 [Bun](https://bun.sh) `1.3.5`（见 [开发环境](./contributing/development.md)）；使用发布的 CLI 只需 Node.js 或 Bun。
+- 从源码运行需要 [Bun](https://bun.sh) `1.4.4`（见 [开发环境](./contributing/development.md)）；使用发布的 CLI 只需 Node.js 或 Bun。
 
 ## 安装
 

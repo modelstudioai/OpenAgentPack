@@ -151,6 +151,7 @@ export {
 	getRemoteDeployment,
 	getRemoteDeploymentRun,
 	getRemoteEnvironment,
+	getRemoteSessionResource,
 	getRemoteSkill,
 	getRemoteSkillDownloadInfo,
 	getRemoteSkillVersion,
@@ -161,12 +162,15 @@ export {
 	listRemoteDeployments,
 	listRemoteEnvironments,
 	listRemoteFiles,
+	listRemoteSessionResources,
 	listRemoteSkills,
 	listRemoteSkillVersions,
 	listRemoteVaults,
+	mountRemoteSessionResource,
 	runRemoteDeployment,
 	sendRemoteSessionEvents,
 	setRemoteDeploymentPaused,
+	unmountRemoteSessionResource,
 	updateRemoteSession,
 } from "./internal/core/managed-api-runtime.ts";
 export type { ManagedApiTarget } from "./internal/core/managed-api-runtime.ts";
@@ -187,6 +191,9 @@ export type {
 	ManagedAgentProviderCapabilities,
 	SessionEventInput,
 	SessionEventSendResult,
+	SessionResourceListOptions,
+	SessionResourceMountInput,
+	SessionResourcePage,
 	SessionUpdateInput,
 	SkillDownloadInfo,
 	SkillListOptions,
@@ -361,6 +368,25 @@ export type {
 export type { ProviderFileInfo } from "./internal/types/file.ts";
 export { listSessionThreadEvents, listSessionThreads } from "./internal/core/session-thread-runtime.ts";
 export type { SessionThread, SessionThreadListOptions, SessionThreadPage } from "./internal/types/session-thread.ts";
+export { listModelUsage, listToolUsage } from "./internal/core/usage-runtime.ts";
+export type { UsageRuntimeOptions } from "./internal/core/usage-runtime.ts";
+export type {
+	ModelUsageItem,
+	ModelUsagePage,
+	ModelUsageRequest,
+	ModelUsageSortBy,
+	ToolUsageItem,
+	ToolUsagePage,
+	ToolUsageRequest,
+	ToolUsageSortBy,
+	UsagePage,
+	UsageQueryOptions,
+	UsageScope,
+	UsageSortOrder,
+	UsageTimeRange,
+	UsageTokenStats,
+	UsageToolSource,
+} from "./internal/types/usage.ts";
 export type { ProviderSkillInfo } from "./internal/types/skill-info.ts";
 
 export { parseStateAddress } from "./internal/core/state-runtime.ts";

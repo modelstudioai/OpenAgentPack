@@ -20,6 +20,9 @@ import type {
 	ManagedAgentProviderCapabilities,
 	SessionEventInput,
 	SessionEventSendResult,
+	SessionResourceListOptions,
+	SessionResourceMountInput,
+	SessionResourcePage,
 	SessionUpdateInput,
 	SkillDownloadInfo,
 	SkillListOptions,
@@ -30,9 +33,10 @@ import type {
 	VaultListOptions,
 	VaultPage,
 } from "../types/managed-api.ts";
-import type { ProviderSessionInfo } from "../types/session.ts";
+import type { ProviderSessionInfo, SessionResourceInfo } from "../types/session.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import {
+	type ManagedApiContext,
 	requireManagedApiMethod as requiredMethod,
 	resolveManagedApiAdapter as resolveAdapter,
 } from "./managed-api-context.ts";
@@ -207,6 +211,49 @@ export async function archiveRemoteSession(
 	const adapter = resolveAdapter(ctx, options.provider);
 	const method = requiredMethod(adapter.archiveSession, adapter.name, "session archive");
 	return method.call(adapter, id);
+}
+
+export async function mountRemoteSessionResource(
+	ctx: ManagedApiContext,
+	sessionId: string,
+	input: SessionResourceMountInput,
+	options: ManagedApiTarget = {},
+): Promise<SessionResourceInfo> {
+	const adapter = resolveAdapter(ctx, options.provider);
+	const method = requiredMethod(adapter.mountSessionResource, adapter.name, "session resource mounting");
+	return method.call(adapter, sessionId, input);
+}
+
+export async function listRemoteSessionResources(
+	ctx: ManagedApiContext,
+	sessionId: string,
+	options: ManagedApiTarget & SessionResourceListOptions = {},
+): Promise<SessionResourcePage> {
+	const adapter = resolveAdapter(ctx, options.provider);
+	const method = requiredMethod(adapter.listSessionResources, adapter.name, "session resource listing");
+	return method.call(adapter, sessionId, options);
+}
+
+export async function getRemoteSessionResource(
+	ctx: ManagedApiContext,
+	sessionId: string,
+	resourceId: string,
+	options: ManagedApiTarget = {},
+): Promise<SessionResourceInfo> {
+	const adapter = resolveAdapter(ctx, options.provider);
+	const method = requiredMethod(adapter.getSessionResource, adapter.name, "session resource lookup");
+	return method.call(adapter, sessionId, resourceId);
+}
+
+export async function unmountRemoteSessionResource(
+	ctx: ManagedApiContext,
+	sessionId: string,
+	resourceId: string,
+	options: ManagedApiTarget = {},
+): Promise<void> {
+	const adapter = resolveAdapter(ctx, options.provider);
+	const method = requiredMethod(adapter.unmountSessionResource, adapter.name, "session resource unmounting");
+	return method.call(adapter, sessionId, resourceId);
 }
 
 export async function sendRemoteSessionEvents(

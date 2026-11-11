@@ -9,7 +9,7 @@ This guide takes you from zero to a running agent session in a few minutes. It u
   - Qoder — `QODER_PAT`
   - Bailian (Aliyun AgentStudio) — `DASHSCOPE_API_KEY` and `BAILIAN_WORKSPACE_ID`
   - Volcengine Ark (Managed Agents) — `ARK_API_KEY`
-- To run the project from source: [Bun](https://bun.sh) `1.3.5` (see [Development](./contributing/development.md)). To use the published CLI, Node.js or Bun is enough.
+- To run the project from source: [Bun](https://bun.sh) `1.4.4` (see [Development](./contributing/development.md)). To use the published CLI, Node.js or Bun is enough.
 
 ## Install
 

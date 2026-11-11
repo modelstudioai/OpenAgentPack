@@ -37,6 +37,9 @@ import type {
 	FilePage,
 	SessionEventInput,
 	SessionEventSendResult,
+	SessionResourceListOptions,
+	SessionResourceMountInput,
+	SessionResourcePage,
 	SessionUpdateInput,
 	SkillDownloadInfo,
 	SkillListOptions,
@@ -56,7 +59,13 @@ import type {
 	UpdateMemoryInput,
 	UpdateMemoryStoreInput,
 } from "../../types/memory.ts";
-import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../../types/session.ts";
+import type {
+	ProviderSessionInfo,
+	SessionBindings,
+	SessionFilter,
+	SessionListResult,
+	SessionResourceInfo,
+} from "../../types/session.ts";
 import type {
 	EventListOptions,
 	EventStreamOptions,
@@ -67,6 +76,13 @@ import type { SessionThreadListOptions, SessionThreadPage } from "../../types/se
 import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
+import type {
+	ModelUsagePage,
+	ModelUsageRequest,
+	ToolUsagePage,
+	ToolUsageRequest,
+	UsageQueryOptions,
+} from "../../types/usage.ts";
 import type {
 	CreateWebhookEndpointInput,
 	UpdateWebhookEndpointInput,
@@ -132,6 +148,7 @@ import {
 } from "./mapper.ts";
 import { streamBailianSessionEvents } from "./session-stream.ts";
 import { listBailianSessionThreadEvents, listBailianSessionThreads } from "./session-threads.ts";
+import { listBailianModelUsage, listBailianToolUsage } from "./usage.ts";
 
 export class BailianAdapter implements ProviderAdapter {
 	readonly name = "bailian" as const;
@@ -1203,6 +1220,35 @@ export class BailianAdapter implements ProviderAdapter {
 		await this.client.delete(`/sessions/${id}`);
 	}
 
+	async mountSessionResource(sessionId: string, input: SessionResourceMountInput): Promise<SessionResourceInfo> {
+		const res = (await this.client.post(`/sessions/${sessionId}/resources`, {
+			type: input.type,
+			file_id: input.file_id,
+			// The runtime endpoint takes the path under the sandbox session root
+			// ("/uploads/…"), while the SDK's neutral layer — and the create-session
+			// API — use the full sandbox path ("/mnt/session/uploads/…").
+			mount_path: toRuntimeResourceMountPath(input.mount_path),
+		})) as Record<string, unknown>;
+		return toSessionResourceInfo(res);
+	}
+
+	async listSessionResources(sessionId: string, options?: SessionResourceListOptions): Promise<SessionResourcePage> {
+		const res = (await this.client.get(withQuery(`/sessions/${sessionId}/resources`, cursorParams(options)))) as Record<
+			string,
+			unknown
+		>;
+		return cursorPage(res, toSessionResourceInfo);
+	}
+
+	async getSessionResource(sessionId: string, resourceId: string): Promise<SessionResourceInfo> {
+		const res = (await this.client.get(`/sessions/${sessionId}/resources/${resourceId}`)) as Record<string, unknown>;
+		return toSessionResourceInfo(res);
+	}
+
+	async unmountSessionResource(sessionId: string, resourceId: string): Promise<void> {
+		await this.client.delete(`/sessions/${sessionId}/resources/${resourceId}`);
+	}
+
 	async sendSessionMessage(sessionId: string, message: string): Promise<string | undefined> {
 		const body = mapSendMessage(message);
 		const res = (await this.client.post(`/sessions/${sessionId}/events`, body)) as Record<string, unknown>;
@@ -1253,6 +1299,16 @@ export class BailianAdapter implements ProviderAdapter {
 		options?: EventListOptions,
 	): Promise<ProviderSessionEventList> {
 		return listBailianSessionThreadEvents(this.client, sessionId, threadId, options);
+	}
+
+	// --- Usage (app-control usage.*) ---
+
+	listModelUsage(request: ModelUsageRequest, options?: UsageQueryOptions): Promise<ModelUsagePage> {
+		return listBailianModelUsage(this.client, request, options);
+	}
+
+	listToolUsage(request: ToolUsageRequest, options?: UsageQueryOptions): Promise<ToolUsagePage> {
+		return listBailianToolUsage(this.client, request, options);
 	}
 
 	// --- Files ---
@@ -1343,6 +1399,38 @@ export function toSessionInfo(res: Record<string, unknown>): ProviderSessionInfo
 		sessionInfo.environment_variables = environmentVariables as Record<string, string>;
 	}
 	return sessionInfo;
+}
+
+/** Sandbox session root on bailian; the runtime resources API takes paths relative to it. */
+const BAILIAN_SESSION_SANDBOX_ROOT = "/mnt/session";
+
+/**
+ * Runtime resource mount_path wire convention: absolute under `/uploads/`. Accept the
+ * full sandbox path used by the neutral layer and create-session API (`/mnt/session/uploads/…`),
+ * or an already wire-shaped `/uploads/…` path; anything else is rejected client-side.
+ */
+function toRuntimeResourceMountPath(mountPath: string): string {
+	const wirePath = mountPath.startsWith(`${BAILIAN_SESSION_SANDBOX_ROOT}/`)
+		? mountPath.slice(BAILIAN_SESSION_SANDBOX_ROOT.length)
+		: mountPath;
+	if (wirePath === "/uploads" || wirePath.startsWith("/uploads/")) return wirePath;
+	throw new UserError(
+		`bailian runtime mount_path must resolve to '/uploads/…' (sandbox '${BAILIAN_SESSION_SANDBOX_ROOT}/uploads/…'); received '${mountPath}'.`,
+	);
+}
+
+/** Raw bailian session-resource object → neutral SessionResourceInfo; the full payload rides in `attributes`. */
+function toSessionResourceInfo(res: Record<string, unknown>): SessionResourceInfo {
+	return {
+		...(typeof res.id === "string" ? { id: res.id } : {}),
+		type: (res.type as string) ?? "file",
+		...(typeof res.mount_path === "string" ? { mount_path: res.mount_path } : {}),
+		...(typeof res.file_id === "string" ? { file_id: res.file_id } : {}),
+		...(typeof res.memory_store_id === "string" ? { memory_store_id: res.memory_store_id } : {}),
+		...(res.access === "read_write" || res.access === "read_only" ? { access: res.access } : {}),
+		...(typeof res.instructions === "string" ? { instructions: res.instructions } : {}),
+		attributes: res,
+	};
 }
 
 // Raw Bailian `/skills` item → neutral ProviderSkillInfo. Kept provider-local (not the

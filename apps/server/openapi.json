@@ -1795,6 +1795,305 @@
 					}
 				},
 				"required": ["id", "type", "status", "created_at", "updated_at", "events"]
+			},
+			"ModelUsagePage": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ModelUsageItem"
+						}
+					},
+					"total": {
+						"type": "integer",
+						"description": "Total rows across all pages."
+					},
+					"total_call_count": {
+						"type": "integer",
+						"description": "Total calls across all pages."
+					},
+					"page_no": {
+						"type": "integer"
+					},
+					"page_size": {
+						"type": "integer"
+					},
+					"data_updated_at": {
+						"type": "integer",
+						"description": "Data freshness, Unix epoch milliseconds."
+					}
+				},
+				"required": ["items", "total", "total_call_count", "page_no", "page_size", "data_updated_at"]
+			},
+			"ModelUsageItem": {
+				"type": "object",
+				"properties": {
+					"workspace_id": {
+						"type": "string"
+					},
+					"model_name": {
+						"type": "string"
+					},
+					"call_count": {
+						"type": "integer"
+					},
+					"failed_count": {
+						"type": "integer"
+					},
+					"tokens": {
+						"$ref": "#/components/schemas/UsageTokenStats"
+					}
+				},
+				"required": ["workspace_id", "model_name", "call_count", "failed_count", "tokens"]
+			},
+			"UsageTokenStats": {
+				"type": "object",
+				"properties": {
+					"input_tokens": {
+						"type": "integer"
+					},
+					"output_tokens": {
+						"type": "integer"
+					},
+					"cache_read_tokens": {
+						"type": "integer"
+					},
+					"cache_creation_tokens": {
+						"type": "integer"
+					},
+					"total_tokens": {
+						"type": "integer"
+					},
+					"cache_hit_ratio": {
+						"type": "number"
+					}
+				},
+				"required": [
+					"input_tokens",
+					"output_tokens",
+					"cache_read_tokens",
+					"cache_creation_tokens",
+					"total_tokens",
+					"cache_hit_ratio"
+				]
+			},
+			"ListModelUsageRequest": {
+				"type": "object",
+				"properties": {
+					"scope": {
+						"$ref": "#/components/schemas/UsageScope"
+					},
+					"time_range": {
+						"$ref": "#/components/schemas/UsageTimeRange"
+					},
+					"model_name": {
+						"type": "string",
+						"nullable": true,
+						"description": "Exact model name; omitted/null means all models."
+					},
+					"page_no": {
+						"type": "integer",
+						"minimum": 1,
+						"default": 1,
+						"description": "1-based page number."
+					},
+					"page_size": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 100,
+						"default": 20,
+						"description": "Page size, 1..100."
+					},
+					"sort_order": {
+						"type": "string",
+						"enum": ["asc", "desc"],
+						"default": "desc"
+					},
+					"sort_by": {
+						"type": "string",
+						"enum": ["call_count", "failed_count", "input_tokens", "output_tokens"],
+						"default": "call_count"
+					}
+				},
+				"required": ["scope"]
+			},
+			"UsageScope": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"type": {
+								"type": "string",
+								"enum": ["workspace"],
+								"description": "Aggregated usage across the listed workspaces."
+							},
+							"workspace_ids": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								},
+								"minItems": 1,
+								"description": "Workspaces to aggregate; at least one is required."
+							},
+							"agent_id": {
+								"type": "string",
+								"description": "Narrow the workspace aggregation to one Agent."
+							}
+						},
+						"required": ["type", "workspace_ids"]
+					},
+					{
+						"type": "object",
+						"properties": {
+							"type": {
+								"type": "string",
+								"enum": ["agent"],
+								"description": "Usage of one Agent (optionally a pinned version)."
+							},
+							"agent_id": {
+								"type": "string"
+							},
+							"workspace_ids": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								},
+								"description": "Optional single-workspace pin; omit to use the caller's identity workspace."
+							},
+							"agent_version": {
+								"type": "string"
+							}
+						},
+						"required": ["type", "agent_id"]
+					},
+					{
+						"type": "object",
+						"properties": {
+							"type": {
+								"type": "string",
+								"enum": ["session"],
+								"description": "Usage within one Session; its own window applies."
+							},
+							"session_id": {
+								"type": "string"
+							}
+						},
+						"required": ["type", "session_id"]
+					}
+				]
+			},
+			"UsageTimeRange": {
+				"type": "object",
+				"properties": {
+					"start_time": {
+						"type": "integer",
+						"description": "Window start, Unix epoch milliseconds."
+					},
+					"end_time": {
+						"type": "integer",
+						"description": "Window end, Unix epoch milliseconds."
+					}
+				},
+				"required": ["start_time", "end_time"]
+			},
+			"ToolUsagePage": {
+				"type": "object",
+				"properties": {
+					"items": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ToolUsageItem"
+						}
+					},
+					"total": {
+						"type": "integer",
+						"description": "Total rows across all pages."
+					},
+					"total_call_count": {
+						"type": "integer",
+						"description": "Total calls across all pages."
+					},
+					"page_no": {
+						"type": "integer"
+					},
+					"page_size": {
+						"type": "integer"
+					},
+					"data_updated_at": {
+						"type": "integer",
+						"description": "Data freshness, Unix epoch milliseconds."
+					}
+				},
+				"required": ["items", "total", "total_call_count", "page_no", "page_size", "data_updated_at"]
+			},
+			"ToolUsageItem": {
+				"type": "object",
+				"properties": {
+					"workspace_id": {
+						"type": "string"
+					},
+					"tool_name": {
+						"type": "string"
+					},
+					"source": {
+						"type": "string",
+						"description": "builtin | mcp | custom; unknown future values are preserved verbatim."
+					},
+					"call_count": {
+						"type": "integer"
+					},
+					"failed_count": {
+						"type": "integer"
+					}
+				},
+				"required": ["workspace_id", "tool_name", "source", "call_count", "failed_count"]
+			},
+			"ListToolUsageRequest": {
+				"type": "object",
+				"properties": {
+					"scope": {
+						"$ref": "#/components/schemas/UsageScope"
+					},
+					"time_range": {
+						"$ref": "#/components/schemas/UsageTimeRange"
+					},
+					"source": {
+						"type": "string",
+						"nullable": true,
+						"enum": ["builtin", "mcp", "custom", null],
+						"description": "Exact tool source; omitted/null means all sources."
+					},
+					"tool_name": {
+						"type": "string",
+						"nullable": true,
+						"description": "Exact tool name; omitted/null means all tools."
+					},
+					"page_no": {
+						"type": "integer",
+						"minimum": 1,
+						"default": 1,
+						"description": "1-based page number."
+					},
+					"page_size": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 100,
+						"default": 20,
+						"description": "Page size, 1..100."
+					},
+					"sort_order": {
+						"type": "string",
+						"enum": ["asc", "desc"],
+						"default": "desc"
+					},
+					"sort_by": {
+						"type": "string",
+						"enum": ["call_count", "failed_count"],
+						"default": "call_count"
+					}
+				},
+				"required": ["scope"]
 			}
 		},
 		"parameters": {}
@@ -4653,6 +4952,180 @@
 							"text/event-stream": {
 								"schema": {
 									"type": "string"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/usage/models": {
+			"post": {
+				"operationId": "listModelUsage",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ListModelUsageRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Paged aggregated model usage for the requested scope",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ModelUsagePage"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Forbidden",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflict",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Unprocessable entity",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "Server error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/usage/tools": {
+			"post": {
+				"operationId": "listToolUsage",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ListToolUsageRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Paged aggregated tool usage for the requested scope",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ToolUsagePage"
 								}
 							}
 						}

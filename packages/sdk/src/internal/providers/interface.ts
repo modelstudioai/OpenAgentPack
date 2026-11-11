@@ -26,6 +26,9 @@ import type {
 	FilePage,
 	SessionEventInput,
 	SessionEventSendResult,
+	SessionResourceListOptions,
+	SessionResourceMountInput,
+	SessionResourcePage,
 	SessionUpdateInput,
 	SkillDownloadInfo,
 	SkillListOptions,
@@ -54,7 +57,13 @@ import type {
 	UpdateMemoryInput,
 	UpdateMemoryStoreInput,
 } from "../types/memory.ts";
-import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../types/session.ts";
+import type {
+	ProviderSessionInfo,
+	SessionBindings,
+	SessionFilter,
+	SessionListResult,
+	SessionResourceInfo,
+} from "../types/session.ts";
 import type {
 	EventListOptions,
 	EventStreamOptions,
@@ -65,6 +74,13 @@ import type { SessionThreadListOptions, SessionThreadPage } from "../types/sessi
 import type { SkillFile } from "../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
+import type {
+	ModelUsagePage,
+	ModelUsageRequest,
+	ToolUsagePage,
+	ToolUsageRequest,
+	UsageQueryOptions,
+} from "../types/usage.ts";
 import type {
 	CreateWebhookEndpointInput,
 	UpdateWebhookEndpointInput,
@@ -445,6 +461,13 @@ export interface ProviderAdapter {
 	archiveSession?(id: string): Promise<ProviderSessionInfo>;
 	deleteSession(id: string): Promise<void>;
 
+	/** Mount one resource into a RUNNING session. Produces no session events. */
+	mountSessionResource?(sessionId: string, input: SessionResourceMountInput): Promise<SessionResourceInfo>;
+	listSessionResources?(sessionId: string, options?: SessionResourceListOptions): Promise<SessionResourcePage>;
+	getSessionResource?(sessionId: string, resourceId: string): Promise<SessionResourceInfo>;
+	/** Unmount one resource and clear the provider's internal file copy. Unrecoverable. */
+	unmountSessionResource?(sessionId: string, resourceId: string): Promise<void>;
+
 	sendSessionMessage(sessionId: string, message: string): Promise<string | undefined>;
 	sendSessionEvents?(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult>;
 	streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent>;
@@ -457,6 +480,18 @@ export interface ProviderAdapter {
 	): Promise<ProviderSessionEventList>;
 
 	listModels?(): Promise<ModelInfo[]>;
+
+	/**
+	 * Aggregated model usage rows for a scope (app-control usage.listModelUsage).
+	 * Bailian-only today; other providers reject at the runtime seam.
+	 */
+	listModelUsage?(request: ModelUsageRequest, options?: UsageQueryOptions): Promise<ModelUsagePage>;
+
+	/**
+	 * Aggregated tool usage rows for a scope (app-control usage.listToolUsage).
+	 * Bailian-only today; other providers reject at the runtime seam.
+	 */
+	listToolUsage?(request: ToolUsageRequest, options?: UsageQueryOptions): Promise<ToolUsagePage>;
 
 	/**
 	 * Download all remote skills and return their extracted file content.
