@@ -4,9 +4,17 @@ import { UserError } from "../errors.ts";
 import type { AgentDecl, MemoryEntryDecl, ProjectConfig, ResolvedProjectConfig } from "../types/config.ts";
 import { isFileReference, loadPrompt } from "../utils/prompt-loader.ts";
 
-export async function resolveFileReferences(config: ProjectConfig, configPath: string): Promise<ResolvedProjectConfig> {
+export async function resolveFileReferences(
+	config: ProjectConfig,
+	configPath: string,
+	textFileReferences: "resolve" | "literal" = "resolve",
+): Promise<ResolvedProjectConfig> {
 	const basePath = configPath;
 	const resolved = structuredClone(config) as ProjectConfig & { _resolved: true };
+	if (textFileReferences === "literal") {
+		resolved._resolved = true;
+		return resolved as ResolvedProjectConfig;
+	}
 
 	if (resolved.agents) {
 		for (const [name, agent] of Object.entries(resolved.agents)) {

@@ -56,6 +56,8 @@ export async function resolveProjectConfig(
 }
 
 export interface ResolveProjectConfigFromObjectOptions {
+	/** Treat prompt and memory text as literal strings. File/Skill sources remain file references. */
+	textFileReferences?: "resolve" | "literal";
 	/** Project name to stamp onto the resolved config. */
 	projectName: string;
 	/** Base path used to resolve any `file:` references (defaults to process.cwd()). */
@@ -89,12 +91,17 @@ export async function resolveProjectConfigFromObject(
 	// file inside basePath so `file:` refs resolve against basePath itself.
 	const anchor = resolve(basePath, "__in_memory_config__");
 	const parsed = result.data as ProjectConfig;
-	const sourcePaths = collectProjectSourcePaths(parsed, anchor, false);
-	const config = await resolveFileReferences(parsed, anchor);
+	const sourcePaths = collectProjectSourcePaths(parsed, anchor, false, options.textFileReferences);
+	const config = await resolveFileReferences(parsed, anchor, options.textFileReferences);
 	return { configPath: basePath, projectName: options.projectName, config, sourcePaths };
 }
 
-function collectProjectSourcePaths(config: ProjectConfig, configPath: string, includeConfigPath: boolean): string[] {
+function collectProjectSourcePaths(
+	config: ProjectConfig,
+	configPath: string,
+	includeConfigPath: boolean,
+	textFileReferences: "resolve" | "literal" = "resolve",
+): string[] {
 	const baseDirectory = dirname(configPath);
 	const paths = new Set<string>();
 	if (includeConfigPath) paths.add(configPath);
@@ -105,11 +112,11 @@ function collectProjectSourcePaths(config: ProjectConfig, configPath: string, in
 		paths.add(resolve(baseDirectory, value));
 	};
 
-	for (const agent of Object.values(config.agents ?? {})) {
-		addLocalPath(agent.instructions, true);
-	}
-	for (const store of Object.values(config.memory_stores ?? {})) {
-		for (const entry of store.entries ?? []) addLocalPath(entry.content, true);
+	if (textFileReferences === "resolve") {
+		for (const agent of Object.values(config.agents ?? {})) addLocalPath(agent.instructions, true);
+		for (const store of Object.values(config.memory_stores ?? {})) {
+			for (const entry of store.entries ?? []) addLocalPath(entry.content, true);
+		}
 	}
 	for (const skill of Object.values(config.skills ?? {})) addLocalPath(skill.source);
 	for (const file of Object.values(config.files ?? {})) addLocalPath(file.source);
