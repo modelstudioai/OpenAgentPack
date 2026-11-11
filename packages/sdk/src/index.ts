@@ -397,7 +397,7 @@ export { StateManager } from "./internal/state/state-manager.ts";
 export { LocalFileStateBackend } from "./internal/state/local-file-state-backend.ts";
 export { InMemoryStateManager } from "./internal/state/in-memory-state-manager.ts";
 export type { StateFile } from "./internal/types/state.ts";
-export type { StateScope } from "./internal/state/backend.ts";
+export type { StateScope, StateBackend } from "./internal/state/backend.ts";
 
 export { extractSkillZipFiles } from "./internal/utils/normalize-skill-zip.ts";
 export { inspectSkillSource } from "./internal/core/skill-source.ts";

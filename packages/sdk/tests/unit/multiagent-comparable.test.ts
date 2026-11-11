@@ -36,6 +36,20 @@ describe("canonicalizeDesiredRoster", () => {
 });
 
 describe("canonicalizeRemoteRoster", () => {
+	test("Bailian Self accepts unset null identity placeholders but refuses real identity overrides", () => {
+		const remote = (member: unknown) =>
+			canonicalizeRemoteRoster({ type: "coordinator", agents: [member] }, "managed", true);
+		expect(remote({ type: "self", id: null, version: null })).toEqual({
+			supported: true,
+			roster: { type: "coordinator", member_ids: [], self: true },
+		});
+		for (const member of [
+			{ type: "self", id: "agent_other" },
+			{ type: "self", version: 1 },
+			{ type: "self", unknown: null },
+		])
+			expect(remote(member)).toEqual({ supported: false });
+	});
 	test("managed reads id and ignores remote member versions", () => {
 		const result = canonicalizeRemoteRoster(
 			{

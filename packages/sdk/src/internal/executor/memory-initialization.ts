@@ -32,7 +32,7 @@ async function existingMemoryPaths(provider: MemoryInitializerAdapter, storeId: 
 	const seenCursors = new Set<string>();
 	let cursor: string | undefined;
 	do {
-		const page = await provider.listMemories(storeId, { limit: 100, cursor, view: "basic" }, mode);
+		const page = await provider.listMemories(storeId, { limit: 20, cursor, view: "basic" }, mode);
 		for (const memory of page.data) {
 			if (memory.type === "memory") paths.add(memory.path);
 		}

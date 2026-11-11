@@ -17,7 +17,7 @@ export interface ResolvedMultiagentRoster {
 	members: ResolvedMultiagentMember[];
 }
 
-/** A native Self never carries an id, version, or an unknown extension. */
+/** Provider null identity placeholders are unset; non-null identities and extensions are not Self. */
 export function isSelfRosterMember(value: unknown): value is SelfMember {
 	return (
 		value !== null &&
@@ -25,7 +25,10 @@ export function isSelfRosterMember(value: unknown): value is SelfMember {
 		!Array.isArray(value) &&
 		"type" in value &&
 		value.type === "self" &&
-		Object.keys(value).length === 1
+		Object.keys(value).every(
+			(key) =>
+				key === "type" || ((key === "id" || key === "version") && (value as Record<string, unknown>)[key] === null),
+		)
 	);
 }
 
