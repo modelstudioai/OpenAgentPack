@@ -33,6 +33,7 @@ import type {
 	ResolvedChannelRefs,
 	ResolvedDeploymentRefs,
 	ResolvedTemplateRefs,
+	ResourceCreationObserver,
 } from "./interface.ts";
 
 /**
@@ -62,7 +63,12 @@ export interface ResourceCrudAdapter {
 	): Promise<RemoteResource>;
 	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
-	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	createVault(
+		name: string,
+		decl: VaultDecl,
+		mode?: ProviderResourceMode,
+		onCreated?: ResourceCreationObserver,
+	): Promise<RemoteResource>;
 	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
 
 	createSkill(name: string, decl: SkillDecl, files: SkillFile[], mode?: ProviderResourceMode): Promise<RemoteResource>;

@@ -111,9 +111,11 @@ import type {
 	DriftSupport,
 	ExportedResource,
 	ProviderAdapter,
+	ProviderResourceMode,
 	RemoteResource,
 	ResolvedAgentRefs,
 	ResolvedDeploymentRefs,
+	ResourceCreationObserver,
 } from "../interface.ts";
 import { ProviderMemoryApi } from "../memory-api.ts";
 import { assertEventOptions } from "../session-event-options.ts";
@@ -856,13 +858,21 @@ export class BailianAdapter implements ProviderAdapter {
 	// thin wrappers over the AgentStudio endpoints, exposed so callers/tests can
 	// exercise the full surface through real project code rather than raw fetch.
 
-	async createVault(name: string, decl: VaultDecl): Promise<RemoteResource> {
+	async createVault(
+		name: string,
+		decl: VaultDecl,
+		_mode?: ProviderResourceMode,
+		onCreated?: ResourceCreationObserver,
+	): Promise<RemoteResource> {
 		// Validate every nested credential before creating the parent Vault so an
 		// unsupported declaration cannot leave an empty remote Vault behind.
 		for (const credential of decl.credentials ?? []) mapCredential(credential);
 		const body = mapVault(name, decl, this.projectName);
 		const res = (await this.client.post("/vaults", body)) as Record<string, unknown>;
 		const vaultId = res.id as string;
+		// The parent already exists even if a later Credential request fails. Only
+		// structured execution installs this sink; legacy exceptions and State stay unchanged.
+		onCreated?.({ id: vaultId });
 
 		for (const cred of decl.credentials ?? []) {
 			await this.createCredential(vaultId, cred);

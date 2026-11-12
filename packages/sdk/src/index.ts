@@ -3,6 +3,13 @@
 // ./internal and are deliberately not exported — do not add internal-only symbols here.
 
 export { UserError } from "./internal/errors.ts";
+export { ResourceRuntimeError } from "./internal/resource-runtime-error.ts";
+export type {
+	ResourceErrorInfo,
+	ResourceErrorPhase,
+	ResourceExecutionOutcome,
+	ResourceResultDetail,
+} from "./internal/types/resource-result.ts";
 // Server-side HTTP errors thrown by provider clients. Exported so hosts (CLIs,
 // servers) can branch on them and surface statusCode/responseBody structurally
 // instead of parsing the message string.
@@ -92,6 +99,7 @@ export type {
 	DestructivePolicy,
 	ResourceActionResult,
 	ResourceExecutionResult,
+	ResourceExecutionOptions,
 	ResourcePlanResult,
 	ResourcePlanScope,
 	ResourceRefreshResult,

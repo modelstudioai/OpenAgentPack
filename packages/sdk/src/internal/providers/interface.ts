@@ -101,6 +101,9 @@ export interface RemoteResource {
 	version?: number;
 }
 
+/** Optional execution fact sink; observing an ID does not mean the resource is fully configured. */
+export type ResourceCreationObserver = (resource: Pick<RemoteResource, "id" | "version">) => void;
+
 export type ProviderResourceMode = "managed" | "forward" | "auto";
 
 export interface ModelInfo {
@@ -318,7 +321,12 @@ export interface ProviderAdapter {
 	): Promise<RemoteResource>;
 	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
-	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	createVault(
+		name: string,
+		decl: VaultDecl,
+		mode?: ProviderResourceMode,
+		onCreated?: ResourceCreationObserver,
+	): Promise<RemoteResource>;
 	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
 	createCredential?(vaultId: string, credential: CredentialDecl): Promise<RemoteResource>;
 	listCredentials?(vaultId: string): Promise<VaultCredentialInfo[]>;

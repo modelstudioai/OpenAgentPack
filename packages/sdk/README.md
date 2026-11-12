@@ -59,6 +59,36 @@ See the [configuration guide](https://github.com/modelstudioai/OpenAgentPack/blo
 网络、凭据、就绪保证及重试仍由调用方后端和接入层负责。
 详见 [SDK 参考](../../docs/reference/sdk.md#自建后端原始事件的浏览器转换)。
 
+## 资源 Plan、执行结果与错误合同
+
+目录项目与对象/YAML 入口共用资源执行器。服务端集成可在计划与执行时分别显式选择
+`resultDetail: "structured"`：
+
+```ts
+const planned = await planProjectContext(context, { resultDetail: "structured" });
+// 将 planned.fingerprint 与调用方的声明修订、上传内容一起绑定到显式确认。
+const result = await executePlannedProject(planned, {
+  resultDetail: "structured",
+  policy: "force", // 仅在调用方已经核验用户确认后使用。
+});
+```
+
+计划新增 `resource-plan-v1:` 前缀的语义指纹，不包含展示文案、时间戳、凭据或远端原始快照。
+执行新增 `outcome`（succeeded/failed/partial/unknown）、`mutationStarted`，以及每项的
+`resource.remoteId/version`、安全 `errorInfo`（code/phase/message/retryable/mutationStarted/httpStatus）。
+抛出的 `ResourceRuntimeError` 携带安全 `info` 与已取得的 `execution`，原异常保留在 cause。
+原有 `error` 字符串、异常 message/cause 可能含 Provider 原文，服务端不得直接传给浏览器或写入日志。
+
+`mutationStarted=false` 才能证明本次执行未调用 Provider 写方法；调用后报错保守标记 unknown。
+`retryable` 只描述临时性错误，不代表可以重发写请求。partial/unknown 不自动重试或回滚。
+已取得的资源身份不是完整发布成功证明，调用方仍须负责状态、回执与恢复策略。
+结构化报告保留 Provider 已返回的资源身份，包括 Vault 创建成功但后续凭据创建失败、
+删除完成后 State 中已移除的身份。多步创建尚未完成时不把该资源写成已收敛的 State；
+报告中的已知 ID 不代表可以自动重发、回滚或生成成功证明。
+
+省略 `resultDetail`（或选择 `legacy`）保留原返回字段、partial 语义、异常类型与消息；
+现有 CLI 无须接入新字段，不改变退出码、JSON 输出或确认策略。
+
 ## License
 
 Apache-2.0. See the [repository license](https://github.com/modelstudioai/OpenAgentPack/blob/main/LICENSE).
