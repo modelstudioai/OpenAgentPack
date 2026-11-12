@@ -29,6 +29,7 @@ export class BailianClient extends BaseApiClient {
 		return {
 			"Content-Type": "application/json",
 			Authorization: `Bearer ${this.apiKey}`,
+			"x-dashscope-source-config": "openagentpack",
 		};
 	}
 
