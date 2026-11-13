@@ -1,4 +1,5 @@
 import { UserError } from "../../errors.ts";
+import { externalMultiagentMemberId } from "../../multiagent/model.ts";
 import { reverseMultiagentDecl } from "../../multiagent/reverse-index.ts";
 import type {
 	AgentDecl,
@@ -490,7 +491,7 @@ export function mapAgent(
 	if (refs.multiagent) {
 		body.multiagent = {
 			type: "coordinator",
-			agents: refs.multiagent.members.map(({ remote_id }) => ({ type: "agent", id: remote_id })),
+			agents: refs.multiagent.members.map((member) => ({ type: "agent", id: externalMultiagentMemberId(member) })),
 		};
 	} else if (operation === "update") {
 		// Qoder updates are merge-style; null is the only way to clear a roster.
@@ -579,7 +580,10 @@ export function mapForwardTemplate(
 	if (refs.multiagent) {
 		body.multiagent = {
 			type: "coordinator",
-			agents: refs.multiagent.members.map(({ remote_id }) => ({ type: "agent", template_id: remote_id })),
+			agents: refs.multiagent.members.map((member) => ({
+				type: "agent",
+				template_id: externalMultiagentMemberId(member),
+			})),
 		};
 	} else if (operation === "update") {
 		// Forward updates are merge-style; null is the only way to clear a roster.

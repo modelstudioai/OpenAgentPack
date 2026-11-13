@@ -110,6 +110,40 @@ test("file-based resolution includes the root agents.yaml source", async () => {
 	expect(loaded.sourcePaths).toContain(loaded.configPath);
 });
 
+test("literal text preserves path-like prompts and memory without resolving files", async () => {
+	const basePath = await mkdtemp(join(tmpdir(), "openagentpack-literal-text-"));
+	try {
+		await writeFile(join(basePath, "prompt.md"), "file contents must not replace literal text");
+		const raw = {
+			...validRawConfig(),
+			agents: { designer: { ...validRawConfig().agents.designer, instructions: "./prompt.md" } },
+			memory_stores: { notes: { description: "notes", entries: [{ key: "seed", content: `/literal \${VALUE}\n` }] } },
+			files: { brief: { source: "./brief.txt" } },
+			skills: { reviewer: { source: "./reviewer" } },
+		};
+		const loaded = await resolveProjectConfigFromObject(raw, {
+			projectName: "server",
+			basePath,
+			resolveEnv: false,
+			textFileReferences: "literal",
+		});
+		expect(loaded.config.agents?.designer?.instructions).toBe("./prompt.md");
+		expect(loaded.config.memory_stores?.notes?.entries?.[0]?.content).toBe(`/literal \${VALUE}\n`);
+		expect(loaded.sourcePaths).toEqual([join(basePath, "brief.txt"), join(basePath, "reviewer")]);
+		const defaults = await resolveProjectConfigFromObject(
+			{
+				...validRawConfig(),
+				agents: raw.agents,
+			},
+			{ projectName: "server", basePath },
+		);
+		expect(defaults.config.agents?.designer?.instructions).toBe("file contents must not replace literal text");
+		expect(defaults.sourcePaths).toEqual([join(basePath, "prompt.md")]);
+	} finally {
+		await rm(basePath, { recursive: true, force: true });
+	}
+});
+
 test("rejects permission keys that do not identify an enabled builtin", async () => {
 	const raw = validRawConfig();
 	(raw.agents.designer as Record<string, unknown>).tools = { builtin: ["Read"], permissions: { Bash: "ask" } };

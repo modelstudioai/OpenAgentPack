@@ -109,14 +109,19 @@ describe("shared project versions", () => {
 	test("keeps the version store invisible to an enclosing Git worktree", async () => {
 		const root = await temporaryDirectory();
 		const configPath = join(root, "agents.yaml");
+		// Git hooks export repository-local variables; this fixture owns a different repository.
+		const { stdout: localEnvironmentKeys } = await execFileAsync("git", ["rev-parse", "--local-env-vars"]);
+		const env = { ...process.env };
+		for (const key of localEnvironmentKeys.trim().split("\n")) delete env[key];
+		const gitOptions = { cwd: root, env };
 		await writeFile(configPath, projectYaml("Initial"));
-		await execFileAsync("git", ["init", "--initial-branch", "main"], { cwd: root });
-		await execFileAsync("git", ["add", "--", "agents.yaml"], { cwd: root });
-		const before = await execFileAsync("git", ["status", "--porcelain=v1"], { cwd: root });
+		await execFileAsync("git", ["init", "--initial-branch", "main"], gitOptions);
+		await execFileAsync("git", ["add", "--", "agents.yaml"], gitOptions);
+		const before = await execFileAsync("git", ["status", "--porcelain=v1"], gitOptions);
 
 		await enableProjectVersioning(configPath, "Baseline");
 
-		const after = await execFileAsync("git", ["status", "--porcelain=v1"], { cwd: root });
+		const after = await execFileAsync("git", ["status", "--porcelain=v1"], gitOptions);
 		expect(after.stdout).toBe(before.stdout);
 		expect(after.stdout).not.toContain(".openagentpack");
 	});

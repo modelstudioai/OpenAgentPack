@@ -47,6 +47,7 @@ import type {
 	ResolvedDeploymentRefs,
 } from "../interface.ts";
 import { ProviderMemoryApi } from "../memory-api.ts";
+import { assertEventOptions, assertStreamOptions } from "../session-event-options.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
@@ -535,7 +536,8 @@ export class ClaudeAdapter implements ProviderAdapter {
 		return extractCreatedEventId(res);
 	}
 
-	async *streamSessionEvents(sessionId: string, _options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+	async *streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+		assertStreamOptions(this.name, options);
 		// The managed-agents stream pushes only post-connect events and rejects a
 		// cursor param (`after_id` → HTTP 400 "unknown field"); reconnection is done
 		// by replaying history via listSessionEvents and de-duplicating by event id,
@@ -546,6 +548,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 	}
 
 	async listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList> {
+		assertEventOptions(this.name, options);
 		// The managed-agents events endpoint rejects `after_id` (HTTP 400), so it is
 		// never forwarded (mirrors bailian); shared page-cursor handling lives in
 		// listSessionEventsPaged.

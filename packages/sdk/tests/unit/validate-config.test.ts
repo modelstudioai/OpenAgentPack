@@ -125,7 +125,7 @@ test("limits Agent environment variables to Qoder", () => {
 	expect(diagnostics.some((d) => d.code === "claude.agent.environment_variables.unsupported")).toBe(true);
 });
 
-test("rejects tool approval and GitHub Session resources on unsupported providers", () => {
+test("accepts Bailian tool approval while rejecting unsupported GitHub Session resources", () => {
 	const config: ProjectConfig = {
 		version: "1",
 		providers: { bailian: {} },
@@ -147,7 +147,7 @@ test("rejects tool approval and GitHub Session resources on unsupported provider
 	};
 
 	const diagnostics = validateProjectConfig(config);
-	expect(diagnostics.some((item) => item.code === "bailian.agent.tool_permissions.unsupported")).toBe(true);
+	expect(diagnostics.some((item) => item.code === "bailian.agent.tool_permissions.unsupported")).toBe(false);
 	expect(diagnostics.some((item) => item.code === "bailian.agent.session_resource.github_repository.unsupported")).toBe(
 		true,
 	);

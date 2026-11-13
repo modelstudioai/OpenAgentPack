@@ -2765,6 +2765,38 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	"/api/usage/models": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: operations["listModelUsage"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	"/api/usage/tools": {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post: operations["listToolUsage"];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3461,6 +3493,145 @@ export interface components {
 			result?: unknown;
 			error?: string;
 		};
+		ModelUsagePage: {
+			items: components["schemas"]["ModelUsageItem"][];
+			/** @description Total rows across all pages. */
+			total: number;
+			/** @description Total calls across all pages. */
+			total_call_count: number;
+			page_no: number;
+			page_size: number;
+			/** @description Data freshness, Unix epoch milliseconds. */
+			data_updated_at: number;
+		};
+		ModelUsageItem: {
+			workspace_id: string;
+			model_name: string;
+			call_count: number;
+			failed_count: number;
+			tokens: components["schemas"]["UsageTokenStats"];
+		};
+		UsageTokenStats: {
+			input_tokens: number;
+			output_tokens: number;
+			cache_read_tokens: number;
+			cache_creation_tokens: number;
+			total_tokens: number;
+			cache_hit_ratio: number;
+		};
+		ListModelUsageRequest: {
+			scope: components["schemas"]["UsageScope"];
+			time_range?: components["schemas"]["UsageTimeRange"];
+			/** @description Exact model name; omitted/null means all models. */
+			model_name?: string | null;
+			/**
+			 * @description 1-based page number.
+			 * @default 1
+			 */
+			page_no: number;
+			/**
+			 * @description Page size, 1..100.
+			 * @default 20
+			 */
+			page_size: number;
+			/**
+			 * @default desc
+			 * @enum {string}
+			 */
+			sort_order: "asc" | "desc";
+			/**
+			 * @default call_count
+			 * @enum {string}
+			 */
+			sort_by: "call_count" | "failed_count" | "input_tokens" | "output_tokens";
+		};
+		UsageScope:
+			| {
+					/**
+					 * @description Aggregated usage across the listed workspaces.
+					 * @enum {string}
+					 */
+					type: "workspace";
+					/** @description Workspaces to aggregate; at least one is required. */
+					workspace_ids: string[];
+					/** @description Narrow the workspace aggregation to one Agent. */
+					agent_id?: string;
+			  }
+			| {
+					/**
+					 * @description Usage of one Agent (optionally a pinned version).
+					 * @enum {string}
+					 */
+					type: "agent";
+					agent_id: string;
+					/** @description Optional single-workspace pin; omit to use the caller's identity workspace. */
+					workspace_ids?: string[];
+					agent_version?: string;
+			  }
+			| {
+					/**
+					 * @description Usage within one Session; its own window applies.
+					 * @enum {string}
+					 */
+					type: "session";
+					session_id: string;
+			  };
+		UsageTimeRange: {
+			/** @description Window start, Unix epoch milliseconds. */
+			start_time: number;
+			/** @description Window end, Unix epoch milliseconds. */
+			end_time: number;
+		};
+		ToolUsagePage: {
+			items: components["schemas"]["ToolUsageItem"][];
+			/** @description Total rows across all pages. */
+			total: number;
+			/** @description Total calls across all pages. */
+			total_call_count: number;
+			page_no: number;
+			page_size: number;
+			/** @description Data freshness, Unix epoch milliseconds. */
+			data_updated_at: number;
+		};
+		ToolUsageItem: {
+			workspace_id: string;
+			tool_name: string;
+			/** @description builtin | mcp | custom; unknown future values are preserved verbatim. */
+			source: string;
+			call_count: number;
+			failed_count: number;
+		};
+		ListToolUsageRequest: {
+			scope: components["schemas"]["UsageScope"];
+			time_range?: components["schemas"]["UsageTimeRange"];
+			/**
+			 * @description Exact tool source; omitted/null means all sources.
+			 * @enum {string|null}
+			 */
+			source?: "builtin" | "mcp" | "custom" | null;
+			/** @description Exact tool name; omitted/null means all tools. */
+			tool_name?: string | null;
+			/**
+			 * @description 1-based page number.
+			 * @default 1
+			 */
+			page_no: number;
+			/**
+			 * @description Page size, 1..100.
+			 * @default 20
+			 */
+			page_size: number;
+			/**
+			 * @default desc
+			 * @enum {string}
+			 */
+			sort_order: "asc" | "desc";
+			/**
+			 * @default call_count
+			 * @enum {string}
+			 */
+			sort_by: "call_count" | "failed_count";
+		};
 	};
 	responses: never;
 	parameters: never;
@@ -3469,4 +3640,161 @@ export interface components {
 	pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+	listModelUsage: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ListModelUsageRequest"];
+			};
+		};
+		responses: {
+			/** @description Paged aggregated model usage for the requested scope */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ModelUsagePage"];
+				};
+			};
+			/** @description Bad request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Not found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Unprocessable entity */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+		};
+	};
+	listToolUsage: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				"application/json": components["schemas"]["ListToolUsageRequest"];
+			};
+		};
+		responses: {
+			/** @description Paged aggregated tool usage for the requested scope */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ToolUsagePage"];
+				};
+			};
+			/** @description Bad request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Forbidden */
+			403: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Not found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Unprocessable entity */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+			/** @description Server error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					"application/json": components["schemas"]["ErrorResponse"];
+				};
+			};
+		};
+	};
+}

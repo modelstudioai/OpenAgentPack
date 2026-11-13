@@ -31,4 +31,47 @@ describe("redactSensitiveText", () => {
 		expect(output).not.toContain("LTAI5tABCDEFGHIJKLMNOP");
 		expect(output).toContain("[redacted]");
 	});
+
+	test("preserves only the destination when a signed URL also appears in the label", () => {
+		const output = redactSensitiveText(`[${SIGNED_OSS_URL}](${SIGNED_OSS_URL})`);
+		expect(output).toEndWith(`](${SIGNED_OSS_URL})`);
+		const label = output.slice(0, output.length - SIGNED_OSS_URL.length - 3);
+		expect(label).not.toContain("LTAI5tPxpiCM2hjmWrFXrym1");
+		expect(label).not.toContain("Z35W3GbIYmvq2UH6iBF");
+		expect(label).toContain("[redacted]");
+	});
+
+	test("keeps adjacent image and download destinations while redacting ordinary links and labels", () => {
+		const image = "https://cdn.example.test/render?token=image-secret";
+		const document = "https://cdn.example.test/report.pdf?signature=document-secret";
+		const ordinary = "https://example.test/api?token=ordinary-secret";
+		const output = redactSensitiveText(`![token=label-secret](${image})[PDF](${document})[API](${ordinary})`);
+		expect(output).toContain(`![token: [redacted]](${image})[PDF](${document})`);
+		expect(output).not.toContain("label-secret");
+		expect(output).not.toContain("ordinary-secret");
+	});
+
+	test("recovers later Markdown labels without preserving malformed destinations", () => {
+		const nested = `[](http://[label with spaces](${SIGNED_OSS_URL})`;
+		expect(redactSensitiveText(nested)).toBe(nested);
+		const input = `[broken](https://example.test/api?token=broken-secret [valid](${SIGNED_OSS_URL})`;
+		const output = redactSensitiveText(input);
+		expect(output).not.toContain("broken-secret");
+		expect(output).toEndWith(`[valid](${SIGNED_OSS_URL})`);
+		const invalidNestedLabel = `[outer [inner]](${SIGNED_OSS_URL})`;
+		expect(redactSensitiveText(invalidNestedLabel)).not.toContain("LTAI5tPxpiCM2hjmWrFXrym1");
+	});
+
+	test.each(["[", "[](http://"])("handles long malformed Markdown beginning with %s", (fragment) => {
+		const prefix = fragment.repeat(32_768);
+		expect(redactSensitiveText(`${prefix} token=trailing-secret`)).toBe(`${prefix} token: [redacted]`);
+	});
+
+	test("preserves many complete media destinations in one redaction pass", () => {
+		const input = Array.from(
+			{ length: 4096 },
+			(_, index) => `[${index}](https://example.test/${index}.png?token=keep)`,
+		).join("");
+		expect(redactSensitiveText(input)).toBe(input);
+	});
 });

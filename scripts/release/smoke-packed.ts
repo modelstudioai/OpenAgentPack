@@ -152,7 +152,7 @@ async function main(): Promise<void> {
 				"node",
 				"--input-type=module",
 				"--eval",
-				'await import("@openagentpack/sdk"); await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const versions = await import("@openagentpack/sdk/project-versions"); const workspace = await import("@openagentpack/sdk/project-workspace"); if (typeof versions.createProjectVersionService !== "function") throw new Error("project-versions export missing"); if (typeof workspace.previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
+				'const sdk = await import("@openagentpack/sdk"); for (const method of ["listSessionThreads", "listSessionThreadEvents"]) { if (typeof sdk[method] !== "function") throw new Error(method + " export missing"); } await import("@openagentpack/sdk/session-events"); await import("@openagentpack/sdk/scan-lifecycle"); await import("@openagentpack/sdk/file-lifecycle"); const versions = await import("@openagentpack/sdk/project-versions"); const workspace = await import("@openagentpack/sdk/project-workspace"); if (typeof versions.createProjectVersionService !== "function") throw new Error("project-versions export missing"); if (typeof workspace.previewProjectBuild !== "function") throw new Error("project-workspace export missing");',
 			],
 			consumer,
 		);

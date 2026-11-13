@@ -63,3 +63,15 @@ For WebUI or multi-tenant hosts, derive `StateScope` from authenticated tenant/p
 For OSS-like object storage, treat the object store as durable blob storage and history, not as a complete state coordination system. Use an external lock backend for multi-writer deployments unless the object-store adapter can prove safe conditional writes for the exact update flow.
 
 OpenAgentPack infrastructure state must remain infrastructure-only. Provider Sessions, WebUI tasks, event history, artifacts, and task-to-session mappings belong in host-owned product storage, not in OpenAgentPack state.
+
+## 宿主数据库中的检查点
+
+公开的 `InMemoryStateManager.fromJSON(snapshot, onSave?)` 接收已有 SDK state 和可选保存回调；
+`empty(onSave?)` 创建空账本。`toJSON()` 返回隔离副本。`save()` 按调用顺序将当时的快照交给
+回调，存储失败向调用方报告；没有回调时继续保持原有的纯内存行为。宿主通过 `StateBackend`
+实现数据库读取、作用域隔离及写互斥，网络调用期间不要持有数据库事务。只读运行时使用无保存
+回调的隔离副本，不能将规划过程中刷新出的 state 自动提交。
+
+表单宿主可以通过 `resolveProjectConfigFromObject` 的 `textFileReferences: "literal"`
+将提示词和记忆条目按正文解析；默认 `"resolve"` 保留原有文件读取行为。此选项不改变 File、
+Skill 的来源语义，也不绕过 SDK 声明校验。凭据仍由宿主仅在服务端运行时传入。

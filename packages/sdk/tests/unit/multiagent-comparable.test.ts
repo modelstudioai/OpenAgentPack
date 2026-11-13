@@ -10,6 +10,15 @@ function roster(members: ResolvedMultiagentRoster["members"]): ResolvedMultiagen
 }
 
 describe("canonicalizeDesiredRoster", () => {
+	test("keeps native Self separate from an external member whose id is self", () => {
+		const desired = canonicalizeDesiredRoster(
+			roster([{ type: "self" }, { resource_type: "agent", remote_id: "self" }]),
+		);
+		expect(desired).toEqual({ type: "coordinator", member_ids: ["self"], self: true });
+		const raw = { type: "coordinator", agents: [{ type: "self" }, { type: "agent", id: "self" }] };
+		expect(canonicalizeRemoteRoster(raw, "managed", true)).toEqual({ supported: true, roster: desired });
+		expect(canonicalizeRemoteRoster(raw, "forward", true)).toEqual({ supported: false });
+	});
 	test("emits sorted unique member ids", () => {
 		const canonical = canonicalizeDesiredRoster(
 			roster([
@@ -27,6 +36,20 @@ describe("canonicalizeDesiredRoster", () => {
 });
 
 describe("canonicalizeRemoteRoster", () => {
+	test("Bailian Self accepts unset null identity placeholders but refuses real identity overrides", () => {
+		const remote = (member: unknown) =>
+			canonicalizeRemoteRoster({ type: "coordinator", agents: [member] }, "managed", true);
+		expect(remote({ type: "self", id: null, version: null })).toEqual({
+			supported: true,
+			roster: { type: "coordinator", member_ids: [], self: true },
+		});
+		for (const member of [
+			{ type: "self", id: "agent_other" },
+			{ type: "self", version: 1 },
+			{ type: "self", unknown: null },
+		])
+			expect(remote(member)).toEqual({ supported: false });
+	});
 	test("managed reads id and ignores remote member versions", () => {
 		const result = canonicalizeRemoteRoster(
 			{

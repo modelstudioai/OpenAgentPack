@@ -1,5 +1,8 @@
 import { resolveFetch } from "../transport.ts";
 import type { RemoteResource } from "./interface.ts";
+import { type SseRequestOptions, streamSse } from "./sse-transport.ts";
+
+export { type SseRequestOptions, SseTransportError } from "./sse-transport.ts";
 
 export class ApiError extends Error {
 	constructor(
@@ -99,68 +102,8 @@ export abstract class BaseApiClient {
 		return Buffer.from(await res.arrayBuffer());
 	}
 
-	async *sse(path: string, options?: { headers?: Record<string, string> }): AsyncGenerator<Record<string, unknown>> {
-		const controller = new AbortController();
-		const res = await resolveFetch()(`${this.baseUrl}${path}`, {
-			method: "GET",
-			headers: { ...this.headers(), Accept: "text/event-stream", ...options?.headers },
-			signal: controller.signal,
-		});
-		await this.throwIfError(res);
-		const reader = res.body!.getReader();
-		const decoder = new TextDecoder();
-		let buffer = "";
-
-		try {
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				buffer += decoder.decode(value, { stream: true });
-
-				let boundary = buffer.indexOf("\n\n");
-				while (boundary !== -1) {
-					const frame = buffer.slice(0, boundary);
-					buffer = buffer.slice(boundary + 2);
-					boundary = buffer.indexOf("\n\n");
-
-					const dataLines: string[] = [];
-					let sseId: string | undefined;
-					for (const line of frame.split("\n")) {
-						if (line.startsWith(":")) continue;
-						if (line.startsWith("event:") && line.slice(6).trim() === "heartbeat") {
-							dataLines.length = 0;
-							break;
-						}
-						if (line.startsWith("data:")) {
-							dataLines.push(line.slice(5).trimStart());
-						}
-						if (line.startsWith("id:")) {
-							sseId = line.slice(3).trimStart();
-						}
-					}
-					if (dataLines.length === 0) continue;
-
-					const json = dataLines.join("\n");
-					try {
-						const parsed = JSON.parse(json) as Record<string, unknown>;
-						if (sseId !== undefined && parsed.id === undefined) {
-							parsed.id = sseId;
-						}
-						yield parsed;
-					} catch {
-						// skip unparseable frames
-					}
-				}
-			}
-		} finally {
-			try {
-				await reader.cancel();
-			} catch {
-				// The stream may already be closed or aborted.
-			}
-			controller.abort();
-			reader.releaseLock();
-		}
+	async *sse(path: string, options?: SseRequestOptions): AsyncGenerator<Record<string, unknown>> {
+		yield* streamSse(`${this.baseUrl}${path}`, this.headers(), options, (response) => this.throwIfError(response));
 	}
 
 	async postFormData(path: string, formData: FormData): Promise<unknown> {

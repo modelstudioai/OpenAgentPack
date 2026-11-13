@@ -230,7 +230,89 @@ describe("Bailian session API additions", () => {
 	});
 });
 
-test("operation capabilities distinguish Managed Agents Thread from deprecated Assistant Thread", () => {
+describe("Bailian session runtime resources", () => {
+	const resource = {
+		id: "sesrsc_1",
+		type: "file",
+		file_id: "file_internal_copy",
+		memory_store_id: null,
+		access: null,
+		instructions: null,
+		name: null,
+		description: null,
+		mount_path: "/mnt/session/uploads/report.csv",
+		created_at: "2026-11-02T18:19:52+08:00",
+		updated_at: "2026-11-02T18:19:52+08:00",
+		request_id: "req_1",
+	};
+
+	test("mounts a running-session file, mapping the sandbox path to the /uploads wire prefix", async () => {
+		const calls = installJsonFetch([resource]);
+		const mounted = await adapter().mountSessionResource("sesn_1", {
+			type: "file",
+			file_id: "file_original",
+			mount_path: "/mnt/session/uploads/report.csv",
+		});
+
+		expect(calls[0]!.method).toBe("POST");
+		expect(calls[0]!.url).toBe(`${BASE}/sessions/sesn_1/resources`);
+		expect(calls[0]!.body).toEqual({
+			type: "file",
+			file_id: "file_original",
+			mount_path: "/uploads/report.csv",
+		});
+		expect(mounted.id).toBe("sesrsc_1");
+		expect(mounted.type).toBe("file");
+		expect(mounted.file_id).toBe("file_internal_copy");
+		expect(mounted.mount_path).toBe("/mnt/session/uploads/report.csv");
+		expect(mounted.attributes.request_id).toBe("req_1");
+	});
+
+	test("mount accepts an already wire-shaped /uploads path and rejects foreign roots", async () => {
+		const calls = installJsonFetch([resource]);
+		await adapter().mountSessionResource("sesn_1", {
+			type: "file",
+			file_id: "file_original",
+			mount_path: "/uploads/a/b.txt",
+		});
+		expect(calls[0]!.body).toEqual(expect.objectContaining({ mount_path: "/uploads/a/b.txt" }));
+
+		await expect(
+			adapter().mountSessionResource("sesn_1", {
+				type: "file",
+				file_id: "file_original",
+				mount_path: "/mnt/session/other/x.txt",
+			}),
+		).rejects.toThrow("/uploads/");
+	});
+
+	test("lists, gets and unmounts session resources", async () => {
+		const calls = installJsonFetch([
+			{ data: [resource], next_page: "P2" },
+			resource,
+			{ id: "sesrsc_1", type: "session_resource_deleted", request_id: "req_2" },
+		]);
+
+		const page = await adapter().listSessionResources("sesn_1", { limit: 10, page: "P1" });
+		const single = await adapter().getSessionResource("sesn_1", "sesrsc_1");
+		await adapter().unmountSessionResource("sesn_1", "sesrsc_1");
+
+		const listUrl = new URL(calls[0]!.url);
+		expect(calls[0]!.url).toBe(`${BASE}/sessions/sesn_1/resources?limit=10&page=P1`);
+		expect(listUrl.searchParams.get("limit")).toBe("10");
+		expect(listUrl.searchParams.get("page")).toBe("P1");
+		expect(page.data[0]?.id).toBe("sesrsc_1");
+		expect(page.data[0]?.file_id).toBe("file_internal_copy");
+		expect(page.next_page).toBe("P2");
+		expect(calls[1]!.url).toBe(`${BASE}/sessions/sesn_1/resources/sesrsc_1`);
+		expect(single.id).toBe("sesrsc_1");
+		expect(single.mount_path).toBe("/mnt/session/uploads/report.csv");
+		expect(calls[2]!.method).toBe("DELETE");
+		expect(calls[2]!.url).toBe(`${BASE}/sessions/sesn_1/resources/sesrsc_1`);
+	});
+});
+
+test("operation capabilities expose thread reads and keep unimplemented thread mutations unsupported", () => {
 	const capabilities = getManagedAgentProviderCapabilities("bailian");
 	expect(capabilities.operations["agent.create"]?.supported).toBe(true);
 	expect(capabilities.operations["environment.create"]?.supported).toBe(true);
@@ -239,6 +321,9 @@ test("operation capabilities distinguish Managed Agents Thread from deprecated A
 	expect(capabilities.operations["vault.credential.create"]?.supported).toBe(true);
 	expect(capabilities.operations["deployment.create"]?.supported).toBe(true);
 	expect(capabilities.operations["session.event.list"]?.supported).toBe(true);
-	expect(capabilities.operations["session_thread.list"]?.supported).toBe(false);
+	expect(capabilities.operations["session_thread.list"]?.supported).toBe(true);
+	expect(capabilities.operations["session_thread.events"]?.supported).toBe(true);
+	expect(capabilities.operations["session_thread.get"]?.supported).toBe(false);
+	expect(capabilities.operations["session_thread.archive"]?.supported).toBe(false);
 	expect(capabilities.operations["model.list"]?.supported).toBe(false);
 });

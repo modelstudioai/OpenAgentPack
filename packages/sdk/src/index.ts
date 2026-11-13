@@ -3,6 +3,13 @@
 // ./internal and are deliberately not exported — do not add internal-only symbols here.
 
 export { UserError } from "./internal/errors.ts";
+export { ResourceRuntimeError } from "./internal/resource-runtime-error.ts";
+export type {
+	ResourceErrorInfo,
+	ResourceErrorPhase,
+	ResourceExecutionOutcome,
+	ResourceResultDetail,
+} from "./internal/types/resource-result.ts";
 // Server-side HTTP errors thrown by provider clients. Exported so hosts (CLIs,
 // servers) can branch on them and surface statusCode/responseBody structurally
 // instead of parsing the message string.
@@ -92,6 +99,7 @@ export type {
 	DestructivePolicy,
 	ResourceActionResult,
 	ResourceExecutionResult,
+	ResourceExecutionOptions,
 	ResourcePlanResult,
 	ResourcePlanScope,
 	ResourceRefreshResult,
@@ -151,6 +159,7 @@ export {
 	getRemoteDeployment,
 	getRemoteDeploymentRun,
 	getRemoteEnvironment,
+	getRemoteSessionResource,
 	getRemoteSkill,
 	getRemoteSkillDownloadInfo,
 	getRemoteSkillVersion,
@@ -161,12 +170,15 @@ export {
 	listRemoteDeployments,
 	listRemoteEnvironments,
 	listRemoteFiles,
+	listRemoteSessionResources,
 	listRemoteSkills,
 	listRemoteSkillVersions,
 	listRemoteVaults,
+	mountRemoteSessionResource,
 	runRemoteDeployment,
 	sendRemoteSessionEvents,
 	setRemoteDeploymentPaused,
+	unmountRemoteSessionResource,
 	updateRemoteSession,
 } from "./internal/core/managed-api-runtime.ts";
 export type { ManagedApiTarget } from "./internal/core/managed-api-runtime.ts";
@@ -187,6 +199,9 @@ export type {
 	ManagedAgentProviderCapabilities,
 	SessionEventInput,
 	SessionEventSendResult,
+	SessionResourceListOptions,
+	SessionResourceMountInput,
+	SessionResourcePage,
 	SessionUpdateInput,
 	SkillDownloadInfo,
 	SkillListOptions,
@@ -354,10 +369,32 @@ export type {
 export type {
 	EventListOptions,
 	EventStreamOptions,
+	SessionEventFormat,
 	ProviderSessionEvent,
 	ProviderSessionEventList,
 } from "./internal/types/session-event.ts";
 export type { ProviderFileInfo } from "./internal/types/file.ts";
+export { listSessionThreadEvents, listSessionThreads } from "./internal/core/session-thread-runtime.ts";
+export type { SessionThread, SessionThreadListOptions, SessionThreadPage } from "./internal/types/session-thread.ts";
+export { listModelUsage, listToolUsage } from "./internal/core/usage-runtime.ts";
+export type { UsageRuntimeOptions } from "./internal/core/usage-runtime.ts";
+export type {
+	ModelUsageItem,
+	ModelUsagePage,
+	ModelUsageRequest,
+	ModelUsageSortBy,
+	ToolUsageItem,
+	ToolUsagePage,
+	ToolUsageRequest,
+	ToolUsageSortBy,
+	UsagePage,
+	UsageQueryOptions,
+	UsageScope,
+	UsageSortOrder,
+	UsageTimeRange,
+	UsageTokenStats,
+	UsageToolSource,
+} from "./internal/types/usage.ts";
 export type { ProviderSkillInfo } from "./internal/types/skill-info.ts";
 
 export { parseStateAddress } from "./internal/core/state-runtime.ts";
@@ -366,7 +403,9 @@ export type { ResourceState } from "./internal/types/state.ts";
 export type { IStateManager } from "./internal/state/state-manager.ts";
 export { StateManager } from "./internal/state/state-manager.ts";
 export { LocalFileStateBackend } from "./internal/state/local-file-state-backend.ts";
-export type { StateScope } from "./internal/state/backend.ts";
+export { InMemoryStateManager } from "./internal/state/in-memory-state-manager.ts";
+export type { StateFile } from "./internal/types/state.ts";
+export type { StateScope, StateBackend } from "./internal/state/backend.ts";
 
 export { extractSkillZipFiles } from "./internal/utils/normalize-skill-zip.ts";
 export { inspectSkillSource } from "./internal/core/skill-source.ts";

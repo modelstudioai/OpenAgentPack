@@ -4,6 +4,7 @@
 
 import type { SessionEventType } from "../../types/dto.ts";
 import type { ProviderSessionEvent } from "../../types/session-event.ts";
+import { attachSnapshot, type BailianEventMappingOptions } from "./snapshot-mapper.ts";
 
 const BAILIAN_EVENT_MAP: Record<string, SessionEventType> = {
 	message: "message",
@@ -20,7 +21,15 @@ const BAILIAN_EVENT_MAP: Record<string, SessionEventType> = {
 	error: "error",
 };
 
-export function toSessionEvent(raw: Record<string, unknown>): ProviderSessionEvent {
+export function toSessionEvent(
+	raw: Record<string, unknown>,
+	options: BailianEventMappingOptions = {},
+): ProviderSessionEvent {
+	const event = toLegacySessionEvent(raw);
+	return options.event_format === "snapshot" ? attachSnapshot(event, raw) : event;
+}
+
+function toLegacySessionEvent(raw: Record<string, unknown>): ProviderSessionEvent {
 	const rawType = (raw.type as string) ?? "";
 	const type: SessionEventType = BAILIAN_EVENT_MAP[rawType] ?? "unknown";
 

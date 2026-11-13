@@ -26,6 +26,9 @@ import type {
 	FilePage,
 	SessionEventInput,
 	SessionEventSendResult,
+	SessionResourceListOptions,
+	SessionResourceMountInput,
+	SessionResourcePage,
 	SessionUpdateInput,
 	SkillDownloadInfo,
 	SkillListOptions,
@@ -54,16 +57,30 @@ import type {
 	UpdateMemoryInput,
 	UpdateMemoryStoreInput,
 } from "../types/memory.ts";
-import type { ProviderSessionInfo, SessionBindings, SessionFilter, SessionListResult } from "../types/session.ts";
+import type {
+	ProviderSessionInfo,
+	SessionBindings,
+	SessionFilter,
+	SessionListResult,
+	SessionResourceInfo,
+} from "../types/session.ts";
 import type {
 	EventListOptions,
 	EventStreamOptions,
 	ProviderSessionEvent,
 	ProviderSessionEventList,
 } from "../types/session-event.ts";
+import type { SessionThreadListOptions, SessionThreadPage } from "../types/session-thread.ts";
 import type { SkillFile } from "../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
+import type {
+	ModelUsagePage,
+	ModelUsageRequest,
+	ToolUsagePage,
+	ToolUsageRequest,
+	UsageQueryOptions,
+} from "../types/usage.ts";
 import type {
 	CreateWebhookEndpointInput,
 	UpdateWebhookEndpointInput,
@@ -83,6 +100,9 @@ export interface RemoteResource {
 	type: string;
 	version?: number;
 }
+
+/** Optional execution fact sink; observing an ID does not mean the resource is fully configured. */
+export type ResourceCreationObserver = (resource: Pick<RemoteResource, "id" | "version">) => void;
 
 export type ProviderResourceMode = "managed" | "forward" | "auto";
 
@@ -234,7 +254,7 @@ export interface ProviderAdapter {
 	listAgents?(filter?: { prefix?: string; limit?: number }): Promise<CloudAgent[]>;
 	/** Cursor-preserving API listing used by command surfaces. */
 	listAgentResources?(options?: AgentListOptions): Promise<AgentPage>;
-	getRemoteAgent?(id: string, version?: number): Promise<CloudAgent>;
+	getRemoteAgent?(id: string, version?: number, options?: { signal?: AbortSignal }): Promise<CloudAgent>;
 	listAgentVersions?(id: string, options?: AgentVersionListOptions): Promise<AgentPage>;
 	// Raw cloud environment list (full remote objects). Optional: only providers that can
 	// enumerate their remote environments implement it. Environments are a shared base
@@ -301,7 +321,12 @@ export interface ProviderAdapter {
 	): Promise<RemoteResource>;
 	deleteEnvironment(id: string, cascade?: boolean, mode?: ProviderResourceMode): Promise<void>;
 
-	createVault(name: string, decl: VaultDecl, mode?: ProviderResourceMode): Promise<RemoteResource>;
+	createVault(
+		name: string,
+		decl: VaultDecl,
+		mode?: ProviderResourceMode,
+		onCreated?: ResourceCreationObserver,
+	): Promise<RemoteResource>;
 	deleteVault(id: string, mode?: ProviderResourceMode): Promise<void>;
 	createCredential?(vaultId: string, credential: CredentialDecl): Promise<RemoteResource>;
 	listCredentials?(vaultId: string): Promise<VaultCredentialInfo[]>;
@@ -444,12 +469,37 @@ export interface ProviderAdapter {
 	archiveSession?(id: string): Promise<ProviderSessionInfo>;
 	deleteSession(id: string): Promise<void>;
 
+	/** Mount one resource into a RUNNING session. Produces no session events. */
+	mountSessionResource?(sessionId: string, input: SessionResourceMountInput): Promise<SessionResourceInfo>;
+	listSessionResources?(sessionId: string, options?: SessionResourceListOptions): Promise<SessionResourcePage>;
+	getSessionResource?(sessionId: string, resourceId: string): Promise<SessionResourceInfo>;
+	/** Unmount one resource and clear the provider's internal file copy. Unrecoverable. */
+	unmountSessionResource?(sessionId: string, resourceId: string): Promise<void>;
+
 	sendSessionMessage(sessionId: string, message: string): Promise<string | undefined>;
 	sendSessionEvents?(sessionId: string, events: SessionEventInput[]): Promise<SessionEventSendResult>;
 	streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent>;
 	listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList>;
+	listSessionThreads?(sessionId: string, options?: SessionThreadListOptions): Promise<SessionThreadPage>;
+	listSessionThreadEvents?(
+		sessionId: string,
+		threadId: string,
+		options?: EventListOptions,
+	): Promise<ProviderSessionEventList>;
 
 	listModels?(): Promise<ModelInfo[]>;
+
+	/**
+	 * Aggregated model usage rows for a scope (app-control usage.listModelUsage).
+	 * Bailian-only today; other providers reject at the runtime seam.
+	 */
+	listModelUsage?(request: ModelUsageRequest, options?: UsageQueryOptions): Promise<ModelUsagePage>;
+
+	/**
+	 * Aggregated tool usage rows for a scope (app-control usage.listToolUsage).
+	 * Bailian-only today; other providers reject at the runtime seam.
+	 */
+	listToolUsage?(request: ToolUsageRequest, options?: UsageQueryOptions): Promise<ToolUsagePage>;
 
 	/**
 	 * Download all remote skills and return their extracted file content.

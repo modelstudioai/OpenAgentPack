@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { BailianAdapter } from "../../src/internal/providers/bailian/adapter.ts";
+import { BailianClient } from "../../src/internal/providers/bailian/client.ts";
 import { bailianConfigSchema } from "../../src/internal/providers/bailian/config.ts";
 import { mapAgent, mapEnvironment, mapInitialEvents, mapSession } from "../../src/internal/providers/bailian/mapper.ts";
 import type { ResolvedAgentRefs } from "../../src/internal/providers/interface.ts";
@@ -51,6 +52,23 @@ describe("bailianConfigSchema", () => {
 		expect(() => bailianConfigSchema.parse({ api_key: "sk-abc" })).toThrow(
 			/either workspace_id or base_url is required/,
 		);
+	});
+});
+
+describe("BailianClient source-config header", () => {
+	test("every MA request carries x-dashscope-agentstudio-source-config", async () => {
+		const client = new BailianClient({ apiKey: "sk-test", baseUrl: "https://bailian.test/api/v1/agentstudio" });
+		const captured: Headers[] = [];
+		globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+			captured.push(new Headers(init?.headers));
+			return Response.json({ id: "agent_x", name: "Agents/x" });
+		}) as typeof fetch;
+
+		await client.get("/agents/agent_x");
+
+		expect(captured).toHaveLength(1);
+		expect(captured[0]?.get("x-dashscope-agentstudio-source-config")).toBe("openagentpack");
+		expect(captured[0]?.get("Authorization")).toBe("Bearer sk-test");
 	});
 });
 

@@ -19,6 +19,13 @@ Interface packages such as `@openagentpack/cli` and `@openagentpack/webui` shoul
 SDK as a domain service layer, not as a bag of parser, state, provider, planner,
 or executor primitives.
 
+## 浏览器事件转换边界
+
+`./session-events` 提供 `createBailianSessionEventNormalizer` 这一纯领域转换服务，
+将已经解帧的百炼业务 JSON 归并为现有 `SessionEvent`。公开面仅有
+`push`、`seed`、`clear`，不暴露内部累加器或 Provider 类型，不包含 HTTP、凭据和重试策略。
+已有单事件 mapper 与 sanitizer 继续保留；SDK 主入口和调用方默认行为不变。
+
 ## Service APIs
 
 The public entry exposes domain workflows that return structured domain results.
@@ -29,10 +36,16 @@ New CLI and WebUI behavior should start here.
   planning, and sync.
 - Managed-resource reads: environment, skill/version/download, vault, and file
   metadata/content APIs with opaque cursor preservation.
+- Usage analytics: 百炼的 `listModelUsage` 与 `listToolUsage` 提供 workspace/agent/session
+  scope 的模型调用与工具调用聚合（调用/失败次数、Token 明细、来源与名称过滤、分页排序）。
+  REST 映射与百炼侧约定为 `POST /usage/models`、`POST /usage/tools`（顶层请求体）；
+  公网 AgentStudio 环境尚未启用（网关 404），启用后调用即通。仅百炼实现，其他
+  Provider 返回明确的 unsupported 错误。
 - Session workflows: creation, list/get/update/archive/delete, runs, follow-up
-  messages, raw event send/list/stream, and summaries. Managed Agents child
-  threads remain event metadata (`session_thread_id`); there is no independent
-  public Thread resource API.
+  messages, raw event send/list/stream, and summaries. 百炼子 Agent 的
+  `listSessionThreads` 与 `listSessionThreadEvents` 提供 Thread 列表和分页历史；
+  主 Agent 不在子线程列表中，实时事件仍通过 Session 流获取。SDK 不提供 Thread
+  创建、归档或独立流。事件与线程类型复用公开合同，浏览器只从 `./session-events` 导入。
 - Deployment workflows: list/get/search, run history, run, pause, and unpause.
 - Operation capabilities: provider-scoped support/auth/reason metadata for
   API-oriented command hosts.

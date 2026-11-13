@@ -13,7 +13,13 @@ import type {
 import type { ManagedSessionBindings } from "../../types/session.ts";
 import { compactDeep, stripAgentsMetadata } from "../../utils/comparable.ts";
 import { resolveSandboxMountPath } from "../../utils/sandbox-mount.ts";
-import { resolveBuiltinTools } from "../../utils/tool-permissions.ts";
+import {
+	canonicalToolName,
+	permissionFromWire,
+	permissionOverridesFromWire,
+	resolveBuiltinTools,
+	toPermissionPolicy,
+} from "../../utils/tool-permissions.ts";
 import { assertDeploymentEnvironmentVariables } from "../../validation/deployment-environment.ts";
 import type { MappingOperation, ResolvedAgentRefs, ResolvedDeploymentRefs } from "../interface.ts";
 import { injectMetadata, secretPlaceholder } from "../sync-mapping.ts";
@@ -170,14 +176,31 @@ export function agentToDecl(
 
 	// Reverse-map tools: extract builtin names from builtin_toolkit configs
 	let builtinTools: string[] | undefined;
+	let builtinDefaultPermission: "allow" | "ask" | undefined;
+	let builtinPermissions: Record<string, "allow" | "ask"> | undefined;
 	if (tools?.length) {
 		const toolset = tools.find((t) => t.type === "builtin_toolkit");
 		if (toolset) {
 			const configs = (toolset.configs ?? []) as Array<{
 				name: string;
 				enabled?: boolean;
+				permission_policy?: unknown;
 			}>;
 			builtinTools = configs.filter((c) => c.enabled !== false).map((c) => c.name);
+			const defaults = toolset.default_config as { enabled?: boolean; permission_policy?: unknown } | undefined;
+			builtinDefaultPermission = permissionFromWire(defaults?.permission_policy);
+			builtinPermissions = permissionOverridesFromWire(configs);
+			// A default-enabled toolkit has an open-ended provider-owned tool catalogue.
+			// The schema can only enumerate enabled tools; guessing would lose policies.
+			if (
+				defaults?.enabled === true &&
+				(builtinDefaultPermission === "ask" || Object.values(builtinPermissions ?? {}).includes("ask"))
+			) {
+				throw new UserError(
+					"sync.agent.tool_permissions.implicit_tools: Cannot export approval policies from a default-enabled Bailian toolkit. Set default_config.enabled to false and explicitly enable each required tool before exporting. / 默认启用全部工具的审批策略无法无损导出；请关闭默认启用并显式列出所需工具。",
+				);
+			}
+			if (!builtinTools.length && defaults?.enabled !== false) builtinTools = undefined;
 		}
 	}
 
@@ -209,10 +232,12 @@ export function agentToDecl(
 		description: raw.description as string | undefined,
 		model: modelValue,
 		instructions: raw.system as string | undefined,
-		tools: builtinTools?.length ? { builtin: builtinTools } : undefined,
+		tools: builtinTools
+			? { builtin: builtinTools, default_permission: builtinDefaultPermission, permissions: builtinPermissions }
+			: undefined,
 		mcp_servers: mcpServerDecls,
 		skills: skillDecls,
-		multiagent: reverseMultiagentDecl(raw.multiagent, resolveMember),
+		multiagent: reverseMultiagentDecl(raw.multiagent, resolveMember, true),
 		metadata: stripAgentsMetadata(raw.metadata),
 	}) as Record<string, unknown>;
 }
@@ -263,16 +288,25 @@ export function mapAgent(
 		"mark_artifacts",
 	]);
 	if (decl.tools) {
+		const permissionNames = new Set(Object.keys(decl.tools.permissions ?? {}).map(canonicalToolName));
 		const toolConfigs = resolveBuiltinTools(decl.tools, {
 			supportedWireNames: BAILIAN_BUILTINS,
 		}).map((tool) => ({
 			name: tool.wireName,
 			enabled: true,
+			...(permissionNames.has(canonicalToolName(tool.configuredName))
+				? { permission_policy: toPermissionPolicy(tool.permission) }
+				: {}),
 		}));
 		body.tools = [
 			{
 				type: "builtin_toolkit",
-				default_config: { enabled: false },
+				default_config: {
+					enabled: false,
+					...(decl.tools.default_permission
+						? { permission_policy: toPermissionPolicy(decl.tools.default_permission) }
+						: {}),
+				},
 				configs: toolConfigs,
 			},
 		];
@@ -325,7 +359,9 @@ export function mapAgent(
 		body.multiagent = {
 			type: "coordinator",
 			// No version: Bailian resolves the child Thread on first creation.
-			agents: refs.multiagent.members.map(({ remote_id }) => ({ type: "agent", id: remote_id })),
+			agents: refs.multiagent.members.map((member) =>
+				"type" in member ? { type: "self" } : { type: "agent", id: member.remote_id },
+			),
 		};
 	} else if (operation === "update") {
 		// Bailian updates replace the field wholesale; an empty roster clears it.

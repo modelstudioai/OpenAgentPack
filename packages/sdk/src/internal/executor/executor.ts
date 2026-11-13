@@ -17,6 +17,7 @@ import { addressKey } from "../types/state.ts";
 import { contentHash, sha256 } from "../utils/hash.ts";
 import { skillNameFromFiles } from "../utils/skill-manifest.ts";
 import type { ExecContext } from "./context.ts";
+import type { ExecutionReportTracker } from "./execution-report.ts";
 import { initializeBailianMemories, memoryInitializationEntries } from "./memory-initialization.ts";
 import { resolveAgentRefs, resolveChannelRefs, resolveDeploymentRefs, resolveTemplateRefs } from "./resolver.ts";
 import { resolveSkillFiles } from "./skill-resolver.ts";
@@ -56,7 +57,7 @@ function clampConcurrency(value?: number): number {
 export async function executePlan(
 	plan: ExecutionPlan,
 	ctx: ExecContext,
-	options: { concurrency?: number } = {},
+	options: { concurrency?: number; tracker?: ExecutionReportTracker } = {},
 ): Promise<ExecutionResult> {
 	const concurrency = clampConcurrency(options.concurrency);
 	const resultsByKey = new Map<string, ActionResult>();
@@ -90,24 +91,29 @@ export async function executePlan(
 		const depFailed = action.dependencies.some((d) => failed.has(addressKey(d)));
 		if (depFailed) {
 			resultsByKey.set(key, { action, status: "skipped" });
+			options.tracker?.record(action, "skipped", undefined, "resource.dependency_failed");
 			failed.add(key);
 			return;
 		}
 
-		const provider = ctx.providers.get(action.address.provider);
-		if (!provider) {
+		const baseProvider = ctx.providers.get(action.address.provider);
+		if (!baseProvider) {
+			const error = new Error(`Provider '${action.address.provider}' not configured`);
 			resultsByKey.set(key, {
 				action,
 				status: "failed",
-				error: new Error(`Provider '${action.address.provider}' not configured`),
+				error,
 			});
+			options.tracker?.record(action, "failed", error, "resource.provider_not_configured");
 			failed.add(key);
 			return;
 		}
+		const provider = options.tracker?.provider(baseProvider, action) ?? baseProvider;
 
 		try {
 			const adopted = await executeAction(action, provider, ctx);
 			resultsByKey.set(key, { action, status: "success" });
+			options.tracker?.record(action, "success");
 			if (!adopted) {
 				emitRuntimeFeedback(ctx.onFeedback, {
 					type: "resource_action_success",
@@ -120,6 +126,7 @@ export async function executePlan(
 		} catch (err) {
 			const error = err instanceof Error ? err : new Error(String(err));
 			resultsByKey.set(key, { action, status: "failed", error });
+			options.tracker?.record(action, "failed", error);
 			failed.add(key);
 			emitRuntimeFeedback(ctx.onFeedback, {
 				type: "resource_action_failed",
@@ -133,7 +140,7 @@ export async function executePlan(
 
 	// create/update: run level-by-level with bounded parallelism, persisting once per level.
 	for (const level of buildActionLevels(mutations)) {
-		await runWithConcurrency(level, concurrency, runAction);
+		await runWithConcurrency(level, concurrency, runAction, Boolean(options.tracker));
 		await ctx.state.save();
 	}
 
@@ -196,7 +203,12 @@ async function reconcileDefaultMemoryStores(ctx: ExecContext, plannedProviders: 
 }
 
 // Run `worker` over `items` with at most `limit` concurrent executions.
-async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+async function runWithConcurrency<T>(
+	items: T[],
+	limit: number,
+	worker: (item: T) => Promise<void>,
+	settle = false,
+): Promise<void> {
 	if (items.length === 0) return;
 	let cursor = 0;
 	const size = Math.min(limit, items.length);
@@ -211,7 +223,13 @@ async function runWithConcurrency<T>(items: T[], limit: number, worker: (item: T
 			})(),
 		);
 	}
-	await Promise.all(runners);
+	if (!settle) {
+		await Promise.all(runners);
+		return;
+	}
+	const settled = await Promise.allSettled(runners);
+	const rejected = settled.find((result) => result.status === "rejected");
+	if (rejected?.status === "rejected") throw rejected.reason;
 }
 
 // Group actions into dependency levels (Kahn-style layering). Only dependencies

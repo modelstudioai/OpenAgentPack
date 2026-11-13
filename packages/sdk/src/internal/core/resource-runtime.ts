@@ -1,4 +1,11 @@
 import { UserError } from "../errors.ts";
+import { ExecutionReportTracker } from "../executor/execution-report.ts";
+import { resourcePlanFingerprint } from "../planner/plan-fingerprint.ts";
+import { resourceErrorInfo, resourceRuntimeError } from "../resource-runtime-error.ts";
+import type { ResourceExecutionResult, ResourceResultDetail } from "../types/resource-result.ts";
+
+export type { ResourceActionResult, ResourceExecutionResult } from "../types/resource-result.ts";
+
 import { type ExecutionResult, executePlan } from "../executor/executor.ts";
 import { buildDependencyGraph, collectDependencyClosure } from "../graph/dependency.ts";
 import { getResourceDeclaration } from "../planner/declaration.ts";
@@ -24,6 +31,7 @@ export interface ResourceRuntimeOptions extends DestructiveDecisionOptions {
 	quiet?: boolean;
 	onFeedback?: RuntimeFeedbackSink;
 	concurrency?: number;
+	resultDetail?: ResourceResultDetail;
 }
 
 export type ResourceSyncMode = "reconcile" | "create-only";
@@ -35,21 +43,16 @@ export interface ResourcePlanScope {
 
 export interface ResourceRefreshResult {
 	removed: ResourceState[];
-	errors: Array<{ resource: ResourceState; error: string }>;
-}
-
-export interface ResourceActionResult {
-	action: PlannedAction;
-	status: "success" | "failed" | "skipped";
-	error?: string;
-}
-
-export interface ResourceExecutionResult {
-	results: ResourceActionResult[];
-	partial: boolean;
+	errors: Array<{
+		resource: ResourceState;
+		error: string;
+		errorInfo?: import("../types/resource-result.ts").ResourceErrorInfo;
+	}>;
 }
 
 export interface ResourcePlanResult {
+	/** Only present when resultDetail is structured. */
+	fingerprint?: string;
 	executionContext: ProjectRuntimeContext;
 	plan: ExecutionPlan;
 	refreshResult?: ResourceRefreshResult;
@@ -82,25 +85,47 @@ export async function syncProjectResourcesWithStateBackend(
 	input: BackendRuntimeInput,
 	options: ResourceRuntimeOptions = {},
 ): Promise<ResourceSyncRun> {
-	return writeProjectRuntime(input, async (ctx) => {
-		const planned = await planProjectContext(ctx, options);
-		if (options.refreshOnly) {
-			return { planned };
-		}
-		if (options.mode === "create-only") {
-			const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
-			if (errorDiagnostic) throw new UserError(errorDiagnostic.message);
-		}
-		return {
-			planned,
-			execution: await executePlannedProject(planned, {
-				onFeedback: options.onFeedback,
-				policy: options.policy,
-				confirm: options.confirm,
-				concurrency: options.concurrency,
-			}),
-		};
-	});
+	let completed: ResourceSyncRun | undefined;
+	try {
+		return await writeProjectRuntime(input, async (ctx) => {
+			const planned = await planProjectContext(ctx, options);
+			if (options.refreshOnly) {
+				completed = { planned };
+				return completed;
+			}
+			if (options.mode === "create-only") {
+				const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+				if (errorDiagnostic) {
+					const error = new UserError(errorDiagnostic.message);
+					if (options.resultDetail === "structured")
+						throw resourceRuntimeError(error, { code: errorDiagnostic.code, phase: "plan", mutationStarted: false });
+					throw error;
+				}
+			}
+			completed = {
+				planned,
+				execution: await executePlannedProject(planned, {
+					onFeedback: options.onFeedback,
+					policy: options.policy,
+					confirm: options.confirm,
+					concurrency: options.concurrency,
+					resultDetail: options.resultDetail,
+				}),
+			};
+			return completed;
+		});
+	} catch (error) {
+		if (options.resultDetail !== "structured" || !completed) throw error;
+		// A backend may commit after the workflow returns; retain its execution
+		// facts until that final persistence step has also succeeded.
+		const execution = completed.execution;
+		const mutationStarted = execution?.mutationStarted ?? false;
+		throw resourceRuntimeError(
+			error,
+			{ code: "resource.state_persist_failed", phase: "persist_state", mutationStarted },
+			execution ? { ...execution, outcome: mutationStarted ? "unknown" : "failed" } : undefined,
+		);
+	}
 }
 
 const IMPORTABLE_RESOURCE_TYPES = new Set<ResourceType>([
@@ -223,6 +248,21 @@ export async function planProjectContext(
 	ctx: ProjectRuntimeContext,
 	options: ResourceRuntimeOptions = {},
 ): Promise<ResourcePlanResult> {
+	try {
+		const planned = await planProjectContextInner(ctx, options);
+		if (options.resultDetail === "structured") planned.fingerprint = resourcePlanFingerprint(planned);
+		return planned;
+	} catch (error) {
+		if (options.resultDetail === "structured")
+			throw resourceRuntimeError(error, { phase: "plan", mutationStarted: false });
+		throw error;
+	}
+}
+
+async function planProjectContextInner(
+	ctx: ProjectRuntimeContext,
+	options: ResourceRuntimeOptions = {},
+): Promise<ResourcePlanResult> {
 	if (options.mode === "create-only" && !options.scope) {
 		throw new UserError("Resource create-only mode requires an explicit resource scope.");
 	}
@@ -249,13 +289,18 @@ export async function planProjectContext(
 		resourceAddresses: selectedAddresses,
 	});
 	if (options.mode === "create-only" && options.scope) {
-		plan = enforceCreateOnlyPlan(plan, options.scope, toResourceRefreshResult(refreshResult), ctx.state);
+		plan = enforceCreateOnlyPlan(
+			plan,
+			options.scope,
+			toResourceRefreshResult(refreshResult, options.resultDetail === "structured"),
+			ctx.state,
+		);
 	}
 
 	return {
 		executionContext: ctx,
 		plan,
-		refreshResult: toResourceRefreshResult(refreshResult),
+		refreshResult: toResourceRefreshResult(refreshResult, options.resultDetail === "structured"),
 		targetProviders,
 		destructiveActions: selectDestructive(plan.actions),
 		selectedAddresses,
@@ -342,16 +387,46 @@ function resolvePlanScope(
 	return scope.includeDependencies === false ? [...scope.roots] : collectDependencyClosure(graph, scope.roots);
 }
 
+export interface ResourceExecutionOptions extends DestructiveDecisionOptions {
+	onFeedback?: RuntimeFeedbackSink;
+	concurrency?: number;
+	resultDetail?: ResourceResultDetail;
+}
+
 export async function executePlannedProject(
 	planned: ResourcePlanResult,
-	options: DestructiveDecisionOptions & {
-		onFeedback?: RuntimeFeedbackSink;
-		concurrency?: number;
-	} = {},
+	options: ResourceExecutionOptions = {},
+): Promise<ResourceExecutionResult> {
+	if (options.resultDetail !== "structured") return executePlannedProjectInner(planned, options);
+	const tracker = new ExecutionReportTracker(planned.plan.actions, planned.executionContext.state);
+	try {
+		await executePlannedProjectInner(planned, options, tracker);
+		return tracker.report();
+	} catch (error) {
+		throw resourceRuntimeError(
+			error,
+			{
+				phase: tracker.mutationStarted ? "execute" : "prepare",
+				mutationStarted: tracker.mutationStarted,
+			},
+			tracker.report(error),
+		);
+	}
+}
+
+async function executePlannedProjectInner(
+	planned: ResourcePlanResult,
+	options: ResourceExecutionOptions,
+	tracker?: ExecutionReportTracker,
 ): Promise<ResourceExecutionResult> {
 	if (planned.mode === "create-only") {
 		const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
-		if (errorDiagnostic) throw new UserError(errorDiagnostic.message);
+		if (errorDiagnostic) {
+			const error = new UserError(errorDiagnostic.message);
+			if (options.resultDetail === "structured")
+				throw resourceRuntimeError(error, { code: errorDiagnostic.code, phase: "plan", mutationStarted: false });
+			throw error;
+		}
 	}
 
 	const decision = await decideDestructive(planned.destructiveActions, {
@@ -359,26 +434,33 @@ export async function executePlannedProject(
 		confirm: options.confirm,
 	});
 	if (decision !== "proceed") {
-		throw new UserError(
+		const error = new UserError(
 			decision === "cancelled"
 				? "Destructive actions were declined. No remote resources were changed."
 				: "Current plan contains destructive actions. Apply will not delete remote resources.",
 		);
+		if (tracker)
+			throw resourceRuntimeError(error, {
+				code: decision === "cancelled" ? "resource.cancelled" : "resource.policy_blocked",
+				phase: "prepare",
+				mutationStarted: false,
+			});
+		throw error;
 	}
 
 	const ctx = planned.executionContext;
-	const execution = await executePlan(
-		planned.plan,
-		{
-			config: ctx.config,
-			configPath: ctx.configPath,
-			providers: ctx.providers,
-			state: ctx.state,
-			onFeedback: options.onFeedback,
-			createOnly: planned.mode === "create-only",
-		},
-		{ concurrency: options.concurrency },
-	);
+	const context = {
+		config: ctx.config,
+		configPath: ctx.configPath,
+		providers: ctx.providers,
+		state: ctx.state,
+		onFeedback: options.onFeedback,
+		createOnly: planned.mode === "create-only",
+	};
+	const execution = await executePlan(planned.plan, tracker ? tracker.context(context) : context, {
+		concurrency: options.concurrency,
+		tracker,
+	});
 	return toResourceExecutionResult(execution);
 }
 
@@ -411,20 +493,22 @@ export async function decideDestructive(
 }
 
 export function replaceResourcePlan(planned: ResourcePlanResult, plan: ExecutionPlan): ResourcePlanResult {
-	return {
-		...planned,
-		plan,
-		destructiveActions: selectDestructive(plan.actions),
-	};
+	const updated = { ...planned, plan, destructiveActions: selectDestructive(plan.actions) };
+	if (planned.fingerprint) updated.fingerprint = resourcePlanFingerprint(updated);
+	return updated;
 }
 
-function toResourceRefreshResult(result: RefreshResult | undefined): ResourceRefreshResult | undefined {
+function toResourceRefreshResult(
+	result: RefreshResult | undefined,
+	structured = false,
+): ResourceRefreshResult | undefined {
 	if (!result) return undefined;
 	return {
 		removed: result.removed,
 		errors: result.errors.map((item) => ({
 			resource: item.resource,
 			error: item.error.message,
+			...(structured ? { errorInfo: resourceErrorInfo(item.error, { phase: "plan", mutationStarted: false }) } : {}),
 		})),
 	};
 }

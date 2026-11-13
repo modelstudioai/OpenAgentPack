@@ -1,8 +1,9 @@
-import type { ResolvedMultiagentRoster } from "./model.ts";
+import { isSelfRosterMember, type ResolvedMultiagentRoster } from "./model.ts";
 
 export interface ComparableMultiagentRoster {
 	type: "coordinator";
 	member_ids: string[];
+	self?: true;
 }
 
 export type MultiagentMaterialization = "managed" | "forward";
@@ -13,13 +14,17 @@ export function canonicalizeDesiredRoster(
 	resolved: ResolvedMultiagentRoster | undefined,
 ): ComparableMultiagentRoster | undefined {
 	if (!resolved) return undefined;
-	const memberIds = [...new Set(resolved.members.map((member) => member.remote_id))].sort();
-	return { type: "coordinator", member_ids: memberIds };
+	const memberIds = [
+		...new Set(resolved.members.flatMap((member) => ("type" in member ? [] : [member.remote_id]))),
+	].sort();
+	const self = resolved.members.some((member) => "type" in member);
+	return { type: "coordinator", member_ids: memberIds, ...(self ? { self: true } : {}) };
 }
 
 export function canonicalizeRemoteRoster(
 	raw: unknown,
 	materialization: MultiagentMaterialization,
+	allowSelf = false,
 ): CanonicalRemoteRoster {
 	if (raw === null || raw === undefined) return { supported: true };
 	if (typeof raw !== "object") return { supported: false };
@@ -29,18 +34,24 @@ export function canonicalizeRemoteRoster(
 	if (roster.agents.length === 0) return { supported: true };
 
 	const memberIds: string[] = [];
+	let self = false;
 	for (const entry of roster.agents) {
+		if (allowSelf && materialization === "managed" && isSelfRosterMember(entry)) {
+			self = true;
+			continue;
+		}
 		if (typeof entry !== "object" || entry === null) return { supported: false };
 		const member = entry as { type?: unknown; id?: unknown; template_id?: unknown };
-		// `self` and advisor members are deliberately rejected: Phase 1 cannot
-		// declare them, so treating them as ordinary agents would silently hide
-		// a remote roster this project can never converge to.
+		// Self requires an explicit provider opt-in; all other unknown members fail closed.
 		if (member.type !== "agent") return { supported: false };
 		const id = materialization === "forward" ? member.template_id : member.id;
 		if (typeof id !== "string") return { supported: false };
 		memberIds.push(id);
 	}
-	return { supported: true, roster: { type: "coordinator", member_ids: [...new Set(memberIds)].sort() } };
+	return {
+		supported: true,
+		roster: { type: "coordinator", member_ids: [...new Set(memberIds)].sort(), ...(self ? { self: true } : {}) },
+	};
 }
 
 /**
@@ -51,8 +62,9 @@ export function canonicalizeRemoteRoster(
 export function comparableMultiagentField(
 	raw: unknown,
 	materialization: MultiagentMaterialization,
+	allowSelf = false,
 ): ComparableMultiagentRoster | { type: "unsupported" } | undefined {
-	const canonical = canonicalizeRemoteRoster(raw, materialization);
+	const canonical = canonicalizeRemoteRoster(raw, materialization, allowSelf);
 	if (!canonical.supported) return { type: "unsupported" };
 	return canonical.roster;
 }

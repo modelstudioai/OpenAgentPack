@@ -62,6 +62,7 @@ import type {
 	ResolvedTemplateRefs,
 } from "../interface.ts";
 import { ProviderMemoryApi } from "../memory-api.ts";
+import { assertEventOptions, assertStreamOptions } from "../session-event-options.ts";
 import { extractCreatedEventId, listSessionEventsPaged } from "../session-event-response.ts";
 import {
 	buildSessionInfo,
@@ -1176,6 +1177,7 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async *streamSessionEvents(sessionId: string, options?: EventStreamOptions): AsyncIterable<ProviderSessionEvent> {
+		assertStreamOptions(this.name, options);
 		if (this.forwardSessionIds.has(sessionId)) {
 			yield* this.streamForwardSessionEvents(sessionId, options);
 			return;
@@ -1209,6 +1211,7 @@ export class QoderAdapter implements ProviderAdapter {
 	}
 
 	async listSessionEvents(sessionId: string, options?: EventListOptions): Promise<ProviderSessionEventList> {
+		assertEventOptions(this.name, options);
 		if (this.forwardSessionIds.has(sessionId)) return this.listForwardSessionEvents(sessionId, options);
 		// Qoder additionally accepts the Agents-style `after_id` resume marker, so it is
 		// forwarded (claude/bailian reject it); shared page-cursor handling lives in

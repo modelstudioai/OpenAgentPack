@@ -39,7 +39,20 @@ OpenAgentPack 通过 Provider 适配器与不同的 AI Agent 平台交互。每�
 
 ### Adapter 实现能力对照表
 
+百炼 Managed Agent 支持原生 Self 成员 `{type: self}`，可单独使用或与其他成员混选，并计入 20 项名册上限。
+Self 指代当前协调 Agent，不创建额外受管资源；导出和漂移比较会完整保留。其他 Provider 的 Self 合同尚未接入，声明时明确拒绝。
+
 上表回答“某类资源能否声明和 apply”；下表回答“**当前 OpenAgentPack Adapter** 具体实现了哪些可选工作流”。表格描述的是本仓库代码，而不是 Provider 宣传的全部平台能力。
+
+百炼内置工具支持 `tools.default_permission` 与单工具 `tools.permissions`（`allow` / `ask`），
+分别映射为默认与单工具的 `permission_policy` 对象；未设置的单工具策略继承工具组默认值。
+有效权限变化参与 Agent 漂移比较，等价的继承与显式配置不会重复产生差异；普通允许配置保留原比较基线。
+审批仅对主智能体生效，既有 Session 保持创建时的 Agent 版本。校验会拒绝项目内被引用成员和委派 Self 的有效 `ask` 策略；
+若默认 `ask` 已被所有启用工具的 `allow` 覆盖，则仍可通过。外部 `{ agent_id }` 没有本地工具声明，离线校验不推断其远端策略。
+导出会保留工具组默认策略与启用工具的覆盖；默认启用全部工具且带审批策略的远端工具组无法无损表示为显式工具列表，
+导出会明确拒绝，请先关闭工具组默认启用并逐项启用所需工具。详见官方
+[Agent 工具配置](https://help.aliyun.com/zh/model-studio/managed-agents-builtin-tools)与
+[创建 Agent API](https://help.aliyun.com/zh/model-studio/agent-create)。
 
 | Adapter 工作流 | 百炼 | Qoder | Claude | 火山方舟 | 实现说明 |
 |----------------|:----:|:-----:|:------:|:--------:|----------|

@@ -4,14 +4,18 @@ import type { IStateManager } from "./state-manager.ts";
 
 /**
  * In-memory implementation of IStateManager.
- * Does not perform any file I/O — `save()` is a no-op.
+ * Does not perform file I/O. Hosts may supply a persistence callback for `save()`.
  * Suitable for WebUI, testing, or ephemeral scenarios.
  */
 export class InMemoryStateManager implements IStateManager {
+	private saves: Promise<void> = Promise.resolve();
 	private state: StateFile;
 	private index: Map<string, number>;
 
-	private constructor(state: StateFile) {
+	private constructor(
+		state: StateFile,
+		private readonly onSave?: (snapshot: StateFile) => void | Promise<void>,
+	) {
 		this.state = state;
 		this.index = this.buildIndex();
 	}
@@ -24,12 +28,17 @@ export class InMemoryStateManager implements IStateManager {
 		return idx;
 	}
 
-	static fromJSON(data: StateFile): InMemoryStateManager {
-		return new InMemoryStateManager(structuredClone(data));
+	static fromJSON(data: StateFile, onSave?: (snapshot: StateFile) => void | Promise<void>): InMemoryStateManager {
+		return new InMemoryStateManager(structuredClone(data), onSave);
 	}
 
-	static empty(): InMemoryStateManager {
-		return new InMemoryStateManager({ resources: [] });
+	static empty(onSave?: (snapshot: StateFile) => void | Promise<void>): InMemoryStateManager {
+		return new InMemoryStateManager({ resources: [] }, onSave);
+	}
+
+	/** Detached snapshot suitable for host storage; preserves the SDK state format. */
+	toJSON(): StateFile {
+		return structuredClone(this.state);
 	}
 
 	getResource(address: ResourceAddress): ResourceState | undefined {
@@ -78,6 +87,11 @@ export class InMemoryStateManager implements IStateManager {
 	}
 
 	async save(): Promise<void> {
-		// no-op: in-memory state does not persist
+		if (!this.onSave) return;
+		const snapshot = this.toJSON();
+		const saved = this.saves.then(() => this.onSave!(snapshot));
+		// A failed checkpoint is reported to its caller without poisoning later saves.
+		this.saves = saved.catch(() => {});
+		await saved;
 	}
 }
