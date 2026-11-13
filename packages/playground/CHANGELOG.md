@@ -5,30 +5,12 @@
 ### Patch Changes
 
 - 3df5c92: 升级 Vite、Hono 与 Node 静态文件服务依赖，修复开发服务及静态路径处理的已知安全漏洞。
-- 3df5c92: Update the bundled editor to a patched ProseMirror view version and refresh vulnerable build dependencies. Backport bounded nesting and AST traversal checks for the workspace's braces dependency while an official fix is unavailable.
 - 3df5c92: 修复百炼 Session 重连时历史结束状态抢先终止单轮读取的问题，确保恢复期间缓冲的完整回复先交付。
   修复结构化资源执行在 StateBackend 最终提交失败时丢失报告的问题，保留远端写入状态、逐资源结果和已知资源 ID，legacy 异常行为保持兼容。
 
   将 Playground 的 `@hono/node-server` 最低版本升级至 `2.1.6`，修复上游 WebSocket 连接重置和请求路径解析问题。
 
 - 3df5c92: 将 Zod 依赖下界更新为 4.6.6，修复 GHSA-mrhx-c7xc-m3w5，避免新安装解析到受影响版本。
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
-- Updated dependencies [3df5c92]
 - Updated dependencies [3df5c92]
   - @openagentpack/sdk@0.10.0
 
