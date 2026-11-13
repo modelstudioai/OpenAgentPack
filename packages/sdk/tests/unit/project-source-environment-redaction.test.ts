@@ -34,7 +34,52 @@ function previewDeployment(source: string): Record<string, unknown> {
 	return parse(source).deployments.daily;
 }
 
-describe("display-only Deployment environment variable redaction", () => {
+describe("display-only environment variable redaction", () => {
+	test("keeps aliases valid when an Agent environment value defines an anchor", async () => {
+		const source = `version: "1"
+providers:
+  qoder: {}
+agents:
+  assistant:
+    model: synthetic-model
+    instructions: Keep this configuration valid.
+    environment_variables:
+      MODE: &setting normal
+    metadata:
+      label: *setting
+`;
+		const inspected = await inspectProjectSource(source, "/tmp/display-only-environment/agents.yaml");
+		const preview = parse(inspected.redacted_source).agents.assistant;
+		expect(inspected.diagnostics).toEqual([]);
+		expect(preview.environment_variables.MODE).toBe("[redacted]");
+		expect(preview.metadata.label).toBe("[redacted]");
+	});
+
+	test("keeps aliases valid when a Qoder Deployment variable string defines an anchor", async () => {
+		const source = `version: "1"
+providers:
+  qoder: {}
+agents:
+  assistant:
+    model: synthetic-model
+    instructions: Keep this configuration valid.
+deployments:
+  daily:
+    agent: assistant
+    initial_events:
+      - type: user.message
+        content: Run the daily task.
+    environment_variables: &settings MODE=normal
+    metadata:
+      label: *settings
+`;
+		const inspected = await inspectProjectSource(source, "/tmp/display-only-environment/agents.yaml");
+		const preview = previewDeployment(inspected.redacted_source);
+		expect(inspected.diagnostics).toEqual([]);
+		expect(preview.environment_variables).toBe("[redacted]");
+		expect(preview.metadata).toEqual({ label: "[redacted]" });
+	});
+
 	test("masks all map literals without rewriting names, references or unrelated short values", async () => {
 		const variables = {
 			LOG_LEVEL: "info",

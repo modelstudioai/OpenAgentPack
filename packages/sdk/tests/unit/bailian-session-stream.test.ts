@@ -104,6 +104,35 @@ test("Bailian explicit deltas produce cumulative snapshots and only send event_d
 	expect(source.cancelled()).toBe(true);
 });
 
+test("stale unfinished history cannot reopen an already delivered complete answer", async () => {
+	const answer = message("answer", "FINAL ANSWER");
+	const idle = {
+		object: "message",
+		id: "idle",
+		type: "session_status",
+		status: "completed",
+		content: [{ type: "data", data: { session_status: "idle" } }],
+	};
+	let connections = 0;
+	setDefaultFetch(async (input) => {
+		if (url(input).pathname.endsWith("/stream")) {
+			return ++connections === 1 ? feed([answer], true).response : feed().response;
+		}
+		return Response.json({ data: [message("answer", "partial", "in_progress"), idle], next_page: null });
+	});
+	const stream = iterator({ event_format: "snapshot", reconnect: true, connectTimeoutMs: 50 });
+	try {
+		const events = await take(stream, 2);
+		expect(events.map((event) => [event.id, event.content, event.status])).toEqual([
+			["answer", "FINAL ANSWER", undefined],
+			["idle", undefined, "idle"],
+		]);
+		expect(connections).toBe(2);
+	} finally {
+		await stream.return?.();
+	}
+});
+
 test("BMA envelopes survive EOF recovery and only complete on the authoritative message", async () => {
 	const start = {
 		type: "event_start",

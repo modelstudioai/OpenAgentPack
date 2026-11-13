@@ -1,5 +1,18 @@
 # @openagentpack/server
 
+## 0.0.15
+
+### Patch Changes
+
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+- Updated dependencies [9390e7b]
+  - @openagentpack/sdk@0.9.0
+
 ## 0.0.14
 
 ### Patch Changes

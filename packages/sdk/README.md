@@ -44,6 +44,12 @@ See the [configuration guide](https://github.com/modelstudioai/OpenAgentPack/blo
 避免上一轮的回复或结束状态提前结束本轮。缺少发送事件 ID 或历史中找不到该边界时，恢复会明确报错；
 正常实时消费不要求发送响应带 ID，也不要求 SSE 回显用户消息。
 
+恢复历史中仍有未完成消息时，SDK 先等待完整实时快照，再依据其后的实时会话状态决定
+单轮结束，避免历史 `idle` 抢先截断回复。等待仍受恢复超时与取消控制；无法确认完成时
+明确失败，不将半截回复作为正常完成，也不会重发用户消息。
+等待完整快照及其后实时状态时，每次读取受 `connectTimeoutMs`（默认 30 秒）限制；
+历史已经完整的恢复保持原有事件顺序。
+
 取消订阅后停止交付实时缓冲和历史回放事件，并释放连接；取消观察不表示取消 Provider 执行。
 
 ## 浏览器中的百炼原始事件转换
@@ -77,6 +83,8 @@ const result = await executePlannedProject(planned, {
 执行新增 `outcome`（succeeded/failed/partial/unknown）、`mutationStarted`，以及每项的
 `resource.remoteId/version`、安全 `errorInfo`（code/phase/message/retryable/mutationStarted/httpStatus）。
 抛出的 `ResourceRuntimeError` 携带安全 `info` 与已取得的 `execution`，原异常保留在 cause。
+通过 `syncProjectResourcesWithStateBackend` 执行时，Backend 在工作流返回后的最终保存失败
+同样报告 `persist_state`，保留已完成的逐资源结果与 ID；发生过远端写入时整体结果为 `unknown`。
 原有 `error` 字符串、异常 message/cause 可能含 Provider 原文，服务端不得直接传给浏览器或写入日志。
 
 `mutationStarted=false` 才能证明本次执行未调用 Provider 写方法；调用后报错保守标记 unknown。

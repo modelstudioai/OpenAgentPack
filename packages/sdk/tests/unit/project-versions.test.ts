@@ -4,6 +4,7 @@ import { access, chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { parse } from "yaml";
 import {
 	commitPreparedProjectVersion,
 	createProjectVersionService,
@@ -23,6 +24,47 @@ afterEach(async () => {
 });
 
 describe("shared project versions", () => {
+	test("versions anchored environment values while keeping source blobs and restored YAML intact", async () => {
+		const root = await temporaryDirectory();
+		const configPath = join(root, "agents.yaml");
+		const source = `${projectYaml("Anchored environment")}
+    environment_variables:
+      MODE: &setting normal
+    metadata:
+      label: *setting
+`;
+		await writeFile(configPath, source);
+		const enabled = await enableProjectVersioning(configPath);
+		const version = enabled.version!;
+		const blobPath = join(enabled.versioning.store_root, "blobs", `${version.source_hash}.yaml`);
+		expect(await readFile(blobPath, "utf8")).toBe(source);
+
+		const changedSource = source.replace("&setting normal", "&setting debug");
+		await writeFile(configPath, changedSource);
+		const prepared = await prepareProjectVersion(configPath, changedSource);
+		try {
+			expect(prepared?.source).toBe(changedSource);
+			expect(prepared?.needsVersion).toBe(true);
+		} finally {
+			await releasePreparedProjectVersion(prepared);
+		}
+
+		const preview = await previewProjectVersion(configPath, version.version_id);
+		expect(preview.can_restore).toBe(true);
+		for (const yaml of [preview.before_yaml, preview.after_yaml]) {
+			const agent = parse(yaml).agents.assistant;
+			expect(agent.environment_variables.MODE).toBe("[redacted]");
+			expect(agent.metadata.label).toBe("[redacted]");
+		}
+		expect(await readFile(configPath, "utf8")).toBe(changedSource);
+
+		await restoreProjectVersion(configPath, version.version_id, {
+			headVersion: preview.base_head_version,
+			sourceRevision: preview.base_source_revision,
+		});
+		expect(await readFile(configPath, "utf8")).toBe(source);
+	});
+
 	test("does not create storage until the shared switch is explicitly enabled", async () => {
 		const root = await temporaryDirectory();
 		const configPath = join(root, "agents.yaml");

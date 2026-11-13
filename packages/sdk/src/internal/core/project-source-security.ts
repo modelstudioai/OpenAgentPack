@@ -1,5 +1,5 @@
 import { basename, dirname } from "node:path";
-import { isMap, isPair, isScalar, parseDocument, visit } from "yaml";
+import { isMap, isPair, isScalar, parseDocument, Scalar, visit } from "yaml";
 import { resolveProjectConfigFromObject } from "../parser/resolve-project-config.ts";
 import type { Diagnostic } from "../types/dto.ts";
 import { validateProjectConfig } from "./validate-config.ts";
@@ -151,7 +151,7 @@ function redactEnvironmentVariableNodes(document: ReturnType<typeof parseDocumen
 					references.add(entry.value);
 					continue;
 				}
-				entry.value = document.createNode(REDACTED);
+				entry.value = redactEnvironmentValue(entry.value);
 				changed = true;
 			}
 			return;
@@ -160,10 +160,17 @@ function redactEnvironmentVariableNodes(document: ReturnType<typeof parseDocumen
 			references.add(node.value);
 			return;
 		}
-		node.value = document.createNode(REDACTED);
+		node.value = redactEnvironmentValue(node.value);
 		changed = true;
 	});
 	return { changed, references };
+}
+
+function redactEnvironmentValue(value: unknown): Scalar<string> {
+	const redacted = new Scalar(REDACTED);
+	// References elsewhere in the preview must still resolve to the masked value.
+	if (isScalar(value)) redacted.anchor = value.anchor;
+	return redacted;
 }
 
 function redactText(source: string, secrets: Set<string>): string {

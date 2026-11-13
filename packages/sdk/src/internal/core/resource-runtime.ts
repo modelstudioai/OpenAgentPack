@@ -85,31 +85,47 @@ export async function syncProjectResourcesWithStateBackend(
 	input: BackendRuntimeInput,
 	options: ResourceRuntimeOptions = {},
 ): Promise<ResourceSyncRun> {
-	return writeProjectRuntime(input, async (ctx) => {
-		const planned = await planProjectContext(ctx, options);
-		if (options.refreshOnly) {
-			return { planned };
-		}
-		if (options.mode === "create-only") {
-			const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
-			if (errorDiagnostic) {
-				const error = new UserError(errorDiagnostic.message);
-				if (options.resultDetail === "structured")
-					throw resourceRuntimeError(error, { code: errorDiagnostic.code, phase: "plan", mutationStarted: false });
-				throw error;
+	let completed: ResourceSyncRun | undefined;
+	try {
+		return await writeProjectRuntime(input, async (ctx) => {
+			const planned = await planProjectContext(ctx, options);
+			if (options.refreshOnly) {
+				completed = { planned };
+				return completed;
 			}
-		}
-		return {
-			planned,
-			execution: await executePlannedProject(planned, {
-				onFeedback: options.onFeedback,
-				policy: options.policy,
-				confirm: options.confirm,
-				concurrency: options.concurrency,
-				resultDetail: options.resultDetail,
-			}),
-		};
-	});
+			if (options.mode === "create-only") {
+				const errorDiagnostic = planned.plan.diagnostics.find((diagnostic) => diagnostic.severity === "error");
+				if (errorDiagnostic) {
+					const error = new UserError(errorDiagnostic.message);
+					if (options.resultDetail === "structured")
+						throw resourceRuntimeError(error, { code: errorDiagnostic.code, phase: "plan", mutationStarted: false });
+					throw error;
+				}
+			}
+			completed = {
+				planned,
+				execution: await executePlannedProject(planned, {
+					onFeedback: options.onFeedback,
+					policy: options.policy,
+					confirm: options.confirm,
+					concurrency: options.concurrency,
+					resultDetail: options.resultDetail,
+				}),
+			};
+			return completed;
+		});
+	} catch (error) {
+		if (options.resultDetail !== "structured" || !completed) throw error;
+		// A backend may commit after the workflow returns; retain its execution
+		// facts until that final persistence step has also succeeded.
+		const execution = completed.execution;
+		const mutationStarted = execution?.mutationStarted ?? false;
+		throw resourceRuntimeError(
+			error,
+			{ code: "resource.state_persist_failed", phase: "persist_state", mutationStarted },
+			execution ? { ...execution, outcome: mutationStarted ? "unknown" : "failed" } : undefined,
+		);
+	}
 }
 
 const IMPORTABLE_RESOURCE_TYPES = new Set<ResourceType>([

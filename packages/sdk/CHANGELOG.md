@@ -1,5 +1,25 @@
 # @openagentpack/sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- 9390e7b: Add native Bailian Memory Store, memory file, and historical version APIs, including store archive, file rename, content SHA preconditions, version redaction, and opaque `page`/`next_page` pagination. Preserve native absolute paths, response fields, operation names, and service errors.
+
+  Enable declarative Bailian Memory Stores with ID-only identity, explicit import, declared-key metadata reconciliation, and recoverable initialization. Persist the created store ID and pending initializer hashes before writing content; retries resume missing pending paths without overwriting existing files. Existing and imported stores preserve runtime content by default, while explicit `entries_mode: sync` manages declared paths. Removing a store and applying, or destroying it, irreversibly archives it.
+
+  Resolve logical Memory references into native Session resources with access settings, instructions, deduplication, and an eight-store limit. Block Session mounting until initialization completes and reject Memory mounts in file-only Bailian Deployments.
+
+- 9390e7b: Default declarative memory entries to initialization of newly created stores only. Existing, imported, or adopted stores retain their runtime content, and initialization-only entry changes no longer schedule updates. Add entries_mode: sync as an explicit opt-in to the previous continuous YAML synchronization behavior.
+- 9390e7b: Add workspace-level Bailian Webhook endpoint management and delivery-event queries through a provider-only API context. Expose endpoint URL normalization and cancellable requests while preserving one-time signing-secret responses, opaque pagination cursors, request IDs, and provider errors. These APIs do not read project files or write project state.
+
+### Patch Changes
+
+- 9390e7b: Identify Bailian Memory Stores by their remote ID rather than their non-unique display name. Disable name-based conflict adoption, create a new store when no remote ID is recorded, and exclude archived stores from ID-based lifecycle lookups.
+- 9390e7b: Use the actual creation name when looking up a memory store after a creation conflict, preventing adoption of a different store named after the configuration key.
+- 9390e7b: Allow MCP toolkit configs and agent-builder tool overrides to be omitted or empty. Bailian requests normalize missing overrides to an empty array, so default_config.enabled can enable all MCP tools without placeholder names. Preserve the disabled default and explicit per-tool overrides.
+- 9390e7b: Preserve YAML anchors when redacting environment variable values so valid aliases remain usable in version previews and version snapshot checks. Stored and restored configuration retains its original values.
+
 ## 0.8.0
 
 ### Minor Changes

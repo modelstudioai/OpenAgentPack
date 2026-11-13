@@ -33,6 +33,7 @@ export async function* streamBailianSessionEvents(
 	// History may create a status before the answer it later completes. Keep such
 	// updates until all history is repaired, including across a failed history attempt.
 	const recoveredStatuses = new Map<string, { event: ProviderSessionEvent; deliveredSnapshot?: string }>();
+	const unfinished = new Set<string>();
 	const turnStart = sessionStreamTurn(options);
 	let retries = 0;
 	let recover = options.after_id !== undefined;
@@ -71,6 +72,7 @@ export async function* streamBailianSessionEvents(
 			})();
 			await ready.promise;
 			throwIfAborted(options.signal);
+			let repairingWithLiveStatus = false;
 			if (recover) {
 				// onReady has already allowed the parent to POST. Wait for its identity
 				// before replaying history, including initial after_id subscriptions.
@@ -82,6 +84,7 @@ export async function* streamBailianSessionEvents(
 				}
 				let turnFound = turnStart === undefined;
 				const interrupted = new Set(accumulator.pendingMessageIds());
+				for (const id of interrupted) trackUnfinished(unfinished, id);
 				const delivered = accumulator.captureDelivery();
 				accumulator.resetPartials();
 				const marker = lastCompletedId ?? sentEventId;
@@ -116,8 +119,20 @@ export async function* streamBailianSessionEvents(
 							if (turnFound) lastCompletedId = marker;
 						}
 						// In-progress history has no frame-level watermark; never append live deltas to it.
-						if (event.raw.status === "in_progress") continue;
+						if (event.raw.status === "in_progress") {
+							if (event.id && accumulator.isCompleted(event.id)) continue;
+							if (
+								turnFound &&
+								(!beforeMarker ||
+									(event.id && (interrupted.has(event.id) || delivered.has(event.id) || unfinished.has(event.id))))
+							) {
+								if (!event.id) throw new UserError("Unfinished Session history is missing its event ID.");
+								trackUnfinished(unfinished, event.id);
+							}
+							continue;
+						}
 						const mapped = accumulator.seed(event.raw);
+						if (event.id) unfinished.delete(event.id);
 						// Still seed old events for correlation/dedup, but never deliver a
 						// previous turn's assistant or terminal state to a single-turn send.
 						if (!turnFound) continue;
@@ -166,6 +181,11 @@ export async function* streamBailianSessionEvents(
 				} while (page);
 				if (!turnFound) throw new UserError("Session turn's sent event was not found in history.");
 				if (!markerFound) throw new UserError("Session event resume marker was not found in history.");
+				// Pages are not a consistent snapshot. If text still needs repair, a
+				// historical terminal state cannot establish a safe handoff to live events.
+				// Require a live status after all unfinished identities have converged instead.
+				repairingWithLiveStatus = unfinished.size > 0;
+				if (repairingWithLiveStatus) recoveredStatuses.clear();
 				for (const [id, { event }] of recoveredStatuses) {
 					throwIfAborted(options.signal);
 					recoveredStatuses.delete(id);
@@ -175,9 +195,25 @@ export async function* streamBailianSessionEvents(
 			}
 			while (true) {
 				throwIfAborted(options.signal);
-				const raw = await queue.next();
+				const raw = repairingWithLiveStatus
+					? await waitForHistory(queue.next(), activeQueue, controller.signal, options.connectTimeoutMs ?? 30_000)
+					: await queue.next();
 				throwIfAborted(options.signal);
-				const event = accumulator.push(raw);
+				let event = accumulator.push(raw);
+				if (repairingWithLiveStatus) {
+					const id =
+						event?.id ??
+						(typeof raw.id === "string" ? raw.id : typeof raw.event_id === "string" ? raw.event_id : undefined);
+					if (id && accumulator.isCompleted(id)) unfinished.delete(id);
+					else if (event?.id) trackUnfinished(unfinished, event.id);
+					// A complete live status may duplicate the historical status that was
+					// deliberately withheld. Its position after the repaired answer still matters.
+					if (!event && raw.type === "session_status") event = toSessionEvent(raw, { event_format: "snapshot" });
+					if (event?.type === "status" && event.status !== undefined) {
+						if (unfinished.size === 0) repairingWithLiveStatus = false;
+						else if (TERMINAL_STATUSES.has(event.status)) continue;
+					}
+				}
 				if (event) {
 					if (event.id && accumulator.isCompleted(event.id)) lastCompletedId = event.id;
 					accumulator.markDelivered(event);
@@ -200,6 +236,13 @@ export async function* streamBailianSessionEvents(
 		recover = true;
 		await abortableDelay(RETRY_DELAYS[retries++]!, options.signal);
 	}
+}
+
+function trackUnfinished(ids: Set<string>, id: string): void {
+	if (!ids.has(id) && ids.size >= MAX_BUFFERED_FRAMES) {
+		throw new UserError("Session unfinished event recovery buffer exceeded its limit.");
+	}
+	ids.add(id);
 }
 
 function retryable(error: unknown): boolean {

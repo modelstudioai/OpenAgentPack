@@ -199,6 +199,212 @@ function message(id: string, role: string, text: string) {
 }
 
 describe("single-turn snapshot recovery", () => {
+	for (const delivery of ["buffered", "late", "resumed"] as const) {
+		test(`repairs an unfinished history page before ending the turn from ${delivery} live events`, async () => {
+			const user = message("user", "user", "question");
+			const running = status("running", "running");
+			const answer = message("answer", "assistant", "FINAL ANSWER");
+			const partial = { ...answer, status: "in_progress", content: [{ type: "text", text: "partial" }] };
+			const recoveredIdle = status("recovered-idle", "idle");
+			const resumed = status("resumed-running", "running");
+			const latestIdle = status("latest-idle", "idle");
+			let first!: ReadableStreamDefaultController<Uint8Array>;
+			let live!: ReadableStreamDefaultController<Uint8Array>;
+			let connections = 0;
+			let posts = 0;
+			let pages = 0;
+			let historyRead!: () => void;
+			const historyReady = new Promise<void>((resolve) => {
+				historyRead = resolve;
+			});
+			const sendFinal = () => {
+				if (delivery === "resumed") {
+					// One network chunk still reaches the SDK queue through separate async yields.
+					queueMicrotask(() =>
+						live.enqueue(
+							new TextEncoder().encode(`data: ${JSON.stringify(answer)}\n\ndata: ${JSON.stringify(resumed)}\n\n`),
+						),
+					);
+				} else for (const raw of [answer, recoveredIdle]) live.enqueue(encode(raw));
+			};
+			setDefaultFetch(async (input, init) => {
+				if (init?.method === "POST") {
+					posts++;
+					first.enqueue(encode(running));
+					first.enqueue(encode(partial));
+					first.close();
+					return Response.json({ id: user.id });
+				}
+				if (String(input).includes("/stream")) {
+					connections++;
+					return new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								if (connections === 1) first = controller;
+								else live = controller;
+							},
+						}),
+					);
+				}
+				pages++;
+				if (pages === 1) return Response.json({ data: [user, running, partial], next_page: "terminal-page" });
+				if (delivery !== "late") sendFinal();
+				historyRead();
+				return Response.json({ data: [recoveredIdle], next_page: null });
+			});
+			const controller = new AbortController();
+			const guard = setTimeout(() => controller.abort(), 1500);
+			const events: ProviderSessionEvent[] = [];
+			let finished = false;
+			const reading = (async () => {
+				for await (const event of streamMessageEvents(adapter(), "s", "question", {
+					event_format: "snapshot",
+					reconnect: true,
+					signal: controller.signal,
+				})) {
+					events.push(event);
+					if (event.id === resumed.id) {
+						live.enqueue(encode(message("resumed-answer", "assistant", "RESUMED ANSWER")));
+						live.enqueue(encode(latestIdle));
+					}
+				}
+				finished = true;
+			})();
+			try {
+				if (delivery === "late") {
+					await historyReady;
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					expect(finished).toBe(false);
+					expect(events.some((event) => event.status === "idle")).toBe(false);
+					sendFinal();
+				}
+				await reading;
+				expect(events.filter((event) => event.id === answer.id).at(-1)?.content).toBe("FINAL ANSWER");
+				expect(events.at(-1)?.id).toBe(delivery === "resumed" ? latestIdle.id : recoveredIdle.id);
+				if (delivery === "resumed") {
+					expect(events.some((event) => event.id === recoveredIdle.id)).toBe(false);
+					expect(events.find((event) => event.id === "resumed-answer")?.content).toBe("RESUMED ANSWER");
+				}
+				expect(posts).toBe(1);
+				expect(connections).toBe(2);
+				expect(pages).toBe(2);
+			} finally {
+				clearTimeout(guard);
+				controller.abort();
+				await reading.catch(() => {});
+			}
+		});
+	}
+
+	for (const missing of ["completion", "status-after-completion"] as const) {
+		test(`unfinished history without live ${missing} fails instead of yielding a successful terminal state`, async () => {
+			const user = message("user", "user", "question");
+			const partial = { ...message("answer", "assistant", "partial"), status: "in_progress" };
+			let posts = 0;
+			setDefaultFetch(async (input, init) => {
+				if (init?.method === "POST") {
+					posts++;
+					return Response.json({ id: user.id });
+				}
+				if (String(input).includes("/stream"))
+					return new Response(
+						new ReadableStream<Uint8Array>({
+							start(controller) {
+								if (missing === "status-after-completion") {
+									controller.enqueue(encode(status("idle", "idle")));
+									controller.enqueue(encode(message("answer", "assistant", "FINAL ANSWER")));
+								}
+							},
+						}),
+					);
+				return Response.json({
+					data: [user, status("running", "running"), partial, status("idle", "idle")],
+					next_page: null,
+				});
+			});
+			const events: ProviderSessionEvent[] = [];
+			const reading = (async () => {
+				for await (const event of streamMessageEvents(adapter(), "s", "question", {
+					event_format: "snapshot",
+					after_id: user.id,
+					connectTimeoutMs: 20,
+				}))
+					events.push(event);
+			})();
+			await expect(reading).rejects.toMatchObject({ code: "connect-timeout" });
+			expect(events.some((event) => event.status === "idle")).toBe(false);
+			if (missing === "status-after-completion") expect(events.at(-1)?.content).toBe("FINAL ANSWER");
+			expect(posts).toBe(1);
+		});
+	}
+
+	test("a queued final answer and terminal event survive a concurrent transport failure during repair", async () => {
+		const user = message("user", "user", "question");
+		const answer = message("answer", "assistant", "FINAL ANSWER");
+		const partial = { ...answer, status: "in_progress", content: [{ type: "text", text: "partial" }] };
+		const idle = status("idle", "idle");
+		let live!: ReadableStreamDefaultController<Uint8Array>;
+		setDefaultFetch(async (input, init) => {
+			if (init?.method === "POST") return Response.json({ id: user.id });
+			if (String(input).includes("/stream"))
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							live = controller;
+						},
+					}),
+				);
+			return Response.json({ data: [user, status("running", "running"), partial, idle], next_page: null });
+		});
+		const stream = streamMessageEvents(adapter(), "s", "question", { event_format: "snapshot", after_id: user.id })[
+			Symbol.asyncIterator
+		]();
+		try {
+			expect((await stream.next()).value?.status).toBe("running");
+			live.enqueue(encode(answer));
+			live.enqueue(encode(idle));
+			live.close();
+			// Let the transport consume EOF while the caller is paused on the history event.
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect((await stream.next()).value?.content).toBe("FINAL ANSWER");
+			expect((await stream.next()).value?.status).toBe("idle");
+			expect((await stream.next()).done).toBe(true);
+		} finally {
+			await stream.return?.();
+		}
+	});
+
+	test("legacy session status frames remain complete while repairing a snapshot subscription", async () => {
+		const user = message("user", "user", "question");
+		const answer = message("answer", "assistant", "FINAL ANSWER");
+		const partial = { ...answer, status: "in_progress", content: [{ type: "text", text: "partial" }] };
+		setDefaultFetch(async (input, init) => {
+			if (init?.method === "POST") return Response.json({ id: user.id });
+			if (String(input).includes("/stream"))
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(encode(answer));
+							controller.enqueue(encode({ id: "live-idle", type: "session_status", status: "idle" }));
+						},
+					}),
+				);
+			return Response.json({
+				data: [user, partial, { id: "history-idle", type: "session_status", status: "idle" }],
+				next_page: null,
+			});
+		});
+		const events: ProviderSessionEvent[] = [];
+		for await (const event of streamMessageEvents(adapter(), "s", "question", {
+			event_format: "snapshot",
+			after_id: user.id,
+			connectTimeoutMs: 50,
+		}))
+			events.push(event);
+		expect(events.map((event) => event.id)).toEqual([answer.id, "live-idle"]);
+		expect(events[0]?.content).toBe("FINAL ANSWER");
+	});
+
 	for (const phase of ["before-first-event", "at-marker", "before-marker"] as const) {
 		test(`recovers a changed status ${phase} after repairing the final answer`, async () => {
 			const laterMarker = phase === "before-marker";

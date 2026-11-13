@@ -171,7 +171,10 @@ export class BailianEventAccumulator {
 		const state = this.getState(id);
 		if (!history && state.historyFinalContent) return undefined;
 		if (!history && state.recoveringHistory && raw.status !== "completed") return undefined;
-		const completes = history || raw.status === "completed" || (raw.object !== "message" && raw.status === undefined);
+		const completes =
+			history ||
+			raw.status === "completed" ||
+			(raw.object !== "message" && (raw.status === undefined || raw.type === "session_status"));
 		if (state.completed && !completes) return undefined;
 		const merged = mergeSparse(state.identity ?? {}, raw);
 		// Identity is never inferred from the content frame's block type (for example "text").
