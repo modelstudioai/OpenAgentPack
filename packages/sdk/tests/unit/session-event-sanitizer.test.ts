@@ -113,6 +113,31 @@ test("disabling redaction keeps the existing truncation policy", () => {
 	expect(result.metadata?.redacted).toBeUndefined();
 });
 
+test("long malformed HTML prefixes remain bounded and cannot reuse an earlier closing bracket", () => {
+	const content = `>${"<a".repeat(100_000)}`;
+	const started = performance.now();
+	const result = sanitizeSessionEvent({ type: "message", raw_type: "message", content, raw: {} }, { redact: false });
+	expect(performance.now() - started).toBeLessThan(2000);
+	expect(result.content).toEqual([
+		{ type: "text", text: `${content.slice(0, 4000)}\n...[truncated ${content.length - 4000} chars]` },
+	]);
+	expect(result.metadata?.truncated).toBe(true);
+});
+
+test("HTML truncation backs up inside a mixed-case multiline tag but preserves text after a complete tag", () => {
+	const cases = [
+		{ content: `${"x".repeat(3990)}<SpAn\n title="${"y".repeat(50)}">tail`, cut: 3990 },
+		{ content: `<span>${"x".repeat(4100)}`, cut: 4000 },
+	];
+	for (const { content, cut } of cases) {
+		const result = sanitizeSessionEvent({ type: "message", raw_type: "message", content, raw: {} }, { redact: false });
+		expect(result.content).toEqual([
+			{ type: "text", text: `${content.slice(0, cut)}\n...[truncated ${content.length - cut} chars]` },
+		]);
+		expect(result.metadata?.truncated).toBe(true);
+	}
+});
+
 const longContentCases: { label: string; type: ProviderSessionEvent["type"]; content: string; limit: number }[] = [
 	{ label: "message", type: "message", content: "x".repeat(4100), limit: 4000 },
 	{ label: "tool", type: "tool_result", content: "x".repeat(8100), limit: 8000 },

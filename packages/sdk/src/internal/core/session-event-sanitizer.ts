@@ -312,7 +312,7 @@ function sanitizeText(value: string, limit: number, shouldRedact: boolean): Sani
 	// an open tag (which would cause the browser to treat all subsequent text as a
 	// single malformed element).
 	let cut = limit;
-	if (/<[a-z][\s\S]*>/i.test(redacted)) {
+	if (hasHtmlTag(redacted)) {
 		const lastLt = redacted.lastIndexOf("<", cut);
 		const lastGt = redacted.lastIndexOf(">", cut);
 		if (lastLt > lastGt) {
@@ -326,6 +326,19 @@ function sanitizeText(value: string, limit: number, shouldRedact: boolean): Sani
 		redacted: redacted !== value,
 		truncated: true,
 	};
+}
+
+/** Match the existing <ASCII-letter ... > shape without retrying a suffix scan at every '<'. */
+function hasHtmlTag(value: string): boolean {
+	for (let offset = 0; offset + 1 < value.length; offset++) {
+		if (value.charCodeAt(offset) !== 60) continue;
+		const letter = value.charCodeAt(offset + 1);
+		if ((letter >= 65 && letter <= 90) || (letter >= 97 && letter <= 122)) {
+			// If no '>' follows the first candidate, none can follow a later candidate either.
+			return value.indexOf(">", offset + 2) !== -1;
+		}
+	}
+	return false;
 }
 
 function safeStringify(value: unknown): string {
