@@ -1,5 +1,29 @@
 # @openagentpack/server
 
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+  - @openagentpack/sdk@0.10.0
+
 ## 0.0.15
 
 ### Patch Changes

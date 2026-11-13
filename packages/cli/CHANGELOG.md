@@ -1,5 +1,29 @@
 # @openagentpack/cli
 
+## 0.10.0
+
+### Patch Changes
+
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+- Updated dependencies [3df5c92]
+  - @openagentpack/sdk@0.10.0
+
 ## 0.9.0
 
 ### Patch Changes
