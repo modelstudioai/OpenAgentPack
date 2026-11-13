@@ -56,7 +56,7 @@ describe("bailianConfigSchema", () => {
 });
 
 describe("BailianClient source-config header", () => {
-	test("every MA request carries x-dashscope-source-config", async () => {
+	test("every MA request carries x-dashscope-agentstudio-source-config", async () => {
 		const client = new BailianClient({ apiKey: "sk-test", baseUrl: "https://bailian.test/api/v1/agentstudio" });
 		const captured: Headers[] = [];
 		globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -67,7 +67,7 @@ describe("BailianClient source-config header", () => {
 		await client.get("/agents/agent_x");
 
 		expect(captured).toHaveLength(1);
-		expect(captured[0]?.get("x-dashscope-source-config")).toBe("openagentpack");
+		expect(captured[0]?.get("x-dashscope-agentstudio-source-config")).toBe("openagentpack");
 		expect(captured[0]?.get("Authorization")).toBe("Bearer sk-test");
 	});
 });

@@ -263,7 +263,7 @@ describe("Bailian webhook wire contract", () => {
 			expect(calls[0]?.init?.headers).toEqual({
 				"Content-Type": "application/json",
 				Authorization: "Bearer sk-test",
-				"x-dashscope-source-config": "openagentpack",
+				"x-dashscope-agentstudio-source-config": "openagentpack",
 			});
 			expect(calls[0]?.init?.signal).toBe(controller.signal);
 			expect(calls[0]?.init?.body).toBe(scenario.body === undefined ? undefined : JSON.stringify(scenario.body));
