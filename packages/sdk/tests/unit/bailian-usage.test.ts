@@ -1,139 +1,180 @@
 import { afterEach, expect, test } from "bun:test";
-import { createManagedApiContext, listModelUsage, listToolUsage } from "../../src/index.ts";
+import { createManagedApiContext, getUsageSummary } from "../../src/index.ts";
 import { type FetchLike, setDefaultFetch } from "../../src/internal/transport.ts";
-import type { UsageScope } from "../../src/internal/types/usage.ts";
+import type { UsageSummaryRequest } from "../../src/internal/types/usage.ts";
 
 afterEach(() => setDefaultFetch(undefined));
 
 const baseUrl = "https://bailian.test/api/v1/agentstudio";
 const context = () => createManagedApiContext({ providers: { bailian: { api_key: "test", base_url: baseUrl } } });
 
-const workspaceScope: UsageScope = { type: "workspace", workspace_ids: ["ws_one"] };
-const timeRange = { start_time: 1791730260000, end_time: 1792335080000 };
+const timeRange = { start_time: "2026-11-02T10:00:00+08:00", end_time: "2026-11-02T15:00:00+08:00" };
+const metric = (value: number | null, unit = "count") => ({ value, unit });
 
-const modelPage = {
-	items: [
-		{
-			workspace_id: "ws_one",
-			model_name: "qwen3-max",
-			call_count: 14,
-			failed_count: 2,
-			tokens: {
-				input_tokens: 268080,
-				output_tokens: 7506,
-				cache_read_tokens: 164000,
-				cache_creation_tokens: 0,
-				total_tokens: 275500,
-				cache_hit_ratio: 0.61194,
-			},
+const summary = {
+	query_range: timeRange,
+	data_updated_at: "2026-11-02T14:10:00+08:00",
+	usage: {
+		total: {
+			input_tokens: metric(1000, "tokens"),
+			output_tokens: metric(200, "tokens"),
+			total_tokens: metric(1200, "tokens"),
+			cache_read_tokens: metric(400, "tokens"),
+			cache_creation_tokens: metric(100, "tokens"),
+			cache_hit_ratio: metric(0.4, "ratio"),
+			model_call_count: metric(5),
+			tool_call_count: metric(3),
+			builtin_tool_call_count: metric(0),
+			mcp_tool_call_count: metric(3),
+			custom_tool_call_count: metric(0),
+			turns: metric(2),
+			steps: metric(8),
+			interrupt_error_count: metric(0),
+			model_failed_count: metric(1),
+			tool_failed_count: metric(1),
+			runtime_ms: metric(60000, "ms"),
 		},
-	],
-	total: 1,
-	total_call_count: 14,
-	page_no: 1,
-	page_size: 20,
-	data_updated_at: 1792328000000,
+		models: [
+			{
+				model_name: "qwen-plus",
+				usage: {
+					input_tokens: metric(1000, "tokens"),
+					output_tokens: metric(200, "tokens"),
+					total_tokens: metric(1200, "tokens"),
+					cache_read_tokens: metric(400, "tokens"),
+					cache_creation_tokens: metric(100, "tokens"),
+					cache_hit_ratio: metric(0.4, "ratio"),
+					call_count: metric(5),
+					failed_count: metric(1),
+				},
+			},
+		],
+		tools: [
+			{
+				source: "mcp",
+				tool_name: "web_search",
+				usage: { call_count: metric(3), failed_count: metric(1) },
+			},
+		],
+	},
 };
 
-const toolPage = {
-	items: [{ workspace_id: "ws_one", tool_name: "file-parser", source: "mcp", call_count: 4, failed_count: 2 }],
-	total: 1,
-	total_call_count: 6,
-	page_no: 1,
-	page_size: 20,
-	data_updated_at: 1792328000000,
-};
+const envelope = { request_id: "req_summary_example", data: summary };
 
 function urlOf(input: Parameters<FetchLike>[0]) {
 	return new URL(input instanceof Request ? input.url : input.toString());
 }
 
-test("model usage posts a top-level body on the resource path and unwraps the data page", async () => {
+test("workspace summary posts the dimension body and unwraps request_id/data", async () => {
 	let path = "";
 	const bodies: unknown[] = [];
 	setDefaultFetch(async (input, init) => {
 		path = urlOf(input).pathname;
 		bodies.push(JSON.parse(String(init?.body ?? "{}")));
-		return Response.json({ data: modelPage });
+		return Response.json(envelope);
 	});
-	const page = await listModelUsage(context(), {
-		scope: workspaceScope,
-		time_range: timeRange,
-		page_no: 2,
-		page_size: 50,
-		sort_by: "input_tokens",
-		sort_order: "asc",
+	const result = await getUsageSummary(context(), { dimension: "workspace", time_range: timeRange });
+	expect(path).toBe("/api/v1/agentstudio/usage/summary");
+	expect(result).toEqual(envelope);
+	expect(bodies[0]).toEqual({ dimension: "workspace", time_range: timeRange });
+});
+
+test("agent summary forwards agent_id, agent_version and granularity", async () => {
+	let body: Record<string, unknown> | undefined;
+	setDefaultFetch(async (_input, init) => {
+		body = JSON.parse(String(init?.body ?? "{}"));
+		return Response.json(envelope);
 	});
-	expect(path).toBe("/api/v1/agentstudio/usage/models");
-	expect(page).toEqual(modelPage);
-	expect(bodies[0]).toEqual({
-		scope: workspaceScope,
+	await getUsageSummary(context(), {
+		dimension: "agent",
+		agent_id: "agent_one",
+		agent_version: null,
 		time_range: timeRange,
-		page_no: 2,
-		page_size: 50,
-		sort_by: "input_tokens",
-		sort_order: "asc",
+		granularity: "day",
+	});
+	expect(body).toEqual({
+		dimension: "agent",
+		agent_id: "agent_one",
+		agent_version: null,
+		time_range: timeRange,
+		granularity: "day",
 	});
 });
 
-test("tool usage forwards source/tool filters and tolerates a bare page without the data envelope", async () => {
-	let path = "";
+test("session summary sends only dimension/session_id and keeps null metrics as null", async () => {
 	let body: Record<string, unknown> | undefined;
-	setDefaultFetch(async (input, init) => {
-		path = urlOf(input).pathname;
+	setDefaultFetch(async (_input, init) => {
 		body = JSON.parse(String(init?.body ?? "{}"));
-		return Response.json(toolPage);
+		return Response.json({
+			request_id: "req_session",
+			data: {
+				...summary,
+				data_updated_at: null,
+				usage: {
+					...summary.usage,
+					total: { ...summary.usage.total, input_tokens: metric(null, "tokens") },
+					models: [],
+					tools: [],
+				},
+			},
+		});
 	});
-	const page = await listToolUsage(context(), {
-		scope: { type: "agent", agent_id: "agent_one" },
-		time_range: timeRange,
-		source: "mcp",
-		tool_name: "file-parser",
-	});
-	expect(path).toBe("/api/v1/agentstudio/usage/tools");
-	expect(body).toEqual({
-		scope: { type: "agent", agent_id: "agent_one" },
-		time_range: timeRange,
-		source: "mcp",
-		tool_name: "file-parser",
-	});
-	expect(page).toEqual(toolPage);
+	const result = await getUsageSummary(context(), { dimension: "session", session_id: "sesn_one" });
+	expect(body).toEqual({ dimension: "session", session_id: "sesn_one" });
+	expect(result.data.usage.total.input_tokens).toEqual({ value: null, unit: "tokens" });
+	expect(result.data.data_updated_at).toBeNull();
+	expect(result.data.usage.models).toEqual([]);
 });
 
 test("usage requests reject cross-field violations before any HTTP call", async () => {
 	let requests = 0;
 	setDefaultFetch(async () => {
 		requests += 1;
-		return Response.json({ data: modelPage });
+		return Response.json(envelope);
 	});
 	const ctx = context();
-	await expect(
-		listModelUsage(ctx, { scope: { type: "session", session_id: "sesn_one" }, time_range: timeRange }),
-	).rejects.toThrow("forbids time_range");
-	await expect(listModelUsage(ctx, { scope: { type: "agent", agent_id: "agent_one" } })).rejects.toThrow(
-		"requires time_range",
+	const reject = (request: UsageSummaryRequest, message: string) =>
+		expect(getUsageSummary(ctx, request)).rejects.toThrow(message);
+
+	await reject({ dimension: "session", session_id: "sesn_one", time_range: timeRange }, "forbids time_range");
+	await reject({ dimension: "session", session_id: "sesn_one", granularity: "day" }, "forbids granularity");
+	await reject({ dimension: "session" }, "requires session_id");
+	await reject({ dimension: "agent", time_range: timeRange }, "requires agent_id");
+	await reject({ dimension: "agent", agent_id: "agent_one" }, "requires time_range");
+	await reject({ dimension: "workspace" }, "requires time_range");
+	await reject({ dimension: "workspace", time_range: timeRange, agent_id: "agent_one" }, "forbids agent_id");
+	await reject({ dimension: "workspace", time_range: timeRange, session_id: "sesn_one" }, "forbids session_id");
+	await reject(
+		{ dimension: "workspace", time_range: { start_time: "2026-11-03T00:00:00+08:00", end_time: timeRange.start_time } },
+		"before end_time",
 	);
-	await expect(
-		listModelUsage(ctx, { scope: { type: "workspace", workspace_ids: [] }, time_range: timeRange }),
-	).rejects.toThrow("non-empty workspace_ids");
-	await expect(listToolUsage(ctx, { scope: workspaceScope, time_range: timeRange, page_size: 101 })).rejects.toThrow(
-		"between 1 and 100",
+	await reject(
+		{ dimension: "workspace", time_range: { start_time: "2026-11-02 10:00:00", end_time: timeRange.end_time } },
+		"RFC 3339",
+	);
+	await reject(
+		{ dimension: "workspace", time_range: timeRange, granularity: "week" as never },
+		"Unknown usage granularity",
 	);
 	expect(requests).toBe(0);
 });
 
-test("unsupported providers reject usage operations before making a request", async () => {
+test("a response without data is rejected instead of yielding an empty summary", async () => {
+	setDefaultFetch(async () => Response.json({ request_id: "req_missing" }));
+	await expect(getUsageSummary(context(), { dimension: "workspace", time_range: timeRange })).rejects.toThrow(
+		"missing `data`",
+	);
+});
+
+test("unsupported providers reject usage summary before making a request", async () => {
 	const ctx = createManagedApiContext({ providers: { claude: { api_key: "test" } } });
 	let requests = 0;
 	setDefaultFetch(async () => {
 		requests += 1;
-		return Response.json({ data: modelPage });
+		return Response.json(envelope);
 	});
-	await expect(listModelUsage(ctx, { scope: workspaceScope, time_range: timeRange })).rejects.toThrow(
-		"does not support model usage listing",
-	);
-	await expect(listToolUsage(ctx, { scope: workspaceScope, time_range: timeRange })).rejects.toThrow(
-		"does not support tool usage listing",
+	await expect(getUsageSummary(ctx, { dimension: "workspace", time_range: timeRange })).rejects.toThrow(
+		"does not support usage summary",
 	);
 	expect(requests).toBe(0);
 });

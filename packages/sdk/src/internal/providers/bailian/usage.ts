@@ -1,73 +1,86 @@
 import { UserError } from "../../errors.ts";
-import type {
-	ModelUsagePage,
-	ModelUsageRequest,
-	ToolUsagePage,
-	ToolUsageRequest,
-	UsageQueryOptions,
-	UsageScope,
-} from "../../types/usage.ts";
+import type { UsageQueryOptions, UsageSummaryRequest, UsageSummaryResponse } from "../../types/usage.ts";
 import type { BailianClient } from "./client.ts";
 
-// The app-control usage RPCs (`ziel:dashy::bailian-app-control.usage.*`) map to the
-// AgentStudio resource paths below (confirmed with the usage contract owner). The
-// public AgentStudio deployment has not enabled them yet (404 at the gateway);
-// once it does, these calls go through without further changes. If the deployed
-// envelope differs from the top-level body, only the unwrapping below needs to change.
-const MODEL_USAGE_PATH = "/usage/models";
-const TOOL_USAGE_PATH = "/usage/tools";
+// The app-control usage RPC (`ziel:dashy::bailian-app-control.usage.summary`) is
+// published as the AgentStudio summary endpoint below (Usage API reference:
+// `POST /api/v1/agentstudio/usage/summary`). Model and tool details are two views
+// of the same response, so one call covers both tables — there is no per-table
+// endpoint, pagination or server-side name filter.
+const SUMMARY_PATH = "/usage/summary";
+
+const DIMENSIONS = new Set(["workspace", "agent", "session"]);
+const GRANULARITIES = new Set(["hour", "day", "month"]);
 
 /**
  * Cross-field request rules from the usage contract, enforced before the call:
- * workspace/agent scopes require an explicit time_range (session scopes reuse the
- * Session's own window and must not send one), workspace scopes must list at least
- * one workspace, and pagination is 1-based with a 1..100 page size.
+ * - `workspace` requires a time_range and takes no agent/session;
+ * - `agent` requires agent_id + time_range, may pin agent_version, takes no session;
+ * - `session` requires session_id and forbids time_range/granularity/agent fields;
+ * - `granularity` is only valid for `workspace`/`agent`.
  */
-export function assertUsageRequest(request: ModelUsageRequest | ToolUsageRequest): void {
-	const scope: UsageScope = request.scope;
-	if (scope.type === "workspace" && !scope.workspace_ids?.length) {
-		throw new UserError("Usage scope 'workspace' requires a non-empty workspace_ids list.");
+export function assertUsageRequest(request: UsageSummaryRequest): void {
+	if (!DIMENSIONS.has(request.dimension)) {
+		throw new UserError(`Unknown usage dimension '${request.dimension}'.`);
 	}
-	if (scope.type === "session") {
-		if (request.time_range !== undefined) {
-			throw new UserError("Usage scope 'session' forbids time_range; the Session's own window is used.");
-		}
-	} else if (!request.time_range) {
-		throw new UserError(`Usage scope '${scope.type}' requires time_range.`);
+	if (request.granularity !== undefined && !GRANULARITIES.has(request.granularity)) {
+		throw new UserError(`Unknown usage granularity '${request.granularity}'.`);
 	}
-	if (request.page_no !== undefined && (!Number.isInteger(request.page_no) || request.page_no < 1)) {
-		throw new UserError("page_no must be an integer >= 1.");
+	if (request.dimension === "session") {
+		assertSessionRequest(request);
+		return;
 	}
-	if (
-		request.page_size !== undefined &&
-		(!Number.isInteger(request.page_size) || request.page_size < 1 || request.page_size > 100)
-	) {
-		throw new UserError("page_size must be an integer between 1 and 100.");
+	if (request.session_id !== undefined) {
+		throw new UserError(`Usage dimension '${request.dimension}' forbids session_id.`);
+	}
+	if (!request.time_range) {
+		throw new UserError(`Usage dimension '${request.dimension}' requires time_range.`);
+	}
+	assertTimeRange(request.time_range.start_time, request.time_range.end_time);
+	if (request.dimension === "agent") {
+		if (!request.agent_id) throw new UserError("Usage dimension 'agent' requires agent_id.");
+		return;
+	}
+	if (request.agent_id !== undefined || request.agent_version !== undefined) {
+		throw new UserError("Usage dimension 'workspace' forbids agent_id and agent_version.");
 	}
 }
 
-/** The endpoint answers with `{ data: UsagePageDTO }`; tolerate a bare page for forward compatibility. */
-function unwrapPage<T>(result: unknown): T {
-	const page = (result as { data?: T } | null)?.data;
-	return (page ?? (result as T)) as T;
+function assertSessionRequest(request: UsageSummaryRequest): void {
+	if (!request.session_id) throw new UserError("Usage dimension 'session' requires session_id.");
+	if (request.time_range !== undefined) {
+		throw new UserError("Usage dimension 'session' forbids time_range; the Session's own window is used.");
+	}
+	if (request.granularity !== undefined) throw new UserError("Usage dimension 'session' forbids granularity.");
+	if (request.agent_id !== undefined || request.agent_version !== undefined) {
+		throw new UserError("Usage dimension 'session' forbids agent_id and agent_version.");
+	}
 }
 
-export async function listBailianModelUsage(
+/** RFC 3339 with an explicit offset; also rejects an empty or reversed window. */
+function assertTimeRange(start: string, end: string): void {
+	const startMs = Date.parse(start);
+	const endMs = Date.parse(end);
+	if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+		throw new UserError("time_range must use RFC 3339 timestamps with an explicit offset.");
+	}
+	if (startMs >= endMs) throw new UserError("time_range start_time must be before end_time.");
+}
+
+/** The endpoint answers with `{ request_id, data: UsageSummary }`; `data` is mandatory. */
+function unwrapSummary(result: unknown): UsageSummaryResponse {
+	const body = result as Partial<UsageSummaryResponse> | null;
+	const data = body?.data;
+	if (!data) throw new UserError("Usage summary response is missing `data`.");
+	return { request_id: body.request_id ?? "", data };
+}
+
+export async function getBailianUsageSummary(
 	client: BailianClient,
-	request: ModelUsageRequest,
+	request: UsageSummaryRequest,
 	options: UsageQueryOptions = {},
-): Promise<ModelUsagePage> {
+): Promise<UsageSummaryResponse> {
 	assertUsageRequest(request);
-	const result = await client.post(MODEL_USAGE_PATH, request, options.signal ? { signal: options.signal } : undefined);
-	return unwrapPage<ModelUsagePage>(result);
-}
-
-export async function listBailianToolUsage(
-	client: BailianClient,
-	request: ToolUsageRequest,
-	options: UsageQueryOptions = {},
-): Promise<ToolUsagePage> {
-	assertUsageRequest(request);
-	const result = await client.post(TOOL_USAGE_PATH, request, options.signal ? { signal: options.signal } : undefined);
-	return unwrapPage<ToolUsagePage>(result);
+	const result = await client.post(SUMMARY_PATH, request, options.signal ? { signal: options.signal } : undefined);
+	return unwrapSummary(result);
 }

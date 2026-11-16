@@ -1,97 +1,123 @@
 /**
- * Usage-query scope, discriminated by `type` (app-control usage.* endpoints):
- * - `workspace`: aggregated over the listed workspaces (overview page); `agent_id` narrows to one Agent.
- * - `agent`: one Agent (optionally a pinned version); `workspace_ids` may pin a single workspace,
- *   otherwise the caller's identity workspace is used.
- * - `session`: one Session; the Session's own window is used, so `time_range` is forbidden and
- *   `workspace_ids` (if sent) is ignored.
+ * Usage summary scope, discriminated by `dimension` (app-control usage.summary):
+ * - `workspace`: aggregated over the caller's workspace; `agent_id` narrows to one Agent.
+ * - `agent`: one Agent (optionally a pinned version).
+ * - `session`: one Session; its lifecycle totals are used, so `time_range` and
+ *   `granularity` must not be sent.
  */
-export type UsageScope =
-	| { type: "workspace"; workspace_ids: string[]; agent_id?: string }
-	| { type: "agent"; agent_id: string; workspace_ids?: string[]; agent_version?: string }
-	| { type: "session"; session_id: string };
+export type UsageDimension = "workspace" | "agent" | "session";
 
-/** Millisecond-precision epoch window. Required for workspace/agent scopes; forbidden for session. */
+/** Bucket size of the returned `query_range`; omitted lets the server pick from the span. */
+export type UsageGranularity = "hour" | "day" | "month";
+
+/** RFC 3339 window carrying an explicit offset, e.g. `2026-11-02T10:00:00+08:00`. */
 export interface UsageTimeRange {
-	start_time: number;
-	end_time: number;
+	start_time: string;
+	end_time: string;
 }
 
-export type ModelUsageSortBy = "call_count" | "failed_count" | "input_tokens" | "output_tokens";
-export type ToolUsageSortBy = "call_count" | "failed_count";
-export type UsageSortOrder = "asc" | "desc";
-
-export interface ModelUsageRequest {
-	scope: UsageScope;
+export interface UsageSummaryRequest {
+	dimension: UsageDimension;
+	/** Required for the `agent` dimension; forbidden for `session`. */
+	agent_id?: string;
+	/** Only meaningful for the `agent` dimension; null means every version. */
+	agent_version?: string | null;
+	/** Required for the `session` dimension; forbidden for `workspace`/`agent`. */
+	session_id?: string;
+	/** Required for `workspace`/`agent`; forbidden for `session` (the Session window is used). */
 	time_range?: UsageTimeRange;
-	/** Exact model name; omitted/null means all models. */
-	model_name?: string | null;
-	/** 1-based page number. */
-	page_no?: number;
-	/** Page size, clamped to 1..100 by the endpoint. */
-	page_size?: number;
-	sort_by?: ModelUsageSortBy;
-	sort_order?: UsageSortOrder;
+	/** Only for `workspace`/`agent`; forbidden for `session`. */
+	granularity?: UsageGranularity;
 }
 
-export type UsageToolSource = "builtin" | "mcp" | "custom";
-
-export interface ToolUsageRequest {
-	scope: UsageScope;
-	time_range?: UsageTimeRange;
-	/** Exact tool source; omitted/null means all sources. Unknown provider values are preserved. */
-	source?: UsageToolSource | null;
-	/** Exact tool name; omitted/null means all tools. */
-	tool_name?: string | null;
-	page_no?: number;
-	page_size?: number;
-	/** Tool usage does not support token sorts — only call_count / failed_count. */
-	sort_by?: ToolUsageSortBy;
-	sort_order?: UsageSortOrder;
+/**
+ * Every indicator carries its own unit. An unknown indicator keeps its unit with a
+ * `null` value; a known zero stays `0` and must not be treated as unknown.
+ */
+export interface UsageMetric {
+	value: number | null;
+	unit: string;
 }
 
-export interface UsageTokenStats {
-	input_tokens: number;
-	output_tokens: number;
-	cache_read_tokens: number;
-	cache_creation_tokens: number;
-	total_tokens: number;
-	cache_hit_ratio: number;
+/** Per-model indicators (`usage.models[].usage`). */
+export interface UsageModelMetrics {
+	input_tokens: UsageMetric;
+	output_tokens: UsageMetric;
+	total_tokens: UsageMetric;
+	cache_read_tokens: UsageMetric;
+	cache_creation_tokens: UsageMetric;
+	cache_hit_ratio: UsageMetric;
+	call_count: UsageMetric;
+	failed_count: UsageMetric;
 }
 
-/** One aggregated row. The paging key is workspace_id + model_name: the same model in different workspaces is not merged. */
-export interface ModelUsageItem {
-	workspace_id: string;
-	model_name: string;
-	call_count: number;
-	failed_count: number;
-	tokens: UsageTokenStats;
+/** Per-tool indicators (`usage.tools[].usage`); tools carry no token or runtime columns. */
+export interface UsageToolMetrics {
+	call_count: UsageMetric;
+	failed_count: UsageMetric;
 }
 
-/** One aggregated row. The paging key is workspace_id + source + tool_name: same-name tools from different sources are separate rows. */
-export interface ToolUsageItem {
-	workspace_id: string;
-	tool_name: string;
-	/** builtin | mcp | custom; unknown future values are preserved verbatim. */
-	source: string;
-	call_count: number;
-	failed_count: number;
+/** Whole-scope indicators (`usage.total`). */
+export interface UsageTotal {
+	input_tokens: UsageMetric;
+	output_tokens: UsageMetric;
+	total_tokens: UsageMetric;
+	cache_read_tokens: UsageMetric;
+	cache_creation_tokens: UsageMetric;
+	cache_hit_ratio: UsageMetric;
+	model_call_count: UsageMetric;
+	tool_call_count: UsageMetric;
+	builtin_tool_call_count: UsageMetric;
+	mcp_tool_call_count: UsageMetric;
+	custom_tool_call_count: UsageMetric;
+	turns: UsageMetric;
+	steps: UsageMetric;
+	interrupt_error_count: UsageMetric;
+	model_failed_count: UsageMetric;
+	tool_failed_count: UsageMetric;
+	runtime_ms: UsageMetric;
 }
 
-/** Header totals come from the aggregates: token columns sum `items[].tokens`, the call total is `total_call_count`. */
-export interface UsagePage<TItem> {
-	items: TItem[];
-	/** Total rows across all pages (the paging count). */
-	total: number;
-	/** Total calls across all pages (the headline "N calls" figure). */
-	total_call_count: number;
-	page_no: number;
-	page_size: number;
-	data_updated_at: number;
+/**
+ * One aggregated model row. `model_name` is null when the provider could not
+ * attribute the calls; ordering is not guaranteed.
+ */
+export interface UsageModelRow {
+	model_name: string | null;
+	usage: UsageModelMetrics;
 }
 
-export type ModelUsagePage = UsagePage<ModelUsageItem>;
-export type ToolUsagePage = UsagePage<ToolUsageItem>;
+/**
+ * One aggregated tool row. Rows are keyed by `source` + `tool_name`, so
+ * same-name tools from different sources stay separate.
+ */
+export interface UsageToolRow {
+	source: string | null;
+	tool_name: string | null;
+	usage: UsageToolMetrics;
+}
+
+/**
+ * Aggregated usage for one scope. `total`, `models` and `tools` are three views
+ * of the same query — never add the total to the detail rows.
+ */
+export interface UsageSummary {
+	/** Effective window after the server aligned it to `granularity` (UTC+8). */
+	query_range: UsageTimeRange;
+	/** Latest known data refresh time; null when no statistics exist. */
+	data_updated_at: string | null;
+	usage: {
+		total: UsageTotal;
+		models: UsageModelRow[];
+		tools: UsageToolRow[];
+	};
+}
+
+export interface UsageSummaryResponse {
+	/** Server-side request id, kept for support triage. */
+	request_id: string;
+	data: UsageSummary;
+}
 
 export interface UsageQueryOptions {
 	signal?: AbortSignal;
