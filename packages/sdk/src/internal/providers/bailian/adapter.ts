@@ -76,7 +76,13 @@ import type { SessionThreadListOptions, SessionThreadPage } from "../../types/se
 import type { SkillFile } from "../../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../../types/skill-info.ts";
 import type { ResourceType } from "../../types/state.ts";
-import type { UsageQueryOptions, UsageSummaryRequest, UsageSummaryResponse } from "../../types/usage.ts";
+import type {
+	UsageQueryOptions,
+	UsageSummaryRequest,
+	UsageSummaryResponse,
+	UsageTrendRequest,
+	UsageTrendResponse,
+} from "../../types/usage.ts";
 import type {
 	CreateWebhookEndpointInput,
 	UpdateWebhookEndpointInput,
@@ -144,7 +150,7 @@ import {
 } from "./mapper.ts";
 import { streamBailianSessionEvents } from "./session-stream.ts";
 import { listBailianSessionThreadEvents, listBailianSessionThreads } from "./session-threads.ts";
-import { getBailianUsageSummary } from "./usage.ts";
+import { getBailianUsageSummary, getBailianUsageTrend } from "./usage.ts";
 
 export class BailianAdapter implements ProviderAdapter {
 	readonly name = "bailian" as const;
@@ -1310,6 +1316,12 @@ export class BailianAdapter implements ProviderAdapter {
 
 	getUsageSummary(request: UsageSummaryRequest, options?: UsageQueryOptions): Promise<UsageSummaryResponse> {
 		return getBailianUsageSummary(this.client, request, options);
+	}
+
+	// --- Usage trend (app-control usage.trend) ---
+
+	getUsageTrend(request: UsageTrendRequest, options?: UsageQueryOptions): Promise<UsageTrendResponse> {
+		return getBailianUsageTrend(this.client, request, options);
 	}
 
 	// --- Files ---

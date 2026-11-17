@@ -166,6 +166,67 @@ test("a response without data is rejected instead of yielding an empty summary",
 	);
 });
 
+test("session summary may omit query_range and passes it through as absent", async () => {
+	setDefaultFetch(async () =>
+		Response.json({
+			request_id: "req_session_no_range",
+			data: {
+				data_updated_at: null,
+				usage: { total: summary.usage.total, models: [], tools: [] },
+			},
+		}),
+	);
+	const result = await getUsageSummary(context(), { dimension: "session", session_id: "sesn_one" });
+	expect(result.data.query_range).toBeUndefined();
+});
+
+test("time_range rejects fractional seconds and offset-less local times", async () => {
+	let requests = 0;
+	setDefaultFetch(async () => {
+		requests += 1;
+		return Response.json(envelope);
+	});
+	const ctx = context();
+	const reject = (request: UsageSummaryRequest, message: string) =>
+		expect(getUsageSummary(ctx, request)).rejects.toThrow(message);
+
+	await reject(
+		{
+			dimension: "workspace",
+			time_range: { start_time: "2026-11-02T10:00:00.500+08:00", end_time: timeRange.end_time },
+		},
+		"RFC 3339",
+	);
+	await reject(
+		{ dimension: "workspace", time_range: { start_time: "2026-11-02T10:00:00", end_time: timeRange.end_time } },
+		"RFC 3339",
+	);
+	expect(requests).toBe(0);
+});
+
+test("blank identifiers, blank agent_version and explicit-null granularity are rejected", async () => {
+	let requests = 0;
+	setDefaultFetch(async () => {
+		requests += 1;
+		return Response.json(envelope);
+	});
+	const ctx = context();
+	const reject = (request: UsageSummaryRequest, message: string) =>
+		expect(getUsageSummary(ctx, request)).rejects.toThrow(message);
+
+	await reject({ dimension: "agent", agent_id: "  ", time_range: timeRange }, "requires agent_id");
+	await reject({ dimension: "session", session_id: " " }, "requires session_id");
+	await reject(
+		{ dimension: "agent", agent_id: "agent_one", agent_version: " ", time_range: timeRange },
+		"agent_version",
+	);
+	await reject(
+		{ dimension: "workspace", time_range: timeRange, granularity: null as never },
+		"omitted rather than null",
+	);
+	expect(requests).toBe(0);
+});
+
 test("unsupported providers reject usage summary before making a request", async () => {
 	const ctx = createManagedApiContext({ providers: { claude: { api_key: "test" } } });
 	let requests = 0;

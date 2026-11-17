@@ -376,9 +376,10 @@ export type {
 export type { ProviderFileInfo } from "./internal/types/file.ts";
 export { listSessionThreadEvents, listSessionThreads } from "./internal/core/session-thread-runtime.ts";
 export type { SessionThread, SessionThreadListOptions, SessionThreadPage } from "./internal/types/session-thread.ts";
-export { getUsageSummary } from "./internal/core/usage-runtime.ts";
+export { getUsageSummary, getUsageTrend } from "./internal/core/usage-runtime.ts";
 export type { UsageRuntimeOptions } from "./internal/core/usage-runtime.ts";
 export type {
+	UsageBreakdown,
 	UsageDimension,
 	UsageGranularity,
 	UsageMetric,
@@ -392,6 +393,11 @@ export type {
 	UsageToolMetrics,
 	UsageToolRow,
 	UsageTotal,
+	UsageTrend,
+	UsageTrendDimension,
+	UsageTrendPoint,
+	UsageTrendRequest,
+	UsageTrendResponse,
 } from "./internal/types/usage.ts";
 export type { ProviderSkillInfo } from "./internal/types/skill-info.ts";
 
