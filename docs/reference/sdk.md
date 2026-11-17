@@ -246,38 +246,61 @@ Session 的单一事件流获取；子线程状态不表示主会话执行结束
 `SessionThreadListOptions` 和 `SessionThreadPage` 也通过 `./session-events` 导出类型，
 浏览器可复用合同而无需加载 SDK 主入口或 Provider 凭据。
 
-### 资源用量汇总
+### 资源用量汇总与趋势
 
-用量汇总对接百炼 app-control 的 `usage.summary`，REST 映射为 AgentStudio 的
-`POST /api/v1/agentstudio/usage/summary`：一次请求同时返回整段范围的 `total`、模型明细
-`models[]` 与工具明细 `tools[]`，不存在按表分页或按名称筛选的端点。
+用量对接百炼 app-control 的 `usage.summary` / `usage.trend`，REST 映射为 AgentStudio 的
+`POST /api/v1/agentstudio/usage/summary` 与 `POST /api/v1/agentstudio/usage/trend`。汇总一次
+请求返回整段范围的 `total`、模型明细 `models[]` 与工具明细 `tools[]`，不存在按表分页或按
+名称筛选的端点；趋势按 `hour/day/month` 分桶返回同样的三个视图，用 `page_token` 游标分页。
 
 | SDK 方法 | 百炼路径 | 结果 |
 | --- | --- | --- |
 | `getUsageSummary(ctx, request, options)` | `POST /usage/summary` | `UsageSummaryResponse` |
+| `getUsageTrend(ctx, request, options)` | `POST /usage/trend` | `UsageTrendResponse` |
 
-`request` 用 `dimension` 区分三种维度：`workspace`（只传 `time_range` 与可选 `granularity`）、
-`agent`（必传 `agent_id` 与 `time_range`，可传 `agent_version`）、`session`（只传
-`session_id`；`time_range` 与 `granularity` 禁止，复用 Session 自身窗口）。`time_range`
-必须是带时区偏移的 RFC 3339 字符串（响应统一 `+08:00`，区间左闭右开）；`granularity` 取
-`hour/day/month`，缺省由服务端按跨度选择。校验在发起请求前完成。
+汇总的 `request` 用 `dimension` 区分三种维度：`workspace`（只传 `time_range` 与可选
+`granularity`）、`agent`（必传 `agent_id` 与 `time_range`，可传 `agent_version`）、
+`session`（只传 `session_id`；`time_range` 与 `granularity` 禁止，复用 Session 自身窗口）。
+趋势没有 `session` 维度：`workspace` 只传 `time_range` 与可选 `granularity`；`agent` 必传
+`agent_id` 与 `time_range`，可传 `agent_version`。趋势翻页用 `page_size`（1..100，缺省 100）
+与上一页返回的 `next_page_token`；游标有效期 15 分钟，过期返回 `410`，需从第一页重新开始。
 
-响应 `data` 含 `query_range`（服务端按粒度对齐后的实际区间）、`data_updated_at`（无记录为
-`null`）与 `usage`；`usage.total`、`models`、`tools` 是同一范围的三个视图，不得相加。每个
-指标都是 `{ value, unit }`：未知指标 `value` 为 `null` 且保留 `unit`，已知零值为 `0`。单次
-响应模型与工具明细合计上限 10 万条。当前仅百炼实现，其他 Provider 返回明确的 unsupported
-错误；支持 `AbortSignal`。
+`time_range` 必须是秒级、带时区偏移的 RFC 3339 字符串（拒绝小数秒与无偏移本地时间；响应
+统一 `+08:00`，区间左闭右开）；`granularity` 取 `hour/day/month`，缺省由服务端按跨度选择，
+显式传 `null` 会被拒绝。校验在发起请求前完成。
+
+汇总响应 `data` 含 `query_range`（服务端按粒度对齐后的实际区间；`session` 维度复用会话
+自身窗口，可能没有该字段）、`data_updated_at`（无记录为 `null`）与 `usage`；
+`usage.total`、`models`、`tools` 是同一范围的三个视图，不得相加。每个指标都是
+`{ value, unit }`：未知指标 `value` 为 `null` 且保留 `unit`，已知零值为 `0`。汇总单次响应
+模型与工具明细合计上限 10 万条。
+
+趋势响应 `data` 含 `query_range`、`granularity`、`points[]`（每个桶的 `start_time`、
+`end_time` 与同样的 `total/models/tools` 视图）以及 `has_more` / `next_page_token`。
+没有数据的桶直接缺省，不会补零；不要依赖桶数量，按 `start_time` 渲染。当前仅百炼实现，
+其他 Provider 返回明确的 unsupported 错误；两个入口都支持 `AbortSignal`。
 
 ```ts
-import { getUsageSummary } from "@openagentpack/sdk";
+import { getUsageSummary, getUsageTrend } from "@openagentpack/sdk";
 
-const summary = await getUsageSummary(ctx, {
-  dimension: "workspace",
-  time_range: { start_time: "2026-11-02T10:00:00+08:00", end_time: "2026-11-02T15:00:00+08:00" },
-});
+const window = { start_time: "2026-11-02T10:00:00+08:00", end_time: "2026-11-02T15:00:00+08:00" };
+
+const summary = await getUsageSummary(ctx, { dimension: "workspace", time_range: window });
 const { total, models, tools } = summary.data.usage;
 
 const sessionSummary = await getUsageSummary(ctx, { dimension: "session", session_id: sessionId });
+
+let page = await getUsageTrend(ctx, { dimension: "workspace", time_range: window, granularity: "hour" });
+const points = [...page.data.points];
+while (page.data.has_more && page.data.next_page_token) {
+  page = await getUsageTrend(ctx, {
+    dimension: "workspace",
+    time_range: window,
+    granularity: "hour",
+    page_token: page.data.next_page_token,
+  });
+  points.push(...page.data.points);
+}
 ```
 
 ### 自建后端原始事件的浏览器转换
@@ -358,7 +381,7 @@ The public entry exposes domain workflows that return structured domain results 
 | Files & skills | `uploadFile`, `listFiles`, `getFileInfo`, `getFileDownloadUrl`, `deleteFile`, `createSkillFromFileId`, `listSkills`, `getSkillInfo`, `deleteSkill` |
 | Deployment | `listDeploymentsForContext`, `getDeploymentDetailsForContext`, `getDeploymentRuntimeProviderForContext`, `runDeploymentForContext` |
 | Models | `listProviderModelsForContext`, `listProviderNames` |
-| Usage | `getUsageSummary` |
+| Usage | `getUsageSummary`, `getUsageTrend` |
 | State | `StateManager`, `LocalFileStateBackend`, `parseStateAddress` |
 | Runtime context | `createProjectRuntime`, `readProjectRuntime`, `writeProjectRuntime` |
 | Provider config | `resolveProviderConfigFromEnv`, `applyProviderConfigToEnv`, `loadDotEnv`, `bootstrapRuntimeCredentials` (and sync variants), `resolveActiveProvider`, `AGENTS_CONFIG_PROVIDERS`, `AGENTS_PROVIDER_FIELDS` |

@@ -74,7 +74,13 @@ import type { SessionThreadListOptions, SessionThreadPage } from "../types/sessi
 import type { SkillFile } from "../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
-import type { UsageQueryOptions, UsageSummaryRequest, UsageSummaryResponse } from "../types/usage.ts";
+import type {
+	UsageQueryOptions,
+	UsageSummaryRequest,
+	UsageSummaryResponse,
+	UsageTrendRequest,
+	UsageTrendResponse,
+} from "../types/usage.ts";
 import type {
 	CreateWebhookEndpointInput,
 	UpdateWebhookEndpointInput,
@@ -489,6 +495,13 @@ export interface ProviderAdapter {
 	 * the runtime seam.
 	 */
 	getUsageSummary?(request: UsageSummaryRequest, options?: UsageQueryOptions): Promise<UsageSummaryResponse>;
+
+	/**
+	 * Bucketed usage trend for workspace/agent (app-control usage.trend).
+	 * Cursor-paged via `page_size`/`page_token`; Bailian-only today, other
+	 * providers reject at the runtime seam.
+	 */
+	getUsageTrend?(request: UsageTrendRequest, options?: UsageQueryOptions): Promise<UsageTrendResponse>;
 
 	/**
 	 * Download all remote skills and return their extracted file content.
