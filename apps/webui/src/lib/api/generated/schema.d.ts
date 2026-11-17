@@ -2765,7 +2765,7 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	"/api/usage/models": {
+	"/api/usage/summary": {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -2774,23 +2774,7 @@ export interface paths {
 		};
 		get?: never;
 		put?: never;
-		post: operations["listModelUsage"];
-		delete?: never;
-		options?: never;
-		head?: never;
-		patch?: never;
-		trace?: never;
-	};
-	"/api/usage/tools": {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		get?: never;
-		put?: never;
-		post: operations["listToolUsage"];
+		post: operations["getUsageSummary"];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -3493,145 +3477,91 @@ export interface components {
 			result?: unknown;
 			error?: string;
 		};
-		ModelUsagePage: {
-			items: components["schemas"]["ModelUsageItem"][];
-			/** @description Total rows across all pages. */
-			total: number;
-			/** @description Total calls across all pages. */
-			total_call_count: number;
-			page_no: number;
-			page_size: number;
-			/** @description Data freshness, Unix epoch milliseconds. */
-			data_updated_at: number;
+		UsageSummaryResponse: {
+			/** @description Server-side request id, kept for support triage. */
+			request_id: string;
+			data: components["schemas"]["UsageSummary"];
 		};
-		ModelUsageItem: {
-			workspace_id: string;
-			model_name: string;
-			call_count: number;
-			failed_count: number;
-			tokens: components["schemas"]["UsageTokenStats"];
+		UsageSummary: {
+			query_range?: components["schemas"]["UsageTimeRange"];
+			/** @description Data freshness; null when no statistics exist. */
+			data_updated_at: string | null;
+			usage: {
+				total: components["schemas"]["UsageTotal"];
+				models: components["schemas"]["UsageModelRow"][];
+				tools: components["schemas"]["UsageToolRow"][];
+			};
 		};
-		UsageTokenStats: {
-			input_tokens: number;
-			output_tokens: number;
-			cache_read_tokens: number;
-			cache_creation_tokens: number;
-			total_tokens: number;
-			cache_hit_ratio: number;
-		};
-		ListModelUsageRequest: {
-			scope: components["schemas"]["UsageScope"];
-			time_range?: components["schemas"]["UsageTimeRange"];
-			/** @description Exact model name; omitted/null means all models. */
-			model_name?: string | null;
-			/**
-			 * @description 1-based page number.
-			 * @default 1
-			 */
-			page_no: number;
-			/**
-			 * @description Page size, 1..100.
-			 * @default 20
-			 */
-			page_size: number;
-			/**
-			 * @default desc
-			 * @enum {string}
-			 */
-			sort_order: "asc" | "desc";
-			/**
-			 * @default call_count
-			 * @enum {string}
-			 */
-			sort_by: "call_count" | "failed_count" | "input_tokens" | "output_tokens";
-		};
-		UsageScope:
-			| {
-					/**
-					 * @description Aggregated usage across the listed workspaces.
-					 * @enum {string}
-					 */
-					type: "workspace";
-					/** @description Workspaces to aggregate; at least one is required. */
-					workspace_ids: string[];
-					/** @description Narrow the workspace aggregation to one Agent. */
-					agent_id?: string;
-			  }
-			| {
-					/**
-					 * @description Usage of one Agent (optionally a pinned version).
-					 * @enum {string}
-					 */
-					type: "agent";
-					agent_id: string;
-					/** @description Optional single-workspace pin; omit to use the caller's identity workspace. */
-					workspace_ids?: string[];
-					agent_version?: string;
-			  }
-			| {
-					/**
-					 * @description Usage within one Session; its own window applies.
-					 * @enum {string}
-					 */
-					type: "session";
-					session_id: string;
-			  };
 		UsageTimeRange: {
-			/** @description Window start, Unix epoch milliseconds. */
-			start_time: number;
-			/** @description Window end, Unix epoch milliseconds. */
-			end_time: number;
+			/** @description Window start, RFC 3339 with an explicit offset (UTC+8 aligned). */
+			start_time: string;
+			/** @description Window end, RFC 3339 with an explicit offset (UTC+8 aligned). */
+			end_time: string;
 		};
-		ToolUsagePage: {
-			items: components["schemas"]["ToolUsageItem"][];
-			/** @description Total rows across all pages. */
-			total: number;
-			/** @description Total calls across all pages. */
-			total_call_count: number;
-			page_no: number;
-			page_size: number;
-			/** @description Data freshness, Unix epoch milliseconds. */
-			data_updated_at: number;
+		UsageTotal: {
+			input_tokens: components["schemas"]["UsageMetric"];
+			output_tokens: components["schemas"]["UsageMetric"];
+			total_tokens: components["schemas"]["UsageMetric"];
+			cache_read_tokens: components["schemas"]["UsageMetric"];
+			cache_creation_tokens: components["schemas"]["UsageMetric"];
+			cache_hit_ratio: components["schemas"]["UsageMetric"];
+			model_call_count: components["schemas"]["UsageMetric"];
+			tool_call_count: components["schemas"]["UsageMetric"];
+			builtin_tool_call_count: components["schemas"]["UsageMetric"];
+			mcp_tool_call_count: components["schemas"]["UsageMetric"];
+			custom_tool_call_count: components["schemas"]["UsageMetric"];
+			turns: components["schemas"]["UsageMetric"];
+			steps: components["schemas"]["UsageMetric"];
+			interrupt_error_count: components["schemas"]["UsageMetric"];
+			model_failed_count: components["schemas"]["UsageMetric"];
+			tool_failed_count: components["schemas"]["UsageMetric"];
+			runtime_ms: components["schemas"]["UsageMetric"];
 		};
-		ToolUsageItem: {
-			workspace_id: string;
-			tool_name: string;
+		UsageMetric: {
+			value: number | null;
+			unit: string;
+		};
+		UsageModelRow: {
+			/** @description Null when the provider could not attribute the calls. */
+			model_name: string | null;
+			usage: {
+				input_tokens: components["schemas"]["UsageMetric"];
+				output_tokens: components["schemas"]["UsageMetric"];
+				total_tokens: components["schemas"]["UsageMetric"];
+				cache_read_tokens: components["schemas"]["UsageMetric"];
+				cache_creation_tokens: components["schemas"]["UsageMetric"];
+				cache_hit_ratio: components["schemas"]["UsageMetric"];
+				call_count: components["schemas"]["UsageMetric"];
+				failed_count: components["schemas"]["UsageMetric"];
+			};
+		};
+		UsageToolRow: {
 			/** @description builtin | mcp | custom; unknown future values are preserved verbatim. */
-			source: string;
-			call_count: number;
-			failed_count: number;
+			source: string | null;
+			tool_name: string | null;
+			usage: {
+				call_count: components["schemas"]["UsageMetric"];
+				failed_count: components["schemas"]["UsageMetric"];
+			};
 		};
-		ListToolUsageRequest: {
-			scope: components["schemas"]["UsageScope"];
-			time_range?: components["schemas"]["UsageTimeRange"];
-			/**
-			 * @description Exact tool source; omitted/null means all sources.
-			 * @enum {string|null}
-			 */
-			source?: "builtin" | "mcp" | "custom" | null;
-			/** @description Exact tool name; omitted/null means all tools. */
-			tool_name?: string | null;
-			/**
-			 * @description 1-based page number.
-			 * @default 1
-			 */
-			page_no: number;
-			/**
-			 * @description Page size, 1..100.
-			 * @default 20
-			 */
-			page_size: number;
-			/**
-			 * @default desc
-			 * @enum {string}
-			 */
-			sort_order: "asc" | "desc";
-			/**
-			 * @default call_count
-			 * @enum {string}
-			 */
-			sort_by: "call_count" | "failed_count";
+		GetUsageSummaryRequest: {
+			dimension: components["schemas"]["UsageDimension"];
+			/** @description Required for the agent dimension; forbidden for session. */
+			agent_id?: string;
+			/** @description Only meaningful for the agent dimension; null means every version. */
+			agent_version?: string | null;
+			/** @description Required for the session dimension; forbidden otherwise. */
+			session_id?: string;
+			time_range?: components["schemas"]["UsageTimeRange"] & unknown;
+			granularity?: components["schemas"]["UsageGranularity"];
 		};
+		/** @enum {string} */
+		UsageDimension: "workspace" | "agent" | "session";
+		/**
+		 * @description Only for workspace/agent; forbidden for session.
+		 * @enum {string}
+		 */
+		UsageGranularity: "hour" | "day" | "month";
 	};
 	responses: never;
 	parameters: never;
@@ -3641,7 +3571,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-	listModelUsage: {
+	getUsageSummary: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -3650,95 +3580,17 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				"application/json": components["schemas"]["ListModelUsageRequest"];
+				"application/json": components["schemas"]["GetUsageSummaryRequest"];
 			};
 		};
 		responses: {
-			/** @description Paged aggregated model usage for the requested scope */
+			/** @description Aggregated usage for the requested dimension: scope totals plus model/tool detail views */
 			200: {
 				headers: {
 					[name: string]: unknown;
 				};
 				content: {
-					"application/json": components["schemas"]["ModelUsagePage"];
-				};
-			};
-			/** @description Bad request */
-			400: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ErrorResponse"];
-				};
-			};
-			/** @description Forbidden */
-			403: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ErrorResponse"];
-				};
-			};
-			/** @description Not found */
-			404: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ErrorResponse"];
-				};
-			};
-			/** @description Conflict */
-			409: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ErrorResponse"];
-				};
-			};
-			/** @description Unprocessable entity */
-			422: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ErrorResponse"];
-				};
-			};
-			/** @description Server error */
-			500: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ErrorResponse"];
-				};
-			};
-		};
-	};
-	listToolUsage: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		requestBody: {
-			content: {
-				"application/json": components["schemas"]["ListToolUsageRequest"];
-			};
-		};
-		responses: {
-			/** @description Paged aggregated tool usage for the requested scope */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					"application/json": components["schemas"]["ToolUsagePage"];
+					"application/json": components["schemas"]["UsageSummaryResponse"];
 				};
 			};
 			/** @description Bad request */
