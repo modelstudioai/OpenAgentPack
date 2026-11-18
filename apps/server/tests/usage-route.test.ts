@@ -172,6 +172,15 @@ describe("Workbench usage upstream error mapping", () => {
 		const body = (await response.json()) as { error: { message: string } };
 		expect(body.error.message).toContain("query_limit_exceeded");
 	});
+
+	test("returns 500 for a Bailian success response missing data", async () => {
+		setDefaultFetch(async () => Response.json({ request_id: "req_missing" }));
+
+		const response = await postSummary({ dimension: "workspace", time_range: validTimeRange });
+
+		expect(response.status).toBe(500);
+		expect(await response.json()).toEqual({ error: { message: "Usage summary response is missing `data`." } });
+	});
 });
 
 describe("Workbench usage request validation", () => {
@@ -190,6 +199,18 @@ describe("Workbench usage request validation", () => {
 		const response = await postSummary({
 			dimension: "workspace",
 			time_range: { start_time: "2026-11-02T10:00:00.500+08:00", end_time: validTimeRange.end_time },
+		});
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+
+	test("rejects hour 24 with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({
+			dimension: "workspace",
+			time_range: { ...validTimeRange, start_time: "2026-11-01T24:00:00+08:00" },
 		});
 
 		expect(response.status).toBe(400);

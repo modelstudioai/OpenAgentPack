@@ -1,5 +1,5 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
-import { ApiError, getUsageSummary, readProjectRuntime, UserError } from "@openagentpack/sdk";
+import { ApiError, getUsageSummary, readProjectRuntime } from "@openagentpack/sdk";
 import { errorResponses } from "@/schemas/common";
 import { GetUsageSummaryRequestSchema, UsageSummaryResponseSchema } from "@/schemas/usage";
 import { projectRuntimeManager } from "@/services/project-manager";
@@ -36,12 +36,8 @@ usageRoute.openapi(getUsageSummaryRoute, async (c) => {
 		});
 		return c.json(summary, 200);
 	} catch (error) {
-		// Bailian business errors keep the upstream status on ApiError (404 not_found,
-		// 400 query_limit_exceeded), and contract rejections are the caller's fault.
-		// Neither may fall through to the central handler's 500 default; the status
-		// rides along for `app.onError` to format.
+		// Preserve Bailian's HTTP status for the central error handler.
 		if (error instanceof ApiError) throw statusError(error.message, error.statusCode);
-		if (error instanceof UserError) throw statusError(error.message, 400);
 		throw error;
 	}
 });

@@ -106,11 +106,12 @@ test("trend requests reject contract violations before any HTTP call", async () 
 		return Response.json(envelope);
 	});
 	const ctx = context();
-	const reject = (request: Record<string, unknown>, message: string) =>
+	const reject = (request: unknown, message: string) =>
 		expect(getUsageTrend(ctx, request as UsageTrendRequest)).rejects.toThrow(message);
 
-	await reject({ dimension: "session", time_range: timeRange } as never, "Unknown usage trend dimension");
-	await reject({ dimension: "workspace" } as never, "requires time_range");
+	await reject({ dimension: "session", time_range: timeRange }, "Unknown usage trend dimension");
+	await reject({ dimension: ["workspace"], time_range: timeRange }, "Unknown usage trend dimension");
+	await reject({ dimension: "workspace" }, "requires time_range");
 	await reject({ dimension: "workspace", agent_id: "agent_one", time_range: timeRange }, "forbids agent_id");
 	await reject({ dimension: "agent", time_range: timeRange }, "requires agent_id");
 	await reject({ dimension: "agent", agent_id: "  ", time_range: timeRange }, "requires agent_id");
@@ -135,6 +136,10 @@ test("trend requests reject contract violations before any HTTP call", async () 
 			dimension: "workspace",
 			time_range: { start_time: "2026-11-02 10:00:00", end_time: timeRange.end_time },
 		},
+		"RFC 3339",
+	);
+	await reject(
+		{ dimension: "workspace", time_range: { ...timeRange, start_time: "2026-11-01T24:00:00+08:00" } },
 		"RFC 3339",
 	);
 	await reject(

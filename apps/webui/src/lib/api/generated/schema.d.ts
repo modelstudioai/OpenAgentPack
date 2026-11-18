@@ -3556,7 +3556,8 @@ export interface components {
 					dimension: "agent";
 					/** @description Required for the agent dimension. */
 					agent_id: string;
-					agent_version?: string | unknown | unknown;
+					/** @description Pinned agent version. Null means every version. */
+					agent_version?: string | null;
 					time_range: components["schemas"]["UsageRequestTimeRange"] & unknown;
 					granularity?: components["schemas"]["UsageGranularity"];
 			  }

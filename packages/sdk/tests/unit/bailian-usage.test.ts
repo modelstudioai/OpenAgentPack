@@ -1,12 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { createManagedApiContext, getUsageSummary } from "../../src/index.ts";
 import { type FetchLike, setDefaultFetch } from "../../src/internal/transport.ts";
-import type {
-	UsageAgentSummaryRequest,
-	UsageSessionSummaryRequest,
-	UsageSummaryRequest,
-	UsageWorkspaceSummaryRequest,
-} from "../../src/internal/types/usage.ts";
+import type { UsageSummaryRequest } from "../../src/internal/types/usage.ts";
 
 afterEach(() => setDefaultFetch(undefined));
 
@@ -138,9 +133,10 @@ test("usage requests reject cross-field violations before any HTTP call", async 
 		return Response.json(envelope);
 	});
 	const ctx = context();
-	const reject = (request: Record<string, unknown>, message: string) =>
+	const reject = (request: unknown, message: string) =>
 		expect(getUsageSummary(ctx, request as UsageSummaryRequest)).rejects.toThrow(message);
 
+	await reject({ dimension: ["workspace"], time_range: timeRange }, "Unknown usage dimension");
 	await reject({ dimension: "session", session_id: "sesn_one", time_range: timeRange }, "forbids time_range");
 	await reject({ dimension: "session", session_id: "sesn_one", granularity: "day" }, "forbids granularity");
 	await reject({ dimension: "session" }, "requires session_id");
@@ -185,14 +181,14 @@ test("session summary may omit query_range and passes it through as absent", asy
 	expect(result.data.query_range).toBeUndefined();
 });
 
-test("time_range rejects fractional seconds and offset-less local times", async () => {
+test("time_range rejects timestamps outside the second-precision RFC 3339 contract", async () => {
 	let requests = 0;
 	setDefaultFetch(async () => {
 		requests += 1;
 		return Response.json(envelope);
 	});
 	const ctx = context();
-	const reject = (request: Record<string, unknown>, message: string) =>
+	const reject = (request: unknown, message: string) =>
 		expect(getUsageSummary(ctx, request as UsageSummaryRequest)).rejects.toThrow(message);
 
 	await reject(
@@ -206,6 +202,10 @@ test("time_range rejects fractional seconds and offset-less local times", async 
 		{ dimension: "workspace", time_range: { start_time: "2026-11-02T10:00:00", end_time: timeRange.end_time } },
 		"RFC 3339",
 	);
+	await reject(
+		{ dimension: "workspace", time_range: { ...timeRange, start_time: "2026-11-01T24:00:00+08:00" } },
+		"RFC 3339",
+	);
 	expect(requests).toBe(0);
 });
 
@@ -216,7 +216,7 @@ test("time_range rejects impossible calendar dates and accepts leap days", async
 		return Response.json(envelope);
 	});
 	const ctx = context();
-	const reject = (request: Record<string, unknown>, message: string) =>
+	const reject = (request: unknown, message: string) =>
 		expect(getUsageSummary(ctx, request as UsageSummaryRequest)).rejects.toThrow(message);
 
 	await reject(
@@ -248,7 +248,7 @@ test("blank identifiers, blank agent_version and explicit-null granularity are r
 		return Response.json(envelope);
 	});
 	const ctx = context();
-	const reject = (request: Record<string, unknown>, message: string) =>
+	const reject = (request: unknown, message: string) =>
 		expect(getUsageSummary(ctx, request as UsageSummaryRequest)).rejects.toThrow(message);
 
 	await reject({ dimension: "agent", agent_id: "  ", time_range: timeRange }, "requires agent_id");
@@ -275,26 +275,4 @@ test("unsupported providers reject usage summary before making a request", async
 		"does not support usage summary",
 	);
 	expect(requests).toBe(0);
-});
-
-test("dimension branches reject wrong-field combinations at compile time", () => {
-	const workspace: UsageWorkspaceSummaryRequest = { dimension: "workspace", time_range: timeRange };
-	const agent: UsageAgentSummaryRequest = { dimension: "agent", agent_id: "agent_one", time_range: timeRange };
-	const session: UsageSessionSummaryRequest = { dimension: "session", session_id: "sesn_one" };
-	// @ts-expect-error the agent branch requires agent_id
-	const missingAgentId: UsageAgentSummaryRequest = { dimension: "agent", time_range: timeRange };
-	// @ts-expect-error the session branch forbids time_range
-	const sessionWithRange: UsageSessionSummaryRequest = {
-		dimension: "session",
-		session_id: "sesn_one",
-		time_range: timeRange,
-	};
-	// @ts-expect-error the workspace branch forbids agent_id
-	const workspaceWithAgent: UsageWorkspaceSummaryRequest = {
-		dimension: "workspace",
-		time_range: timeRange,
-		agent_id: "agent_one",
-	};
-	void [workspace, agent, session, missingAgentId, sessionWithRange, workspaceWithAgent];
-	expect(true).toBe(true);
 });

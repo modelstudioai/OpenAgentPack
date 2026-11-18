@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { UserError } from "../../errors.ts";
 import type {
 	UsageQueryOptions,
@@ -24,9 +25,7 @@ const TREND_DIMENSIONS = new Set(["workspace", "agent"]);
 const GRANULARITIES = new Set(["hour", "day", "month"]);
 const MAX_PAGE_SIZE = 100;
 
-// Second precision with an explicit offset; fractional seconds and offset-less
-// local times are rejected by the contract before reaching the server.
-const RFC3339_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/;
+const RFC3339_SECONDS = z.regexes.datetime({ offset: true, precision: 0 });
 
 const blank = (value: string | null | undefined): boolean => value == null || value.trim() === "";
 
@@ -41,12 +40,12 @@ export function assertUsageRequest(request: UsageSummaryRequest): void {
 	// The branch types describe the happy path; the runtime guard inspects the raw
 	// fields so forbidden keys typed `never` stay observable for untyped callers.
 	const fields = request as unknown as Record<string, unknown>;
-	const dimension = String(fields.dimension);
-	if (!SUMMARY_DIMENSIONS.has(dimension)) {
-		throw new UserError(`Unknown usage dimension '${dimension}'.`);
+	const dimension = fields.dimension;
+	if (typeof dimension !== "string" || !SUMMARY_DIMENSIONS.has(dimension)) {
+		throw new UserError("Unknown usage dimension. Expected 'workspace', 'agent', or 'session'.");
 	}
 	assertGranularity(fields.granularity);
-	if (fields.dimension === "session") {
+	if (dimension === "session") {
 		assertSessionRequest(fields);
 		return;
 	}
@@ -58,7 +57,7 @@ export function assertUsageRequest(request: UsageSummaryRequest): void {
 	}
 	const range = fields.time_range as UsageTimeRange;
 	assertTimeRange(range.start_time, range.end_time);
-	if (fields.dimension === "agent") {
+	if (dimension === "agent") {
 		if (blank(fields.agent_id as string | null | undefined)) {
 			throw new UserError("Usage dimension 'agent' requires agent_id.");
 		}
@@ -76,9 +75,9 @@ export function assertUsageRequest(request: UsageSummaryRequest): void {
  */
 export function assertUsageTrendRequest(request: UsageTrendRequest): void {
 	const fields = request as unknown as Record<string, unknown>;
-	const dimension = String(fields.dimension);
-	if (!TREND_DIMENSIONS.has(dimension)) {
-		throw new UserError(`Unknown usage trend dimension '${dimension}'; trend supports 'workspace' and 'agent'.`);
+	const dimension = fields.dimension;
+	if (typeof dimension !== "string" || !TREND_DIMENSIONS.has(dimension)) {
+		throw new UserError("Unknown usage trend dimension. Expected 'workspace' or 'agent'.");
 	}
 	assertGranularity(fields.granularity);
 	if (!fields.time_range) {
@@ -86,7 +85,7 @@ export function assertUsageTrendRequest(request: UsageTrendRequest): void {
 	}
 	const range = fields.time_range as UsageTimeRange;
 	assertTimeRange(range.start_time, range.end_time);
-	if (fields.dimension === "agent") {
+	if (dimension === "agent") {
 		if (blank(fields.agent_id as string | null | undefined)) {
 			throw new UserError("Usage trend dimension 'agent' requires agent_id.");
 		}
@@ -135,23 +134,10 @@ function assertAgentVersion(agentVersion: string | null | undefined): void {
 	}
 }
 
-const CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})T/;
-
-/** `Date.parse` rolls impossible days over silently, so the calendar date is checked first. */
-function isRealCalendarDate(value: string): boolean {
-	const match = CALENDAR_DATE_PREFIX.exec(value);
-	if (!match) return false;
-	const year = Number(match[1]);
-	const month = Number(match[2]);
-	const day = Number(match[3]);
-	if (month < 1 || month > 12) return false;
-	return day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
 /** Second-precision RFC 3339 with an explicit offset; also rejects impossible dates and a reversed window. */
 function assertTimeRange(start: string, end: string): void {
 	const message =
-		"time_range must use second-precision RFC 3339 timestamps with an explicit offset, e.g. 2026-11-02T10:00:00+08:00.";
+		"time_range must use second-precision RFC 3339 timestamps with real calendar dates and an explicit offset.";
 	if (
 		typeof start !== "string" ||
 		typeof end !== "string" ||
@@ -159,11 +145,6 @@ function assertTimeRange(start: string, end: string): void {
 		!RFC3339_SECONDS.test(end)
 	) {
 		throw new UserError(message);
-	}
-	if (!isRealCalendarDate(start) || !isRealCalendarDate(end)) {
-		throw new UserError(
-			"time_range timestamps must name real calendar dates; impossible days like 2026-02-30 are rolled over silently by Date.parse.",
-		);
 	}
 	const startMs = Date.parse(start);
 	const endMs = Date.parse(end);

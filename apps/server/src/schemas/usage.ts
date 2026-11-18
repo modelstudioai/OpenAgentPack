@@ -15,29 +15,11 @@ export const UsageTimeRangeSchema = z
 
 export const UsageGranularitySchema = z.enum(["hour", "day", "month"]).openapi("UsageGranularity");
 
-// Request validation mirrors the SDK usage contract so malformed payloads get a 400
-// from the route schema instead of an SDK UserError surfacing as a 500: second-precision
-// RFC 3339 timestamps (fractional seconds and offset-less times rejected), blank
-// identifiers rejected, impossible calendar dates rejected, and one strict branch per
-// dimension so cross-dimension fields fail as unknown keys.
-const RFC3339_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/;
-const CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})T/;
-
-function isRealCalendarDate(value: string): boolean {
-	const match = CALENDAR_DATE_PREFIX.exec(value);
-	if (!match) return false;
-	const year = Number(match[1]);
-	const month = Number(match[2]);
-	const day = Number(match[3]);
-	if (month < 1 || month > 12) return false;
-	return day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
 const UsageTimestampSchema = z
 	.string()
 	.regex(
-		RFC3339_SECONDS,
-		"must be a second-precision RFC 3339 timestamp with an explicit offset, e.g. 2026-11-02T10:00:00+08:00.",
+		z.regexes.datetime({ offset: true, precision: 0 }),
+		"must be a second-precision RFC 3339 timestamp with a real calendar date and an explicit offset.",
 	);
 
 const UsageRequestTimeRangeSchema = z
@@ -61,12 +43,10 @@ const AgentSummaryRequestSchema = z
 	.object({
 		dimension: z.literal("agent"),
 		agent_id: nonBlank("agent_id must not be blank.").describe("Required for the agent dimension."),
-		agent_version: z
-			.union([
-				nonBlank("agent_version must be a version string or null.").describe("Pinned agent version."),
-				z.null().describe("Null means every version."),
-			])
-			.optional(),
+		agent_version: nonBlank("agent_version must be a version string or null.")
+			.nullable()
+			.optional()
+			.describe("Pinned agent version. Null means every version."),
 		time_range: UsageRequestTimeRangeSchema.describe("Required for the agent dimension."),
 		granularity: UsageGranularitySchema.optional().describe("Omit to let the server pick the bucket from the span."),
 	})
@@ -88,14 +68,6 @@ export const GetUsageSummaryRequestSchema = z
 	.superRefine((value, ctx) => {
 		if (value.dimension === "session") return;
 		const { start_time: start, end_time: end } = value.time_range;
-		if (!isRealCalendarDate(start) || !isRealCalendarDate(end)) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["time_range"],
-				message: "time_range timestamps must name real calendar dates.",
-			});
-			return;
-		}
 		if (Date.parse(start) >= Date.parse(end)) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
