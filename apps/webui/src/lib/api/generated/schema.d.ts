@@ -3544,21 +3544,37 @@ export interface components {
 				failed_count: components["schemas"]["UsageMetric"];
 			};
 		};
-		GetUsageSummaryRequest: {
-			dimension: components["schemas"]["UsageDimension"];
-			/** @description Required for the agent dimension; forbidden for session. */
-			agent_id?: string;
-			/** @description Only meaningful for the agent dimension; null means every version. */
-			agent_version?: string | null;
-			/** @description Required for the session dimension; forbidden otherwise. */
-			session_id?: string;
-			time_range?: components["schemas"]["UsageTimeRange"] & unknown;
-			granularity?: components["schemas"]["UsageGranularity"];
+		GetUsageSummaryRequest:
+			| {
+					/** @enum {string} */
+					dimension: "workspace";
+					time_range: components["schemas"]["UsageRequestTimeRange"];
+					granularity?: components["schemas"]["UsageGranularity"];
+			  }
+			| {
+					/** @enum {string} */
+					dimension: "agent";
+					/** @description Required for the agent dimension. */
+					agent_id: string;
+					agent_version?: string | unknown | unknown;
+					time_range: components["schemas"]["UsageRequestTimeRange"] & unknown;
+					granularity?: components["schemas"]["UsageGranularity"];
+			  }
+			| {
+					/** @enum {string} */
+					dimension: "session";
+					/** @description Required for the session dimension. */
+					session_id: string;
+			  };
+		/** @description Required for the workspace dimension. */
+		UsageRequestTimeRange: {
+			/** @description Window start, RFC 3339 with an explicit offset (UTC+8 aligned). */
+			start_time: string;
+			/** @description Window end, RFC 3339 with an explicit offset (UTC+8 aligned). */
+			end_time: string;
 		};
-		/** @enum {string} */
-		UsageDimension: "workspace" | "agent" | "session";
 		/**
-		 * @description Only for workspace/agent; forbidden for session.
+		 * @description Omit to let the server pick the bucket from the span.
 		 * @enum {string}
 		 */
 		UsageGranularity: "hour" | "day" | "month";

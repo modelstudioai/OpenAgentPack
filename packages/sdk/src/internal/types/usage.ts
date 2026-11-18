@@ -22,35 +22,78 @@ export interface UsageTimeRange {
 	end_time: string;
 }
 
-export interface UsageSummaryRequest {
-	dimension: UsageDimension;
-	/** Required for the `agent` dimension; forbidden for `session`. */
-	agent_id?: string;
-	/** Only meaningful for the `agent` dimension; null means every version. */
-	agent_version?: string | null;
-	/** Required for the `session` dimension; forbidden for `workspace`/`agent`. */
-	session_id?: string;
-	/** Required for `workspace`/`agent`; forbidden for `session` (the Session window is used). */
-	time_range?: UsageTimeRange;
-	/** Only for `workspace`/`agent`; forbidden for `session`. */
-	granularity?: UsageGranularity;
-}
-
-/** Bucketed trend for `workspace`/`agent`; `session` has no trend dimension. */
-export interface UsageTrendRequest {
-	dimension: UsageTrendDimension;
-	/** Required for the `agent` dimension; forbidden for `workspace`. */
-	agent_id?: string;
-	/** Only meaningful for the `agent` dimension; null means every version. */
-	agent_version?: string | null;
+/** `workspace` scope: window aggregation only; no agent or session narrowing. */
+export interface UsageWorkspaceSummaryRequest {
+	dimension: "workspace";
 	time_range: UsageTimeRange;
 	/** Omit to let the server pick the bucket from the span; never send null. */
 	granularity?: UsageGranularity;
+	agent_id?: never;
+	agent_version?: never;
+	session_id?: never;
+}
+
+/** One Agent (optionally a pinned version); Session narrowing is not accepted. */
+export interface UsageAgentSummaryRequest {
+	dimension: "agent";
+	/** Required for the `agent` dimension. */
+	agent_id: string;
+	/** Null means every version. */
+	agent_version?: string | null;
+	time_range: UsageTimeRange;
+	granularity?: UsageGranularity;
+	session_id?: never;
+}
+
+/** One Session's lifecycle totals; the Session's own window is used. */
+export interface UsageSessionSummaryRequest {
+	dimension: "session";
+	/** Required for the `session` dimension. */
+	session_id: string;
+	time_range?: never;
+	granularity?: never;
+	agent_id?: never;
+	agent_version?: never;
+}
+
+/**
+ * Summary request branches per dimension: a missing required field or a forbidden
+ * cross-dimension field is a compile error, not just a runtime rejection. The
+ * runtime contract checks stay in place for untyped callers.
+ */
+export type UsageSummaryRequest = UsageWorkspaceSummaryRequest | UsageAgentSummaryRequest | UsageSessionSummaryRequest;
+
+/** Cursor pagination shared by both trend branches. */
+export interface UsageTrendPageOptions {
 	/** Page size 1..100; omitted means the server default (100). */
 	page_size?: number;
 	/** Opaque cursor from the previous page's `next_page_token`; valid for 15 minutes. */
 	page_token?: string;
 }
+
+/** `workspace` trend branch: window aggregation only. */
+export interface UsageWorkspaceTrendRequest extends UsageTrendPageOptions {
+	dimension: "workspace";
+	time_range: UsageTimeRange;
+	/** Omit to let the server pick the bucket from the span; never send null. */
+	granularity?: UsageGranularity;
+	agent_id?: never;
+	agent_version?: never;
+}
+
+/** `agent` trend branch: one Agent (optionally a pinned version). */
+export interface UsageAgentTrendRequest extends UsageTrendPageOptions {
+	dimension: "agent";
+	/** Required for the `agent` dimension. */
+	agent_id: string;
+	/** Null means every version. */
+	agent_version?: string | null;
+	time_range: UsageTimeRange;
+	granularity?: UsageGranularity;
+}
+
+/** Bucketed trend for `workspace`/`agent`; `session` has no trend dimension. */
+export type UsageTrendRequest = UsageWorkspaceTrendRequest | UsageAgentTrendRequest;
 
 /**
  * Every indicator carries its own unit. An unknown indicator keeps its unit with a

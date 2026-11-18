@@ -15,66 +15,92 @@ export const UsageTimeRangeSchema = z
 
 export const UsageGranularitySchema = z.enum(["hour", "day", "month"]).openapi("UsageGranularity");
 
-export const GetUsageSummaryRequestSchema = z
+// Request validation mirrors the SDK usage contract so malformed payloads get a 400
+// from the route schema instead of an SDK UserError surfacing as a 500: second-precision
+// RFC 3339 timestamps (fractional seconds and offset-less times rejected), blank
+// identifiers rejected, impossible calendar dates rejected, and one strict branch per
+// dimension so cross-dimension fields fail as unknown keys.
+const RFC3339_SECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/;
+const CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})T/;
+
+function isRealCalendarDate(value: string): boolean {
+	const match = CALENDAR_DATE_PREFIX.exec(value);
+	if (!match) return false;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	if (month < 1 || month > 12) return false;
+	return day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+const UsageTimestampSchema = z
+	.string()
+	.regex(
+		RFC3339_SECONDS,
+		"must be a second-precision RFC 3339 timestamp with an explicit offset, e.g. 2026-11-02T10:00:00+08:00.",
+	);
+
+const UsageRequestTimeRangeSchema = z
 	.object({
-		dimension: UsageDimensionSchema,
-		agent_id: z.string().optional().describe("Required for the agent dimension; forbidden for session."),
-		agent_version: z.string().nullish().describe("Only meaningful for the agent dimension; null means every version."),
-		session_id: z.string().optional().describe("Required for the session dimension; forbidden otherwise."),
-		time_range: UsageTimeRangeSchema.optional().describe("Required for workspace/agent; forbidden for session."),
-		granularity: UsageGranularitySchema.optional().describe("Only for workspace/agent; forbidden for session."),
+		start_time: UsageTimestampSchema.describe("Window start, RFC 3339 with an explicit offset (UTC+8 aligned)."),
+		end_time: UsageTimestampSchema.describe("Window end, RFC 3339 with an explicit offset (UTC+8 aligned)."),
 	})
+	.openapi("UsageRequestTimeRange");
+
+const nonBlank = (message: string) => z.string().refine((value) => value.trim() !== "", message);
+
+const WorkspaceSummaryRequestSchema = z
+	.object({
+		dimension: z.literal("workspace"),
+		time_range: UsageRequestTimeRangeSchema.describe("Required for the workspace dimension."),
+		granularity: UsageGranularitySchema.optional().describe("Omit to let the server pick the bucket from the span."),
+	})
+	.strict();
+
+const AgentSummaryRequestSchema = z
+	.object({
+		dimension: z.literal("agent"),
+		agent_id: nonBlank("agent_id must not be blank.").describe("Required for the agent dimension."),
+		agent_version: z
+			.union([
+				nonBlank("agent_version must be a version string or null.").describe("Pinned agent version."),
+				z.null().describe("Null means every version."),
+			])
+			.optional(),
+		time_range: UsageRequestTimeRangeSchema.describe("Required for the agent dimension."),
+		granularity: UsageGranularitySchema.optional().describe("Omit to let the server pick the bucket from the span."),
+	})
+	.strict();
+
+const SessionSummaryRequestSchema = z
+	.object({
+		dimension: z.literal("session"),
+		session_id: nonBlank("session_id must not be blank.").describe("Required for the session dimension."),
+	})
+	.strict();
+
+export const GetUsageSummaryRequestSchema = z
+	.discriminatedUnion("dimension", [
+		WorkspaceSummaryRequestSchema,
+		AgentSummaryRequestSchema,
+		SessionSummaryRequestSchema,
+	])
 	.superRefine((value, ctx) => {
-		if (value.dimension === "session") {
-			if (value.agent_id) {
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					path: ["agent_id"],
-					message: "agent_id is forbidden for session dimension.",
-				});
-			}
-			if (value.time_range) {
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					path: ["time_range"],
-					message: "time_range is forbidden for session dimension; the Session's own window is used.",
-				});
-			}
-			if (value.granularity) {
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					path: ["granularity"],
-					message: "granularity is forbidden for session dimension.",
-				});
-			}
-			if (!value.session_id) {
-				ctx.addIssue({
-					code: z.ZodIssueCode.custom,
-					path: ["session_id"],
-					message: "session_id is required for session dimension.",
-				});
-			}
-			return;
-		}
-		if (value.session_id) {
-			ctx.addIssue({
-				code: z.ZodIssueCode.custom,
-				path: ["session_id"],
-				message: "session_id is forbidden for workspace/agent dimension.",
-			});
-		}
-		if (!value.time_range) {
+		if (value.dimension === "session") return;
+		const { start_time: start, end_time: end } = value.time_range;
+		if (!isRealCalendarDate(start) || !isRealCalendarDate(end)) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
 				path: ["time_range"],
-				message: `time_range is required for ${value.dimension} dimension.`,
+				message: "time_range timestamps must name real calendar dates.",
 			});
+			return;
 		}
-		if (value.dimension === "agent" && !value.agent_id) {
+		if (Date.parse(start) >= Date.parse(end)) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				path: ["agent_id"],
-				message: "agent_id is required for agent dimension.",
+				path: ["time_range", "end_time"],
+				message: "time_range start_time must be before end_time.",
 			});
 		}
 	})

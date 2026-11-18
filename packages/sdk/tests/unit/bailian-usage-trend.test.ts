@@ -106,8 +106,8 @@ test("trend requests reject contract violations before any HTTP call", async () 
 		return Response.json(envelope);
 	});
 	const ctx = context();
-	const reject = (request: UsageTrendRequest, message: string) =>
-		expect(getUsageTrend(ctx, request)).rejects.toThrow(message);
+	const reject = (request: Record<string, unknown>, message: string) =>
+		expect(getUsageTrend(ctx, request as UsageTrendRequest)).rejects.toThrow(message);
 
 	await reject({ dimension: "session", time_range: timeRange } as never, "Unknown usage trend dimension");
 	await reject({ dimension: "workspace" } as never, "requires time_range");
@@ -136,6 +136,13 @@ test("trend requests reject contract violations before any HTTP call", async () 
 			time_range: { start_time: "2026-11-02 10:00:00", end_time: timeRange.end_time },
 		},
 		"RFC 3339",
+	);
+	await reject(
+		{
+			dimension: "workspace",
+			time_range: { start_time: "2026-02-30T10:00:00+08:00", end_time: timeRange.end_time },
+		},
+		"real calendar dates",
 	);
 	await reject(
 		{ dimension: "workspace", time_range: { start_time: timeRange.end_time, end_time: timeRange.start_time } },

@@ -3,6 +3,7 @@ import type {
 	UsageQueryOptions,
 	UsageSummaryRequest,
 	UsageSummaryResponse,
+	UsageTimeRange,
 	UsageTrendRequest,
 	UsageTrendResponse,
 } from "../../types/usage.ts";
@@ -37,27 +38,34 @@ const blank = (value: string | null | undefined): boolean => value == null || va
  * - `granularity` is only valid for `workspace`/`agent`.
  */
 export function assertUsageRequest(request: UsageSummaryRequest): void {
-	if (!SUMMARY_DIMENSIONS.has(request.dimension)) {
-		throw new UserError(`Unknown usage dimension '${request.dimension}'.`);
+	// The branch types describe the happy path; the runtime guard inspects the raw
+	// fields so forbidden keys typed `never` stay observable for untyped callers.
+	const fields = request as unknown as Record<string, unknown>;
+	const dimension = String(fields.dimension);
+	if (!SUMMARY_DIMENSIONS.has(dimension)) {
+		throw new UserError(`Unknown usage dimension '${dimension}'.`);
 	}
-	assertGranularity(request.granularity);
-	if (request.dimension === "session") {
-		assertSessionRequest(request);
+	assertGranularity(fields.granularity);
+	if (fields.dimension === "session") {
+		assertSessionRequest(fields);
 		return;
 	}
-	if (request.session_id !== undefined) {
-		throw new UserError(`Usage dimension '${request.dimension}' forbids session_id.`);
+	if (fields.session_id !== undefined) {
+		throw new UserError(`Usage dimension '${dimension}' forbids session_id.`);
 	}
-	if (!request.time_range) {
-		throw new UserError(`Usage dimension '${request.dimension}' requires time_range.`);
+	if (!fields.time_range) {
+		throw new UserError(`Usage dimension '${dimension}' requires time_range.`);
 	}
-	assertTimeRange(request.time_range.start_time, request.time_range.end_time);
-	if (request.dimension === "agent") {
-		if (blank(request.agent_id)) throw new UserError("Usage dimension 'agent' requires agent_id.");
-		assertAgentVersion(request.agent_version);
+	const range = fields.time_range as UsageTimeRange;
+	assertTimeRange(range.start_time, range.end_time);
+	if (fields.dimension === "agent") {
+		if (blank(fields.agent_id as string | null | undefined)) {
+			throw new UserError("Usage dimension 'agent' requires agent_id.");
+		}
+		assertAgentVersion(fields.agent_version as string | null | undefined);
 		return;
 	}
-	if (request.agent_id !== undefined || request.agent_version !== undefined) {
+	if (fields.agent_id !== undefined || fields.agent_version !== undefined) {
 		throw new UserError("Usage dimension 'workspace' forbids agent_id and agent_version.");
 	}
 }
@@ -67,40 +75,47 @@ export function assertUsageRequest(request: UsageSummaryRequest): void {
  * only for `agent`, and cursor pagination bounded by the contract.
  */
 export function assertUsageTrendRequest(request: UsageTrendRequest): void {
-	if (!TREND_DIMENSIONS.has(request.dimension)) {
-		throw new UserError(
-			`Unknown usage trend dimension '${request.dimension}'; trend supports 'workspace' and 'agent'.`,
-		);
+	const fields = request as unknown as Record<string, unknown>;
+	const dimension = String(fields.dimension);
+	if (!TREND_DIMENSIONS.has(dimension)) {
+		throw new UserError(`Unknown usage trend dimension '${dimension}'; trend supports 'workspace' and 'agent'.`);
 	}
-	assertGranularity(request.granularity);
-	if (!request.time_range) {
-		throw new UserError(`Usage trend dimension '${request.dimension}' requires time_range.`);
+	assertGranularity(fields.granularity);
+	if (!fields.time_range) {
+		throw new UserError(`Usage trend dimension '${dimension}' requires time_range.`);
 	}
-	assertTimeRange(request.time_range.start_time, request.time_range.end_time);
-	if (request.dimension === "agent") {
-		if (blank(request.agent_id)) throw new UserError("Usage trend dimension 'agent' requires agent_id.");
-		assertAgentVersion(request.agent_version);
-	} else if (request.agent_id !== undefined || request.agent_version !== undefined) {
+	const range = fields.time_range as UsageTimeRange;
+	assertTimeRange(range.start_time, range.end_time);
+	if (fields.dimension === "agent") {
+		if (blank(fields.agent_id as string | null | undefined)) {
+			throw new UserError("Usage trend dimension 'agent' requires agent_id.");
+		}
+		assertAgentVersion(fields.agent_version as string | null | undefined);
+	} else if (fields.agent_id !== undefined || fields.agent_version !== undefined) {
 		throw new UserError("Usage trend dimension 'workspace' forbids agent_id and agent_version.");
 	}
 	if (
-		request.page_size !== undefined &&
-		(!Number.isInteger(request.page_size) || request.page_size < 1 || request.page_size > MAX_PAGE_SIZE)
+		fields.page_size !== undefined &&
+		(!Number.isInteger(fields.page_size as number) ||
+			(fields.page_size as number) < 1 ||
+			(fields.page_size as number) > MAX_PAGE_SIZE)
 	) {
 		throw new UserError(`page_size must be an integer between 1 and ${MAX_PAGE_SIZE}.`);
 	}
-	if (request.page_token !== undefined && (typeof request.page_token !== "string" || blank(request.page_token))) {
+	if (fields.page_token !== undefined && (typeof fields.page_token !== "string" || blank(fields.page_token))) {
 		throw new UserError("page_token must be a non-empty cursor string.");
 	}
 }
 
-function assertSessionRequest(request: UsageSummaryRequest): void {
-	if (blank(request.session_id)) throw new UserError("Usage dimension 'session' requires session_id.");
-	if (request.time_range !== undefined) {
+function assertSessionRequest(fields: Record<string, unknown>): void {
+	if (blank(fields.session_id as string | null | undefined)) {
+		throw new UserError("Usage dimension 'session' requires session_id.");
+	}
+	if (fields.time_range !== undefined) {
 		throw new UserError("Usage dimension 'session' forbids time_range; the Session's own window is used.");
 	}
-	if (request.granularity !== undefined) throw new UserError("Usage dimension 'session' forbids granularity.");
-	if (request.agent_id !== undefined || request.agent_version !== undefined) {
+	if (fields.granularity !== undefined) throw new UserError("Usage dimension 'session' forbids granularity.");
+	if (fields.agent_id !== undefined || fields.agent_version !== undefined) {
 		throw new UserError("Usage dimension 'session' forbids agent_id and agent_version.");
 	}
 }
@@ -120,7 +135,20 @@ function assertAgentVersion(agentVersion: string | null | undefined): void {
 	}
 }
 
-/** Second-precision RFC 3339 with an explicit offset; also rejects a reversed window. */
+const CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})T/;
+
+/** `Date.parse` rolls impossible days over silently, so the calendar date is checked first. */
+function isRealCalendarDate(value: string): boolean {
+	const match = CALENDAR_DATE_PREFIX.exec(value);
+	if (!match) return false;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	if (month < 1 || month > 12) return false;
+	return day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Second-precision RFC 3339 with an explicit offset; also rejects impossible dates and a reversed window. */
 function assertTimeRange(start: string, end: string): void {
 	const message =
 		"time_range must use second-precision RFC 3339 timestamps with an explicit offset, e.g. 2026-11-02T10:00:00+08:00.";
@@ -131,6 +159,11 @@ function assertTimeRange(start: string, end: string): void {
 		!RFC3339_SECONDS.test(end)
 	) {
 		throw new UserError(message);
+	}
+	if (!isRealCalendarDate(start) || !isRealCalendarDate(end)) {
+		throw new UserError(
+			"time_range timestamps must name real calendar dates; impossible days like 2026-02-30 are rolled over silently by Date.parse.",
+		);
 	}
 	const startMs = Date.parse(start);
 	const endMs = Date.parse(end);

@@ -128,3 +128,113 @@ describe("Workbench usage Provider selection", () => {
 		expect(requests).toBe(0);
 	});
 });
+
+const validTimeRange = { start_time: "2026-11-02T10:00:00+08:00", end_time: "2026-11-02T15:00:00+08:00" };
+
+function postSummary(body: unknown) {
+	return app.request("/api/usage/summary", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+}
+
+function countingFetch(): { requests: () => number } {
+	let requests = 0;
+	setDefaultFetch(async () => {
+		requests += 1;
+		return Response.json(summaryResponse);
+	});
+	return { requests: () => requests };
+}
+
+describe("Workbench usage upstream error mapping", () => {
+	test("maps a Bailian 404 not_found to HTTP 404 instead of 500", async () => {
+		setDefaultFetch(async () =>
+			Response.json({ error: { code: "not_found", message: "Session not found." } }, { status: 404 }),
+		);
+
+		const response = await postSummary({ dimension: "session", session_id: "sesn_missing" });
+
+		expect(response.status).toBe(404);
+		const body = (await response.json()) as { error: { message: string } };
+		expect(body.error.message).toContain("404");
+	});
+
+	test("maps a Bailian 400 query_limit_exceeded to HTTP 400 instead of 500", async () => {
+		setDefaultFetch(async () =>
+			Response.json({ error: { code: "query_limit_exceeded", message: "Narrow the time range." } }, { status: 400 }),
+		);
+
+		const response = await postSummary({ dimension: "workspace", time_range: validTimeRange });
+
+		expect(response.status).toBe(400);
+		const body = (await response.json()) as { error: { message: string } };
+		expect(body.error.message).toContain("query_limit_exceeded");
+	});
+});
+
+describe("Workbench usage request validation", () => {
+	test("rejects a blank session_id with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({ dimension: "session", session_id: " " });
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+
+	test("rejects fractional-second timestamps with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({
+			dimension: "workspace",
+			time_range: { start_time: "2026-11-02T10:00:00.500+08:00", end_time: validTimeRange.end_time },
+		});
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+
+	test("rejects agent_id on the workspace dimension with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({ dimension: "workspace", time_range: validTimeRange, agent_id: "agent_one" });
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+
+	test("rejects agent_version on the session dimension with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({ dimension: "session", session_id: "sesn_one", agent_version: "3" });
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+
+	test("rejects a reversed window with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({
+			dimension: "workspace",
+			time_range: { start_time: validTimeRange.end_time, end_time: validTimeRange.start_time },
+		});
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+
+	test("rejects impossible calendar dates with 400 before any upstream call", async () => {
+		const fetch = countingFetch();
+
+		const response = await postSummary({
+			dimension: "workspace",
+			time_range: { start_time: "2026-02-30T10:00:00+08:00", end_time: "2026-03-01T10:00:00+08:00" },
+		});
+
+		expect(response.status).toBe(400);
+		expect(fetch.requests()).toBe(0);
+	});
+});

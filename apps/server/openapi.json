@@ -2024,48 +2024,105 @@
 				"required": ["source", "tool_name", "usage"]
 			},
 			"GetUsageSummaryRequest": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"dimension": {
+								"type": "string",
+								"enum": ["workspace"]
+							},
+							"time_range": {
+								"$ref": "#/components/schemas/UsageRequestTimeRange"
+							},
+							"granularity": {
+								"$ref": "#/components/schemas/UsageGranularity"
+							}
+						},
+						"required": ["dimension", "time_range"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"dimension": {
+								"type": "string",
+								"enum": ["agent"]
+							},
+							"agent_id": {
+								"type": "string",
+								"description": "Required for the agent dimension."
+							},
+							"agent_version": {
+								"anyOf": [
+									{
+										"type": "string",
+										"description": "Pinned agent version."
+									},
+									{
+										"nullable": true,
+										"description": "Null means every version."
+									},
+									{
+										"nullable": true
+									}
+								]
+							},
+							"time_range": {
+								"allOf": [
+									{
+										"$ref": "#/components/schemas/UsageRequestTimeRange"
+									},
+									{
+										"description": "Required for the agent dimension."
+									}
+								]
+							},
+							"granularity": {
+								"$ref": "#/components/schemas/UsageGranularity"
+							}
+						},
+						"required": ["dimension", "agent_id", "time_range"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"dimension": {
+								"type": "string",
+								"enum": ["session"]
+							},
+							"session_id": {
+								"type": "string",
+								"description": "Required for the session dimension."
+							}
+						},
+						"required": ["dimension", "session_id"],
+						"additionalProperties": false
+					}
+				]
+			},
+			"UsageRequestTimeRange": {
 				"type": "object",
 				"properties": {
-					"dimension": {
-						"$ref": "#/components/schemas/UsageDimension"
-					},
-					"agent_id": {
+					"start_time": {
 						"type": "string",
-						"description": "Required for the agent dimension; forbidden for session."
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:Z|[+-]\\d{2}:\\d{2})$",
+						"description": "Window start, RFC 3339 with an explicit offset (UTC+8 aligned)."
 					},
-					"agent_version": {
+					"end_time": {
 						"type": "string",
-						"nullable": true,
-						"description": "Only meaningful for the agent dimension; null means every version."
-					},
-					"session_id": {
-						"type": "string",
-						"description": "Required for the session dimension; forbidden otherwise."
-					},
-					"time_range": {
-						"allOf": [
-							{
-								"$ref": "#/components/schemas/UsageTimeRange"
-							},
-							{
-								"description": "Required for workspace/agent; forbidden for session."
-							}
-						]
-					},
-					"granularity": {
-						"$ref": "#/components/schemas/UsageGranularity"
+						"pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:Z|[+-]\\d{2}:\\d{2})$",
+						"description": "Window end, RFC 3339 with an explicit offset (UTC+8 aligned)."
 					}
 				},
-				"required": ["dimension"]
-			},
-			"UsageDimension": {
-				"type": "string",
-				"enum": ["workspace", "agent", "session"]
+				"required": ["start_time", "end_time"],
+				"description": "Required for the workspace dimension."
 			},
 			"UsageGranularity": {
 				"type": "string",
 				"enum": ["hour", "day", "month"],
-				"description": "Only for workspace/agent; forbidden for session."
+				"description": "Omit to let the server pick the bucket from the span."
 			}
 		},
 		"parameters": {}
