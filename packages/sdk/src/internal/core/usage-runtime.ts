@@ -1,9 +1,9 @@
 import type {
-	ModelUsagePage,
-	ModelUsageRequest,
-	ToolUsagePage,
-	ToolUsageRequest,
 	UsageQueryOptions,
+	UsageSummaryRequest,
+	UsageSummaryResponse,
+	UsageTrendRequest,
+	UsageTrendResponse,
 } from "../types/usage.ts";
 import { type ManagedApiContext, requireManagedApiMethod, resolveManagedApiAdapter } from "./managed-api-context.ts";
 
@@ -12,24 +12,32 @@ export interface UsageRuntimeOptions extends UsageQueryOptions {
 	provider?: string;
 }
 
-/** Aggregated model usage (calls, failures, token breakdowns) for a workspace/agent/session scope. */
-export async function listModelUsage(
+/**
+ * Aggregated usage for one dimension (app-control usage.summary). Model and tool
+ * details are returned by the same call, so callers render both tables from one
+ * response instead of issuing per-table requests.
+ */
+export async function getUsageSummary(
 	ctx: ManagedApiContext,
-	request: ModelUsageRequest,
+	request: UsageSummaryRequest,
 	options: UsageRuntimeOptions = {},
-): Promise<ModelUsagePage> {
+): Promise<UsageSummaryResponse> {
 	const adapter = resolveManagedApiAdapter(ctx, options.provider);
-	const method = requireManagedApiMethod(adapter.listModelUsage, adapter.name, "model usage listing");
+	const method = requireManagedApiMethod(adapter.getUsageSummary, adapter.name, "usage summary");
 	return method.call(adapter, request, { signal: options.signal });
 }
 
-/** Aggregated tool usage (calls, failures by tool source) for a workspace/agent/session scope. */
-export async function listToolUsage(
+/**
+ * Bucketed usage trend (app-control usage.trend) for `workspace`/`agent`.
+ * Each page carries the same `total/models/tools` views plus a `next_page_token`
+ * cursor; callers follow the cursor instead of assuming a fixed page count.
+ */
+export async function getUsageTrend(
 	ctx: ManagedApiContext,
-	request: ToolUsageRequest,
+	request: UsageTrendRequest,
 	options: UsageRuntimeOptions = {},
-): Promise<ToolUsagePage> {
+): Promise<UsageTrendResponse> {
 	const adapter = resolveManagedApiAdapter(ctx, options.provider);
-	const method = requireManagedApiMethod(adapter.listToolUsage, adapter.name, "tool usage listing");
+	const method = requireManagedApiMethod(adapter.getUsageTrend, adapter.name, "usage trend");
 	return method.call(adapter, request, { signal: options.signal });
 }

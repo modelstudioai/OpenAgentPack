@@ -1,97 +1,219 @@
 /**
- * Usage-query scope, discriminated by `type` (app-control usage.* endpoints):
- * - `workspace`: aggregated over the listed workspaces (overview page); `agent_id` narrows to one Agent.
- * - `agent`: one Agent (optionally a pinned version); `workspace_ids` may pin a single workspace,
- *   otherwise the caller's identity workspace is used.
- * - `session`: one Session; the Session's own window is used, so `time_range` is forbidden and
- *   `workspace_ids` (if sent) is ignored.
+ * Usage summary scope, discriminated by `dimension` (app-control usage.summary):
+ * - `workspace`: aggregated over the caller's whole workspace; no agent/session narrowing.
+ * - `agent`: one Agent (optionally a pinned version).
+ * - `session`: one Session; its lifecycle totals are used, so `time_range` and
+ *   `granularity` must not be sent.
  */
-export type UsageScope =
-	| { type: "workspace"; workspace_ids: string[]; agent_id?: string }
-	| { type: "agent"; agent_id: string; workspace_ids?: string[]; agent_version?: string }
-	| { type: "session"; session_id: string };
+export type UsageDimension = "workspace" | "agent" | "session";
 
-/** Millisecond-precision epoch window. Required for workspace/agent scopes; forbidden for session. */
+/** Trend scope: the trend endpoint has no `session` dimension. */
+export type UsageTrendDimension = "workspace" | "agent";
+
+/**
+ * Bucket size of `query_range` and trend points. Omit it and the server picks
+ * from the span; do not send an explicit `null`.
+ */
+export type UsageGranularity = "hour" | "day" | "month";
+
+/** RFC 3339 window carrying an explicit offset, e.g. `2026-11-02T10:00:00+08:00`. */
 export interface UsageTimeRange {
-	start_time: number;
-	end_time: number;
+	start_time: string;
+	end_time: string;
 }
 
-export type ModelUsageSortBy = "call_count" | "failed_count" | "input_tokens" | "output_tokens";
-export type ToolUsageSortBy = "call_count" | "failed_count";
-export type UsageSortOrder = "asc" | "desc";
+/** `workspace` scope: window aggregation only; no agent or session narrowing. */
+export interface UsageWorkspaceSummaryRequest {
+	dimension: "workspace";
+	time_range: UsageTimeRange;
+	/** Omit to let the server pick the bucket from the span; never send null. */
+	granularity?: UsageGranularity;
+	agent_id?: never;
+	agent_version?: never;
+	session_id?: never;
+}
 
-export interface ModelUsageRequest {
-	scope: UsageScope;
-	time_range?: UsageTimeRange;
-	/** Exact model name; omitted/null means all models. */
-	model_name?: string | null;
-	/** 1-based page number. */
-	page_no?: number;
-	/** Page size, clamped to 1..100 by the endpoint. */
+/** One Agent (optionally a pinned version); Session narrowing is not accepted. */
+export interface UsageAgentSummaryRequest {
+	dimension: "agent";
+	/** Required for the `agent` dimension. */
+	agent_id: string;
+	/** Null means every version. */
+	agent_version?: string | null;
+	time_range: UsageTimeRange;
+	granularity?: UsageGranularity;
+	session_id?: never;
+}
+
+/** One Session's lifecycle totals; the Session's own window is used. */
+export interface UsageSessionSummaryRequest {
+	dimension: "session";
+	/** Required for the `session` dimension. */
+	session_id: string;
+	time_range?: never;
+	granularity?: never;
+	agent_id?: never;
+	agent_version?: never;
+}
+
+/**
+ * Summary request branches per dimension: a missing required field or a forbidden
+ * cross-dimension field is a compile error, not just a runtime rejection. The
+ * runtime contract checks stay in place for untyped callers.
+ */
+export type UsageSummaryRequest = UsageWorkspaceSummaryRequest | UsageAgentSummaryRequest | UsageSessionSummaryRequest;
+
+/** Cursor pagination shared by both trend branches. */
+export interface UsageTrendPageOptions {
+	/** Page size 1..100; omitted means the server default (100). */
 	page_size?: number;
-	sort_by?: ModelUsageSortBy;
-	sort_order?: UsageSortOrder;
+	/** Opaque cursor from the previous page's `next_page_token`; valid for 15 minutes. */
+	page_token?: string;
 }
 
-export type UsageToolSource = "builtin" | "mcp" | "custom";
-
-export interface ToolUsageRequest {
-	scope: UsageScope;
-	time_range?: UsageTimeRange;
-	/** Exact tool source; omitted/null means all sources. Unknown provider values are preserved. */
-	source?: UsageToolSource | null;
-	/** Exact tool name; omitted/null means all tools. */
-	tool_name?: string | null;
-	page_no?: number;
-	page_size?: number;
-	/** Tool usage does not support token sorts — only call_count / failed_count. */
-	sort_by?: ToolUsageSortBy;
-	sort_order?: UsageSortOrder;
+/** `workspace` trend branch: window aggregation only. */
+export interface UsageWorkspaceTrendRequest extends UsageTrendPageOptions {
+	dimension: "workspace";
+	time_range: UsageTimeRange;
+	/** Omit to let the server pick the bucket from the span; never send null. */
+	granularity?: UsageGranularity;
+	agent_id?: never;
+	agent_version?: never;
 }
 
-export interface UsageTokenStats {
-	input_tokens: number;
-	output_tokens: number;
-	cache_read_tokens: number;
-	cache_creation_tokens: number;
-	total_tokens: number;
-	cache_hit_ratio: number;
+/** `agent` trend branch: one Agent (optionally a pinned version). */
+export interface UsageAgentTrendRequest extends UsageTrendPageOptions {
+	dimension: "agent";
+	/** Required for the `agent` dimension. */
+	agent_id: string;
+	/** Null means every version. */
+	agent_version?: string | null;
+	time_range: UsageTimeRange;
+	granularity?: UsageGranularity;
 }
 
-/** One aggregated row. The paging key is workspace_id + model_name: the same model in different workspaces is not merged. */
-export interface ModelUsageItem {
-	workspace_id: string;
-	model_name: string;
-	call_count: number;
-	failed_count: number;
-	tokens: UsageTokenStats;
+/** Bucketed trend for `workspace`/`agent`; `session` has no trend dimension. */
+export type UsageTrendRequest = UsageWorkspaceTrendRequest | UsageAgentTrendRequest;
+
+/**
+ * Every indicator carries its own unit. An unknown indicator keeps its unit with a
+ * `null` value; a known zero stays `0` and must not be treated as unknown.
+ */
+export interface UsageMetric {
+	value: number | null;
+	unit: string;
 }
 
-/** One aggregated row. The paging key is workspace_id + source + tool_name: same-name tools from different sources are separate rows. */
-export interface ToolUsageItem {
-	workspace_id: string;
-	tool_name: string;
-	/** builtin | mcp | custom; unknown future values are preserved verbatim. */
-	source: string;
-	call_count: number;
-	failed_count: number;
+/** Per-model indicators (`usage.models[].usage`). */
+export interface UsageModelMetrics {
+	input_tokens: UsageMetric;
+	output_tokens: UsageMetric;
+	total_tokens: UsageMetric;
+	cache_read_tokens: UsageMetric;
+	cache_creation_tokens: UsageMetric;
+	cache_hit_ratio: UsageMetric;
+	call_count: UsageMetric;
+	failed_count: UsageMetric;
 }
 
-/** Header totals come from the aggregates: token columns sum `items[].tokens`, the call total is `total_call_count`. */
-export interface UsagePage<TItem> {
-	items: TItem[];
-	/** Total rows across all pages (the paging count). */
-	total: number;
-	/** Total calls across all pages (the headline "N calls" figure). */
-	total_call_count: number;
-	page_no: number;
-	page_size: number;
-	data_updated_at: number;
+/** Per-tool indicators (`usage.tools[].usage`); tools carry no token or runtime columns. */
+export interface UsageToolMetrics {
+	call_count: UsageMetric;
+	failed_count: UsageMetric;
 }
 
-export type ModelUsagePage = UsagePage<ModelUsageItem>;
-export type ToolUsagePage = UsagePage<ToolUsageItem>;
+/** Whole-scope indicators (`usage.total`). */
+export interface UsageTotal {
+	input_tokens: UsageMetric;
+	output_tokens: UsageMetric;
+	total_tokens: UsageMetric;
+	cache_read_tokens: UsageMetric;
+	cache_creation_tokens: UsageMetric;
+	cache_hit_ratio: UsageMetric;
+	model_call_count: UsageMetric;
+	tool_call_count: UsageMetric;
+	builtin_tool_call_count: UsageMetric;
+	mcp_tool_call_count: UsageMetric;
+	custom_tool_call_count: UsageMetric;
+	turns: UsageMetric;
+	steps: UsageMetric;
+	interrupt_error_count: UsageMetric;
+	model_failed_count: UsageMetric;
+	tool_failed_count: UsageMetric;
+	runtime_ms: UsageMetric;
+}
+
+/**
+ * One aggregated model row. `model_name` is null when the provider could not
+ * attribute the calls; ordering is not guaranteed.
+ */
+export interface UsageModelRow {
+	model_name: string | null;
+	usage: UsageModelMetrics;
+}
+
+/**
+ * One aggregated tool row. Rows are keyed by `source` + `tool_name`, so
+ * same-name tools from different sources stay separate.
+ */
+export interface UsageToolRow {
+	source: string | null;
+	tool_name: string | null;
+	usage: UsageToolMetrics;
+}
+
+/**
+ * `total`, `models` and `tools` are three views of the same query — never add
+ * the total to the detail rows.
+ */
+export interface UsageBreakdown {
+	total: UsageTotal;
+	models: UsageModelRow[];
+	tools: UsageToolRow[];
+}
+
+/** Aggregated usage for one scope (summary endpoint). */
+export interface UsageSummary {
+	/**
+	 * Effective window after the server aligned it to `granularity` (UTC+8).
+	 * The `session` dimension has no caller-supplied window and may omit it.
+	 */
+	query_range?: UsageTimeRange;
+	/** Latest known data refresh time; null when no statistics exist. */
+	data_updated_at: string | null;
+	usage: UsageBreakdown;
+}
+
+export interface UsageSummaryResponse {
+	/** Server-side request id, kept for support triage. */
+	request_id: string;
+	data: UsageSummary;
+}
+
+/** One trend bucket. Buckets without data are omitted, not zero-filled. */
+export interface UsageTrendPoint {
+	start_time: string;
+	end_time: string;
+	usage: UsageBreakdown;
+}
+
+/** One page of trend buckets; `total/models/tools` describe that bucket only. */
+export interface UsageTrend {
+	/** Effective window after the server aligned it to `granularity` (UTC+8). */
+	query_range: UsageTimeRange;
+	data_updated_at: string | null;
+	granularity: UsageGranularity;
+	points: UsageTrendPoint[];
+	has_more: boolean;
+	/** Cursor for the next page; null on the last page or when it expired. */
+	next_page_token: string | null;
+}
+
+export interface UsageTrendResponse {
+	/** Server-side request id, kept for support triage. */
+	request_id: string;
+	data: UsageTrend;
+}
 
 export interface UsageQueryOptions {
 	signal?: AbortSignal;

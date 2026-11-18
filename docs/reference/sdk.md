@@ -246,42 +246,61 @@ Session 的单一事件流获取；子线程状态不表示主会话执行结束
 `SessionThreadListOptions` 和 `SessionThreadPage` 也通过 `./session-events` 导出类型，
 浏览器可复用合同而无需加载 SDK 主入口或 Provider 凭据。
 
-### 资源用量查询
+### 资源用量汇总与趋势
 
-资源用量（模型调用明细 / 工具调用明细）对接百炼 app-control 的
-`usage.listModelUsage` 与 `usage.listToolUsage`，按 scope 维度返回聚合行。REST 映射
-与百炼侧约定为 AgentStudio 资源风格（`POST /usage/models`、`POST /usage/tools`，
-顶层请求体）；公网 AgentStudio 环境尚未启用这两个端点（网关 404），启用后无需改动
-即可调通：
+用量对接百炼 app-control 的 `usage.summary` / `usage.trend`，REST 映射为 AgentStudio 的
+`POST /api/v1/agentstudio/usage/summary` 与 `POST /api/v1/agentstudio/usage/trend`。汇总一次
+请求返回整段范围的 `total`、模型明细 `models[]` 与工具明细 `tools[]`，不存在按表分页或按
+名称筛选的端点；趋势按 `hour/day/month` 分桶返回同样的三个视图，用 `page_token` 游标分页。
 
 | SDK 方法 | 百炼路径 | 结果 |
 | --- | --- | --- |
-| `listModelUsage(ctx, request, options)` | `POST /usage/models` | `ModelUsagePage` |
-| `listToolUsage(ctx, request, options)` | `POST /usage/tools` | `ToolUsagePage` |
+| `getUsageSummary(ctx, request, options)` | `POST /usage/summary` | `UsageSummaryResponse` |
+| `getUsageTrend(ctx, request, options)` | `POST /usage/trend` | `UsageTrendResponse` |
 
-`scope` 按 `type` 区分三种形态：`workspace`（必传非空 `workspace_ids`，可加 `agent_id`）、
-`agent`（必传 `agent_id`，可加 `workspace_ids` 与 `agent_version`）、`session`（必传
-`session_id`）。`time_range` 为毫秒级 Unix 区间：workspace/agent 必传，session 禁止
-（复用 Session 自身窗口）；校验在发起请求前完成。模型明细支持
-`model_name` 过滤与 `call_count/failed_count/input_tokens/output_tokens` 排序；工具明细
-支持 `source`（`builtin/mcp/custom`）与 `tool_name` 过滤，排序仅限调用次数相关字段。
-分页 `page_no` 从 1 开始，`page_size` 限 1..100；表头总数取 `total_call_count`，分页总数取
-`total`，无匹配时 `items` 为空、总数为 0。两者均支持 `AbortSignal`。当前仅百炼实现，
-其他 Provider 返回明确的 unsupported 错误。
+汇总的 `request` 用 `dimension` 区分三种维度：`workspace`（只传 `time_range` 与可选
+`granularity`）、`agent`（必传 `agent_id` 与 `time_range`，可传 `agent_version`）、
+`session`（只传 `session_id`；`time_range` 与 `granularity` 禁止，复用 Session 自身窗口）。
+趋势没有 `session` 维度：`workspace` 只传 `time_range` 与可选 `granularity`；`agent` 必传
+`agent_id` 与 `time_range`，可传 `agent_version`。趋势翻页用 `page_size`（1..100，缺省 100）
+与上一页返回的 `next_page_token`；游标有效期 15 分钟，过期返回 `410`，需从第一页重新开始。
+
+`time_range` 必须是秒级、带时区偏移的 RFC 3339 字符串（拒绝小数秒与无偏移本地时间；响应
+统一 `+08:00`，区间左闭右开）；`granularity` 取 `hour/day/month`，缺省由服务端按跨度选择，
+显式传 `null` 会被拒绝。校验在发起请求前完成。
+
+汇总响应 `data` 含 `query_range`（服务端按粒度对齐后的实际区间；`session` 维度复用会话
+自身窗口，可能没有该字段）、`data_updated_at`（无记录为 `null`）与 `usage`；
+`usage.total`、`models`、`tools` 是同一范围的三个视图，不得相加。每个指标都是
+`{ value, unit }`：未知指标 `value` 为 `null` 且保留 `unit`，已知零值为 `0`。汇总单次响应
+模型与工具明细合计上限 10 万条。
+
+趋势响应 `data` 含 `query_range`、`granularity`、`points[]`（每个桶的 `start_time`、
+`end_time` 与同样的 `total/models/tools` 视图）以及 `has_more` / `next_page_token`。
+没有数据的桶直接缺省，不会补零；不要依赖桶数量，按 `start_time` 渲染。当前仅百炼实现，
+其他 Provider 返回明确的 unsupported 错误；两个入口都支持 `AbortSignal`。
 
 ```ts
-import { listModelUsage, listToolUsage } from "@openagentpack/sdk";
+import { getUsageSummary, getUsageTrend } from "@openagentpack/sdk";
 
-const models = await listModelUsage(ctx, {
-  scope: { type: "workspace", workspace_ids: [workspaceId] },
-  time_range: { start_time, end_time },
-  page_no: 1, page_size: 20, sort_by: "call_count", sort_order: "desc",
-});
-const tools = await listToolUsage(ctx, {
-  scope: { type: "agent", agent_id },
-  time_range: { start_time, end_time },
-  source: "mcp", tool_name: "file-parser",
-});
+const window = { start_time: "2026-11-02T10:00:00+08:00", end_time: "2026-11-02T15:00:00+08:00" };
+
+const summary = await getUsageSummary(ctx, { dimension: "workspace", time_range: window });
+const { total, models, tools } = summary.data.usage;
+
+const sessionSummary = await getUsageSummary(ctx, { dimension: "session", session_id: sessionId });
+
+let page = await getUsageTrend(ctx, { dimension: "workspace", time_range: window, granularity: "hour" });
+const points = [...page.data.points];
+while (page.data.has_more && page.data.next_page_token) {
+  page = await getUsageTrend(ctx, {
+    dimension: "workspace",
+    time_range: window,
+    granularity: "hour",
+    page_token: page.data.next_page_token,
+  });
+  points.push(...page.data.points);
+}
 ```
 
 ### 自建后端原始事件的浏览器转换
@@ -362,7 +381,7 @@ The public entry exposes domain workflows that return structured domain results 
 | Files & skills | `uploadFile`, `listFiles`, `getFileInfo`, `getFileDownloadUrl`, `deleteFile`, `createSkillFromFileId`, `listSkills`, `getSkillInfo`, `deleteSkill` |
 | Deployment | `listDeploymentsForContext`, `getDeploymentDetailsForContext`, `getDeploymentRuntimeProviderForContext`, `runDeploymentForContext` |
 | Models | `listProviderModelsForContext`, `listProviderNames` |
-| Usage | `listModelUsage`, `listToolUsage` |
+| Usage | `getUsageSummary`, `getUsageTrend` |
 | State | `StateManager`, `LocalFileStateBackend`, `parseStateAddress` |
 | Runtime context | `createProjectRuntime`, `readProjectRuntime`, `writeProjectRuntime` |
 | Provider config | `resolveProviderConfigFromEnv`, `applyProviderConfigToEnv`, `loadDotEnv`, `bootstrapRuntimeCredentials` (and sync variants), `resolveActiveProvider`, `AGENTS_CONFIG_PROVIDERS`, `AGENTS_PROVIDER_FIELDS` |

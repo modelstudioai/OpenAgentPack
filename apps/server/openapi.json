@@ -1796,304 +1796,323 @@
 				},
 				"required": ["id", "type", "status", "created_at", "updated_at", "events"]
 			},
-			"ModelUsagePage": {
+			"UsageSummaryResponse": {
 				"type": "object",
 				"properties": {
-					"items": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/ModelUsageItem"
-						}
+					"request_id": {
+						"type": "string",
+						"description": "Server-side request id, kept for support triage."
 					},
-					"total": {
-						"type": "integer",
-						"description": "Total rows across all pages."
-					},
-					"total_call_count": {
-						"type": "integer",
-						"description": "Total calls across all pages."
-					},
-					"page_no": {
-						"type": "integer"
-					},
-					"page_size": {
-						"type": "integer"
-					},
-					"data_updated_at": {
-						"type": "integer",
-						"description": "Data freshness, Unix epoch milliseconds."
+					"data": {
+						"$ref": "#/components/schemas/UsageSummary"
 					}
 				},
-				"required": ["items", "total", "total_call_count", "page_no", "page_size", "data_updated_at"]
+				"required": ["request_id", "data"]
 			},
-			"ModelUsageItem": {
+			"UsageSummary": {
 				"type": "object",
 				"properties": {
-					"workspace_id": {
-						"type": "string"
-					},
-					"model_name": {
-						"type": "string"
-					},
-					"call_count": {
-						"type": "integer"
-					},
-					"failed_count": {
-						"type": "integer"
-					},
-					"tokens": {
-						"$ref": "#/components/schemas/UsageTokenStats"
-					}
-				},
-				"required": ["workspace_id", "model_name", "call_count", "failed_count", "tokens"]
-			},
-			"UsageTokenStats": {
-				"type": "object",
-				"properties": {
-					"input_tokens": {
-						"type": "integer"
-					},
-					"output_tokens": {
-						"type": "integer"
-					},
-					"cache_read_tokens": {
-						"type": "integer"
-					},
-					"cache_creation_tokens": {
-						"type": "integer"
-					},
-					"total_tokens": {
-						"type": "integer"
-					},
-					"cache_hit_ratio": {
-						"type": "number"
-					}
-				},
-				"required": [
-					"input_tokens",
-					"output_tokens",
-					"cache_read_tokens",
-					"cache_creation_tokens",
-					"total_tokens",
-					"cache_hit_ratio"
-				]
-			},
-			"ListModelUsageRequest": {
-				"type": "object",
-				"properties": {
-					"scope": {
-						"$ref": "#/components/schemas/UsageScope"
-					},
-					"time_range": {
+					"query_range": {
 						"$ref": "#/components/schemas/UsageTimeRange"
 					},
-					"model_name": {
+					"data_updated_at": {
 						"type": "string",
 						"nullable": true,
-						"description": "Exact model name; omitted/null means all models."
+						"description": "Data freshness; null when no statistics exist."
 					},
-					"page_no": {
-						"type": "integer",
-						"minimum": 1,
-						"default": 1,
-						"description": "1-based page number."
-					},
-					"page_size": {
-						"type": "integer",
-						"minimum": 1,
-						"maximum": 100,
-						"default": 20,
-						"description": "Page size, 1..100."
-					},
-					"sort_order": {
-						"type": "string",
-						"enum": ["asc", "desc"],
-						"default": "desc"
-					},
-					"sort_by": {
-						"type": "string",
-						"enum": ["call_count", "failed_count", "input_tokens", "output_tokens"],
-						"default": "call_count"
+					"usage": {
+						"type": "object",
+						"properties": {
+							"total": {
+								"$ref": "#/components/schemas/UsageTotal"
+							},
+							"models": {
+								"type": "array",
+								"items": {
+									"$ref": "#/components/schemas/UsageModelRow"
+								}
+							},
+							"tools": {
+								"type": "array",
+								"items": {
+									"$ref": "#/components/schemas/UsageToolRow"
+								}
+							}
+						},
+						"required": ["total", "models", "tools"]
 					}
 				},
-				"required": ["scope"]
-			},
-			"UsageScope": {
-				"oneOf": [
-					{
-						"type": "object",
-						"properties": {
-							"type": {
-								"type": "string",
-								"enum": ["workspace"],
-								"description": "Aggregated usage across the listed workspaces."
-							},
-							"workspace_ids": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								},
-								"minItems": 1,
-								"description": "Workspaces to aggregate; at least one is required."
-							},
-							"agent_id": {
-								"type": "string",
-								"description": "Narrow the workspace aggregation to one Agent."
-							}
-						},
-						"required": ["type", "workspace_ids"]
-					},
-					{
-						"type": "object",
-						"properties": {
-							"type": {
-								"type": "string",
-								"enum": ["agent"],
-								"description": "Usage of one Agent (optionally a pinned version)."
-							},
-							"agent_id": {
-								"type": "string"
-							},
-							"workspace_ids": {
-								"type": "array",
-								"items": {
-									"type": "string"
-								},
-								"description": "Optional single-workspace pin; omit to use the caller's identity workspace."
-							},
-							"agent_version": {
-								"type": "string"
-							}
-						},
-						"required": ["type", "agent_id"]
-					},
-					{
-						"type": "object",
-						"properties": {
-							"type": {
-								"type": "string",
-								"enum": ["session"],
-								"description": "Usage within one Session; its own window applies."
-							},
-							"session_id": {
-								"type": "string"
-							}
-						},
-						"required": ["type", "session_id"]
-					}
-				]
+				"required": ["data_updated_at", "usage"]
 			},
 			"UsageTimeRange": {
 				"type": "object",
 				"properties": {
 					"start_time": {
-						"type": "integer",
-						"description": "Window start, Unix epoch milliseconds."
+						"type": "string",
+						"description": "Window start, RFC 3339 with an explicit offset (UTC+8 aligned)."
 					},
 					"end_time": {
-						"type": "integer",
-						"description": "Window end, Unix epoch milliseconds."
+						"type": "string",
+						"description": "Window end, RFC 3339 with an explicit offset (UTC+8 aligned)."
 					}
 				},
 				"required": ["start_time", "end_time"]
 			},
-			"ToolUsagePage": {
+			"UsageTotal": {
 				"type": "object",
 				"properties": {
-					"items": {
-						"type": "array",
-						"items": {
-							"$ref": "#/components/schemas/ToolUsageItem"
-						}
+					"input_tokens": {
+						"$ref": "#/components/schemas/UsageMetric"
 					},
-					"total": {
-						"type": "integer",
-						"description": "Total rows across all pages."
+					"output_tokens": {
+						"$ref": "#/components/schemas/UsageMetric"
 					},
-					"total_call_count": {
-						"type": "integer",
-						"description": "Total calls across all pages."
+					"total_tokens": {
+						"$ref": "#/components/schemas/UsageMetric"
 					},
-					"page_no": {
-						"type": "integer"
+					"cache_read_tokens": {
+						"$ref": "#/components/schemas/UsageMetric"
 					},
-					"page_size": {
-						"type": "integer"
+					"cache_creation_tokens": {
+						"$ref": "#/components/schemas/UsageMetric"
 					},
-					"data_updated_at": {
-						"type": "integer",
-						"description": "Data freshness, Unix epoch milliseconds."
+					"cache_hit_ratio": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"model_call_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"tool_call_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"builtin_tool_call_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"mcp_tool_call_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"custom_tool_call_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"turns": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"steps": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"interrupt_error_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"model_failed_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"tool_failed_count": {
+						"$ref": "#/components/schemas/UsageMetric"
+					},
+					"runtime_ms": {
+						"$ref": "#/components/schemas/UsageMetric"
 					}
 				},
-				"required": ["items", "total", "total_call_count", "page_no", "page_size", "data_updated_at"]
+				"required": [
+					"input_tokens",
+					"output_tokens",
+					"total_tokens",
+					"cache_read_tokens",
+					"cache_creation_tokens",
+					"cache_hit_ratio",
+					"model_call_count",
+					"tool_call_count",
+					"builtin_tool_call_count",
+					"mcp_tool_call_count",
+					"custom_tool_call_count",
+					"turns",
+					"steps",
+					"interrupt_error_count",
+					"model_failed_count",
+					"tool_failed_count",
+					"runtime_ms"
+				]
 			},
-			"ToolUsageItem": {
+			"UsageMetric": {
 				"type": "object",
 				"properties": {
-					"workspace_id": {
-						"type": "string"
+					"value": {
+						"type": "number",
+						"nullable": true
 					},
-					"tool_name": {
+					"unit": {
 						"type": "string"
+					}
+				},
+				"required": ["value", "unit"]
+			},
+			"UsageModelRow": {
+				"type": "object",
+				"properties": {
+					"model_name": {
+						"type": "string",
+						"nullable": true,
+						"description": "Null when the provider could not attribute the calls."
 					},
+					"usage": {
+						"type": "object",
+						"properties": {
+							"input_tokens": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"output_tokens": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"total_tokens": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"cache_read_tokens": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"cache_creation_tokens": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"cache_hit_ratio": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"call_count": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"failed_count": {
+								"$ref": "#/components/schemas/UsageMetric"
+							}
+						},
+						"required": [
+							"input_tokens",
+							"output_tokens",
+							"total_tokens",
+							"cache_read_tokens",
+							"cache_creation_tokens",
+							"cache_hit_ratio",
+							"call_count",
+							"failed_count"
+						]
+					}
+				},
+				"required": ["model_name", "usage"]
+			},
+			"UsageToolRow": {
+				"type": "object",
+				"properties": {
 					"source": {
 						"type": "string",
+						"nullable": true,
 						"description": "builtin | mcp | custom; unknown future values are preserved verbatim."
 					},
-					"call_count": {
-						"type": "integer"
-					},
-					"failed_count": {
-						"type": "integer"
-					}
-				},
-				"required": ["workspace_id", "tool_name", "source", "call_count", "failed_count"]
-			},
-			"ListToolUsageRequest": {
-				"type": "object",
-				"properties": {
-					"scope": {
-						"$ref": "#/components/schemas/UsageScope"
-					},
-					"time_range": {
-						"$ref": "#/components/schemas/UsageTimeRange"
-					},
-					"source": {
-						"type": "string",
-						"nullable": true,
-						"enum": ["builtin", "mcp", "custom", null],
-						"description": "Exact tool source; omitted/null means all sources."
-					},
 					"tool_name": {
 						"type": "string",
-						"nullable": true,
-						"description": "Exact tool name; omitted/null means all tools."
+						"nullable": true
 					},
-					"page_no": {
-						"type": "integer",
-						"minimum": 1,
-						"default": 1,
-						"description": "1-based page number."
-					},
-					"page_size": {
-						"type": "integer",
-						"minimum": 1,
-						"maximum": 100,
-						"default": 20,
-						"description": "Page size, 1..100."
-					},
-					"sort_order": {
-						"type": "string",
-						"enum": ["asc", "desc"],
-						"default": "desc"
-					},
-					"sort_by": {
-						"type": "string",
-						"enum": ["call_count", "failed_count"],
-						"default": "call_count"
+					"usage": {
+						"type": "object",
+						"properties": {
+							"call_count": {
+								"$ref": "#/components/schemas/UsageMetric"
+							},
+							"failed_count": {
+								"$ref": "#/components/schemas/UsageMetric"
+							}
+						},
+						"required": ["call_count", "failed_count"]
 					}
 				},
-				"required": ["scope"]
+				"required": ["source", "tool_name", "usage"]
+			},
+			"GetUsageSummaryRequest": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"dimension": {
+								"type": "string",
+								"enum": ["workspace"]
+							},
+							"time_range": {
+								"$ref": "#/components/schemas/UsageRequestTimeRange"
+							},
+							"granularity": {
+								"$ref": "#/components/schemas/UsageGranularity"
+							}
+						},
+						"required": ["dimension", "time_range"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"dimension": {
+								"type": "string",
+								"enum": ["agent"]
+							},
+							"agent_id": {
+								"type": "string",
+								"description": "Required for the agent dimension."
+							},
+							"agent_version": {
+								"type": "string",
+								"nullable": true,
+								"description": "Pinned agent version. Null means every version."
+							},
+							"time_range": {
+								"allOf": [
+									{
+										"$ref": "#/components/schemas/UsageRequestTimeRange"
+									},
+									{
+										"description": "Required for the agent dimension."
+									}
+								]
+							},
+							"granularity": {
+								"$ref": "#/components/schemas/UsageGranularity"
+							}
+						},
+						"required": ["dimension", "agent_id", "time_range"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"dimension": {
+								"type": "string",
+								"enum": ["session"]
+							},
+							"session_id": {
+								"type": "string",
+								"description": "Required for the session dimension."
+							}
+						},
+						"required": ["dimension", "session_id"],
+						"additionalProperties": false
+					}
+				]
+			},
+			"UsageRequestTimeRange": {
+				"type": "object",
+				"properties": {
+					"start_time": {
+						"type": "string",
+						"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+						"description": "Window start, RFC 3339 with an explicit offset (UTC+8 aligned)."
+					},
+					"end_time": {
+						"type": "string",
+						"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+						"description": "Window end, RFC 3339 with an explicit offset (UTC+8 aligned)."
+					}
+				},
+				"required": ["start_time", "end_time"],
+				"description": "Required for the workspace dimension."
+			},
+			"UsageGranularity": {
+				"type": "string",
+				"enum": ["hour", "day", "month"],
+				"description": "Omit to let the server pick the bucket from the span."
 			}
 		},
 		"parameters": {}
@@ -5019,113 +5038,26 @@
 				}
 			}
 		},
-		"/api/usage/models": {
+		"/api/usage/summary": {
 			"post": {
-				"operationId": "listModelUsage",
+				"operationId": "getUsageSummary",
 				"requestBody": {
 					"required": true,
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/ListModelUsageRequest"
+								"$ref": "#/components/schemas/GetUsageSummaryRequest"
 							}
 						}
 					}
 				},
 				"responses": {
 					"200": {
-						"description": "Paged aggregated model usage for the requested scope",
+						"description": "Aggregated usage for the requested dimension: scope totals plus model/tool detail views",
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ModelUsagePage"
-								}
-							}
-						}
-					},
-					"400": {
-						"description": "Bad request",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"403": {
-						"description": "Forbidden",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"404": {
-						"description": "Not found",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"409": {
-						"description": "Conflict",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"422": {
-						"description": "Unprocessable entity",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					},
-					"500": {
-						"description": "Server error",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorResponse"
-								}
-							}
-						}
-					}
-				}
-			}
-		},
-		"/api/usage/tools": {
-			"post": {
-				"operationId": "listToolUsage",
-				"requestBody": {
-					"required": true,
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/ListToolUsageRequest"
-							}
-						}
-					}
-				},
-				"responses": {
-					"200": {
-						"description": "Paged aggregated tool usage for the requested scope",
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ToolUsagePage"
+									"$ref": "#/components/schemas/UsageSummaryResponse"
 								}
 							}
 						}

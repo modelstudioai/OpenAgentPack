@@ -1,145 +1,148 @@
 import { z } from "@hono/zod-openapi";
 
-// Usage analytics over app-control usage.* (model call details / tool call details).
-// Wire shapes mirror the SDK's usage types; paging defaults follow the usage contract
-// (page 1, size 20, sort call_count desc).
+// Usage analytics over app-control usage.summary. Wire shapes mirror the SDK's usage
+// types: one call returns scope totals plus the model/tool breakdown views, so no
+// per-table paging or sorting parameters exist anymore.
+
+export const UsageDimensionSchema = z.enum(["workspace", "agent", "session"]).openapi("UsageDimension");
 
 export const UsageTimeRangeSchema = z
 	.object({
-		start_time: z.number().int().describe("Window start, Unix epoch milliseconds."),
-		end_time: z.number().int().describe("Window end, Unix epoch milliseconds."),
+		start_time: z.string().describe("Window start, RFC 3339 with an explicit offset (UTC+8 aligned)."),
+		end_time: z.string().describe("Window end, RFC 3339 with an explicit offset (UTC+8 aligned)."),
 	})
 	.openapi("UsageTimeRange");
 
-export const UsageScopeSchema = z
-	.discriminatedUnion("type", [
-		z.object({
-			type: z.literal("workspace").describe("Aggregated usage across the listed workspaces."),
-			workspace_ids: z.array(z.string()).min(1).describe("Workspaces to aggregate; at least one is required."),
-			agent_id: z.string().optional().describe("Narrow the workspace aggregation to one Agent."),
-		}),
-		z.object({
-			type: z.literal("agent").describe("Usage of one Agent (optionally a pinned version)."),
-			agent_id: z.string(),
-			workspace_ids: z
-				.array(z.string())
-				.optional()
-				.describe("Optional single-workspace pin; omit to use the caller's identity workspace."),
-			agent_version: z.string().optional(),
-		}),
-		z.object({
-			type: z.literal("session").describe("Usage within one Session; its own window applies."),
-			session_id: z.string(),
-		}),
+export const UsageGranularitySchema = z.enum(["hour", "day", "month"]).openapi("UsageGranularity");
+
+const UsageTimestampSchema = z
+	.string()
+	.regex(
+		z.regexes.datetime({ offset: true, precision: 0 }),
+		"must be a second-precision RFC 3339 timestamp with a real calendar date and an explicit offset.",
+	);
+
+const UsageRequestTimeRangeSchema = z
+	.object({
+		start_time: UsageTimestampSchema.describe("Window start, RFC 3339 with an explicit offset (UTC+8 aligned)."),
+		end_time: UsageTimestampSchema.describe("Window end, RFC 3339 with an explicit offset (UTC+8 aligned)."),
+	})
+	.openapi("UsageRequestTimeRange");
+
+const nonBlank = (message: string) => z.string().refine((value) => value.trim() !== "", message);
+
+const WorkspaceSummaryRequestSchema = z
+	.object({
+		dimension: z.literal("workspace"),
+		time_range: UsageRequestTimeRangeSchema.describe("Required for the workspace dimension."),
+		granularity: UsageGranularitySchema.optional().describe("Omit to let the server pick the bucket from the span."),
+	})
+	.strict();
+
+const AgentSummaryRequestSchema = z
+	.object({
+		dimension: z.literal("agent"),
+		agent_id: nonBlank("agent_id must not be blank.").describe("Required for the agent dimension."),
+		agent_version: nonBlank("agent_version must be a version string or null.")
+			.nullable()
+			.optional()
+			.describe("Pinned agent version. Null means every version."),
+		time_range: UsageRequestTimeRangeSchema.describe("Required for the agent dimension."),
+		granularity: UsageGranularitySchema.optional().describe("Omit to let the server pick the bucket from the span."),
+	})
+	.strict();
+
+const SessionSummaryRequestSchema = z
+	.object({
+		dimension: z.literal("session"),
+		session_id: nonBlank("session_id must not be blank.").describe("Required for the session dimension."),
+	})
+	.strict();
+
+export const GetUsageSummaryRequestSchema = z
+	.discriminatedUnion("dimension", [
+		WorkspaceSummaryRequestSchema,
+		AgentSummaryRequestSchema,
+		SessionSummaryRequestSchema,
 	])
-	.openapi("UsageScope");
-
-const usagePagination = {
-	page_no: z.number().int().min(1).default(1).describe("1-based page number."),
-	page_size: z.number().int().min(1).max(100).default(20).describe("Page size, 1..100."),
-	sort_order: z.enum(["asc", "desc"]).default("desc"),
-};
-
-function refineUsageTimeRange<
-	T extends { scope: { type: string }; time_range?: { start_time: number; end_time: number } },
->(value: T, ctx: z.RefinementCtx): void {
-	if (value.scope.type === "session") {
-		if (value.time_range) {
+	.superRefine((value, ctx) => {
+		if (value.dimension === "session") return;
+		const { start_time: start, end_time: end } = value.time_range;
+		if (Date.parse(start) >= Date.parse(end)) {
 			ctx.addIssue({
 				code: z.ZodIssueCode.custom,
-				path: ["time_range"],
-				message: "time_range is forbidden for session scope; the Session's own window is used.",
+				path: ["time_range", "end_time"],
+				message: "time_range start_time must be before end_time.",
 			});
 		}
-		return;
-	}
-	if (!value.time_range) {
-		ctx.addIssue({
-			code: z.ZodIssueCode.custom,
-			path: ["time_range"],
-			message: `time_range is required for ${value.scope.type} scope.`,
-		});
-	}
-}
-
-export const ListModelUsageRequestSchema = z
-	.object({
-		scope: UsageScopeSchema,
-		time_range: UsageTimeRangeSchema.optional(),
-		model_name: z.string().nullish().describe("Exact model name; omitted/null means all models."),
-		...usagePagination,
-		sort_by: z.enum(["call_count", "failed_count", "input_tokens", "output_tokens"]).default("call_count"),
 	})
-	.superRefine(refineUsageTimeRange)
-	.openapi("ListModelUsageRequest");
+	.openapi("GetUsageSummaryRequest");
 
-export const ListToolUsageRequestSchema = z
-	.object({
-		scope: UsageScopeSchema,
-		time_range: UsageTimeRangeSchema.optional(),
-		source: z
-			.enum(["builtin", "mcp", "custom"])
-			.nullish()
-			.describe("Exact tool source; omitted/null means all sources."),
-		tool_name: z.string().nullish().describe("Exact tool name; omitted/null means all tools."),
-		...usagePagination,
-		sort_by: z.enum(["call_count", "failed_count"]).default("call_count"),
-	})
-	.superRefine(refineUsageTimeRange)
-	.openapi("ListToolUsageRequest");
+/** Every indicator carries its own unit; unknown indicators keep their unit with a null value. */
+export const UsageMetricSchema = z.object({ value: z.number().nullable(), unit: z.string() }).openapi("UsageMetric");
 
-export const UsageTokenStatsSchema = z
+export const UsageTotalSchema = z
 	.object({
-		input_tokens: z.number().int(),
-		output_tokens: z.number().int(),
-		cache_read_tokens: z.number().int(),
-		cache_creation_tokens: z.number().int(),
-		total_tokens: z.number().int(),
-		cache_hit_ratio: z.number(),
+		input_tokens: UsageMetricSchema,
+		output_tokens: UsageMetricSchema,
+		total_tokens: UsageMetricSchema,
+		cache_read_tokens: UsageMetricSchema,
+		cache_creation_tokens: UsageMetricSchema,
+		cache_hit_ratio: UsageMetricSchema,
+		model_call_count: UsageMetricSchema,
+		tool_call_count: UsageMetricSchema,
+		builtin_tool_call_count: UsageMetricSchema,
+		mcp_tool_call_count: UsageMetricSchema,
+		custom_tool_call_count: UsageMetricSchema,
+		turns: UsageMetricSchema,
+		steps: UsageMetricSchema,
+		interrupt_error_count: UsageMetricSchema,
+		model_failed_count: UsageMetricSchema,
+		tool_failed_count: UsageMetricSchema,
+		runtime_ms: UsageMetricSchema,
 	})
-	.openapi("UsageTokenStats");
+	.openapi("UsageTotal");
 
-export const ModelUsageItemSchema = z
+export const UsageModelRowSchema = z
 	.object({
-		workspace_id: z.string(),
-		model_name: z.string(),
-		call_count: z.number().int(),
-		failed_count: z.number().int(),
-		tokens: UsageTokenStatsSchema,
+		model_name: z.string().nullable().describe("Null when the provider could not attribute the calls."),
+		usage: z.object({
+			input_tokens: UsageMetricSchema,
+			output_tokens: UsageMetricSchema,
+			total_tokens: UsageMetricSchema,
+			cache_read_tokens: UsageMetricSchema,
+			cache_creation_tokens: UsageMetricSchema,
+			cache_hit_ratio: UsageMetricSchema,
+			call_count: UsageMetricSchema,
+			failed_count: UsageMetricSchema,
+		}),
 	})
-	.openapi("ModelUsageItem");
+	.openapi("UsageModelRow");
 
-export const ToolUsageItemSchema = z
+export const UsageToolRowSchema = z
 	.object({
-		workspace_id: z.string(),
-		tool_name: z.string(),
-		source: z.string().describe("builtin | mcp | custom; unknown future values are preserved verbatim."),
-		call_count: z.number().int(),
-		failed_count: z.number().int(),
+		source: z.string().nullable().describe("builtin | mcp | custom; unknown future values are preserved verbatim."),
+		tool_name: z.string().nullable(),
+		usage: z.object({ call_count: UsageMetricSchema, failed_count: UsageMetricSchema }),
 	})
-	.openapi("ToolUsageItem");
+	.openapi("UsageToolRow");
 
-// Header totals ride on the aggregates: token columns sum items[].tokens, the call
-// total is total_call_count, and the paging count is total. No matches → empty items
-// with zeroed totals.
-export const ModelUsagePageSchema = z
+// total, models and tools are three views of the same query — never add the total to the detail rows.
+export const UsageSummarySchema = z
 	.object({
-		items: z.array(ModelUsageItemSchema),
-		total: z.number().int().describe("Total rows across all pages."),
-		total_call_count: z.number().int().describe("Total calls across all pages."),
-		page_no: z.number().int(),
-		page_size: z.number().int(),
-		data_updated_at: z.number().int().describe("Data freshness, Unix epoch milliseconds."),
+		query_range: UsageTimeRangeSchema.optional(),
+		data_updated_at: z.string().nullable().describe("Data freshness; null when no statistics exist."),
+		usage: z.object({
+			total: UsageTotalSchema,
+			models: z.array(UsageModelRowSchema),
+			tools: z.array(UsageToolRowSchema),
+		}),
 	})
-	.openapi("ModelUsagePage");
+	.openapi("UsageSummary");
 
-export const ToolUsagePageSchema = z
+export const UsageSummaryResponseSchema = z
 	.object({
-		items: z.array(ToolUsageItemSchema),
-		total: z.number().int().describe("Total rows across all pages."),
-		total_call_count: z.number().int().describe("Total calls across all pages."),
-		page_no: z.number().int(),
-		page_size: z.number().int(),
-		data_updated_at: z.number().int().describe("Data freshness, Unix epoch milliseconds."),
+		request_id: z.string().describe("Server-side request id, kept for support triage."),
+		data: UsageSummarySchema,
 	})
-	.openapi("ToolUsagePage");
+	.openapi("UsageSummaryResponse");

@@ -38,6 +38,20 @@ describe("HTTP contract", () => {
 		expect(await documentedOperations()).toEqual(runtimeOperations());
 	});
 
+	test("documents the usage agent version as a nullable string", async () => {
+		const response = await app.request("/openapi.json");
+		expect(response.status).toBe(200);
+		const document = (await response.json()) as {
+			components: {
+				schemas: { GetUsageSummaryRequest: { oneOf: Array<{ properties: Record<string, unknown> }> } };
+			};
+		};
+		const agent = document.components.schemas.GetUsageSummaryRequest.oneOf.find(
+			({ properties }) => "agent_version" in properties,
+		);
+		expect(agent?.properties.agent_version).toMatchObject({ type: "string", nullable: true });
+	});
+
 	test("the committed OpenAPI snapshot matches the runtime document", async () => {
 		const response = await app.request("/openapi.json");
 		expect(response.status).toBe(200);

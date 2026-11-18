@@ -75,11 +75,11 @@ import type { SkillFile } from "../types/skill-file.ts";
 import type { ProviderSkillInfo } from "../types/skill-info.ts";
 import type { ResourceType } from "../types/state.ts";
 import type {
-	ModelUsagePage,
-	ModelUsageRequest,
-	ToolUsagePage,
-	ToolUsageRequest,
 	UsageQueryOptions,
+	UsageSummaryRequest,
+	UsageSummaryResponse,
+	UsageTrendRequest,
+	UsageTrendResponse,
 } from "../types/usage.ts";
 import type {
 	CreateWebhookEndpointInput,
@@ -490,16 +490,18 @@ export interface ProviderAdapter {
 	listModels?(): Promise<ModelInfo[]>;
 
 	/**
-	 * Aggregated model usage rows for a scope (app-control usage.listModelUsage).
-	 * Bailian-only today; other providers reject at the runtime seam.
+	 * Aggregated usage summary (model and tool details) for one dimension
+	 * (app-control usage.summary). Bailian-only today; other providers reject at
+	 * the runtime seam.
 	 */
-	listModelUsage?(request: ModelUsageRequest, options?: UsageQueryOptions): Promise<ModelUsagePage>;
+	getUsageSummary?(request: UsageSummaryRequest, options?: UsageQueryOptions): Promise<UsageSummaryResponse>;
 
 	/**
-	 * Aggregated tool usage rows for a scope (app-control usage.listToolUsage).
-	 * Bailian-only today; other providers reject at the runtime seam.
+	 * Bucketed usage trend for workspace/agent (app-control usage.trend).
+	 * Cursor-paged via `page_size`/`page_token`; Bailian-only today, other
+	 * providers reject at the runtime seam.
 	 */
-	listToolUsage?(request: ToolUsageRequest, options?: UsageQueryOptions): Promise<ToolUsagePage>;
+	getUsageTrend?(request: UsageTrendRequest, options?: UsageQueryOptions): Promise<UsageTrendResponse>;
 
 	/**
 	 * Download all remote skills and return their extracted file content.
