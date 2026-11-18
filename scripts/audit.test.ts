@@ -11,20 +11,22 @@ const connectionClosed: AuditResult = {
 const success: AuditResult = { exitCode: 0, stdout: "No vulnerabilities found\n", stderr: "" };
 
 function auditSequence(results: AuditResult[]) {
-	let attempts = 0;
+	const invocations: (readonly string[])[] = [];
 	const delays: number[] = [];
 	const stdout: string[] = [];
 	const stderr: string[] = [];
 	return {
 		get attempts() {
-			return attempts;
+			return invocations.length;
 		},
+		invocations,
 		delays,
 		stdout,
 		stderr,
 		dependencies: {
-			execute: () => {
-				const result = results[attempts++];
+			execute: (args: readonly string[]) => {
+				const result = results[invocations.length];
+				invocations.push(args);
 				if (!result) throw new Error("Unexpected audit attempt");
 				return result;
 			},
@@ -37,19 +39,18 @@ function auditSequence(results: AuditResult[]) {
 	};
 }
 
-describe("dependency audit retries", () => {
-	test("keeps successful audits unchanged without waiting", async () => {
-		const sequence = auditSequence([success]);
+describe("dependency audit", () => {
+	test("audits production before applying the single exception in the full audit", async () => {
+		const sequence = auditSequence([success, success]);
 		expect(await runAudit(sequence.dependencies)).toBe(0);
-		expect(sequence.attempts).toBe(1);
+		expect(sequence.invocations).toEqual([["--prod"], ["--ignore", "GHSA-fc5q-39xc-vjpf"]]);
 		expect(sequence.delays).toEqual([]);
-		expect(sequence.stdout).toEqual([success.stdout]);
 	});
 
-	test("retries the CI ConnectionClosed error with bounded backoff", async () => {
-		const sequence = auditSequence([connectionClosed, connectionClosed, success]);
+	test("retries the CI ConnectionClosed error in the full audit with bounded backoff", async () => {
+		const sequence = auditSequence([success, connectionClosed, connectionClosed, success]);
 		expect(await runAudit(sequence.dependencies)).toBe(0);
-		expect(sequence.attempts).toBe(3);
+		expect(sequence.attempts).toBe(4);
 		expect(sequence.delays).toEqual([2_000, 5_000]);
 		expect(sequence.stderr.join("")).toContain(connectionClosed.stderr);
 		expect(sequence.stderr.join("")).toContain("retrying (3/3)");
@@ -63,12 +64,21 @@ describe("dependency audit retries", () => {
 		expect(sequence.stderr.join("")).toContain("verification remains failed");
 	});
 
-	test("does not retry vulnerability findings, even after a transient error", async () => {
-		const finding = { exitCode: 1, stdout: "1 vulnerability (1 high)\n", stderr: "" };
+	test("blocks the excepted advisory in production, even after a transient error", async () => {
+		const finding = { exitCode: 1, stdout: "GHSA-fc5q-39xc-vjpf\n1 vulnerability (1 high)\n", stderr: "" };
 		const sequence = auditSequence([connectionClosed, finding]);
 		expect(await runAudit(sequence.dependencies)).toBe(1);
-		expect(sequence.attempts).toBe(2);
+		expect(sequence.invocations).toEqual([["--prod"], ["--prod"]]);
 		expect(sequence.delays).toEqual([2_000]);
+		expect(sequence.stdout).toContain(finding.stdout);
+	});
+
+	test("blocks other findings in the full audit", async () => {
+		const finding = { exitCode: 1, stdout: "1 vulnerability (1 high)\n", stderr: "" };
+		const sequence = auditSequence([success, finding]);
+		expect(await runAudit(sequence.dependencies)).toBe(1);
+		expect(sequence.attempts).toBe(2);
+		expect(sequence.delays).toEqual([]);
 		expect(sequence.stdout).toContain(finding.stdout);
 	});
 

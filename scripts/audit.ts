@@ -30,8 +30,8 @@ export function isTransientAuditFailure(result: AuditResult): boolean {
 	return transportError;
 }
 
-function executeAudit(): AuditResult {
-	const result = spawnSync(process.execPath, ["audit"], {
+function executeAudit(args: readonly string[]): AuditResult {
+	const result = spawnSync(process.execPath, ["audit", ...args], {
 		cwd: root,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
@@ -49,7 +49,7 @@ function executeAudit(): AuditResult {
 
 export async function runAudit(
 	dependencies: {
-		execute?: () => AuditResult;
+		execute?: (args: readonly string[]) => AuditResult;
 		sleep?: (delayMs: number) => Promise<void>;
 		writeStdout?: (output: string) => void;
 		writeStderr?: (output: string) => void;
@@ -60,20 +60,32 @@ export async function runAudit(
 	const writeStdout = dependencies.writeStdout ?? ((output) => process.stdout.write(output));
 	const writeStderr = dependencies.writeStderr ?? ((output) => process.stderr.write(output));
 
-	for (let attempt = 0; ; attempt++) {
-		const result = execute();
-		writeStdout(result.stdout);
-		writeStderr(result.stderr);
-		if (result.errorCode) writeStderr(`Audit process failed (${result.errorCode}).\n`);
-		if (!isTransientAuditFailure(result)) return result.exitCode;
-		if (attempt === retryDelaysMs.length) {
-			writeStderr("Dependency audit could not complete after 3 attempts; verification remains failed.\n");
-			return result.exitCode;
+	async function runWithRetries(args: readonly string[]): Promise<number> {
+		for (let attempt = 0; ; attempt++) {
+			const result = execute(args);
+			writeStdout(result.stdout);
+			writeStderr(result.stderr);
+			if (result.errorCode) writeStderr(`Audit process failed (${result.errorCode}).\n`);
+			if (!isTransientAuditFailure(result)) return result.exitCode;
+			if (attempt === retryDelaysMs.length) {
+				writeStderr("Dependency audit could not complete after 3 attempts; verification remains failed.\n");
+				return result.exitCode;
+			}
+			const delayMs = retryDelaysMs[attempt];
+			writeStderr(`Audit request failed temporarily; retrying (${attempt + 2}/3) in ${delayMs / 1000}s.\n`);
+			await sleep(delayMs);
 		}
-		const delayMs = retryDelaysMs[attempt];
-		writeStderr(`Audit request failed temporarily; retrying (${attempt + 2}/3) in ${delayMs / 1000}s.\n`);
-		await sleep(delayMs);
 	}
+
+	writeStdout("Auditing production dependencies with all advisories enabled.\n");
+	const productionExitCode = await runWithRetries(["--prod"]);
+	if (productionExitCode !== 0) return productionExitCode;
+
+	// The locked picomatch versions are only reachable from development tools.
+	// Remove this exception once bun.lock no longer contains an affected version.
+	const picomatchAdvisory = "GHSA-fc5q-39xc-vjpf";
+	writeStdout(`Auditing all dependencies with temporary exception ${picomatchAdvisory}.\n`);
+	return runWithRetries(["--ignore", picomatchAdvisory]);
 }
 
 if (import.meta.main) process.exit(await runAudit());
