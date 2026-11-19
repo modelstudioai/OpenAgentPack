@@ -1,5 +1,23 @@
 # @openagentpack/sdk
 
+## 0.11.0
+
+### Minor Changes
+
+- 4e0ae74: **BREAKING**：用量查询公开面合并为 `getUsageSummary`，按百炼官方 Usage API（`POST /api/v1/agentstudio/usage/summary`）的 `dimension` 契约一次返回 `total + models + tools`。
+
+  - 移除 `listModelUsage` / `listToolUsage` 及 `ModelUsagePage`、`ModelUsageRequest`、`ModelUsageItem`、`ToolUsagePage`、`ToolUsageRequest`、`ToolUsageItem`、`UsageScope`、`UsagePage`、`UsageTokenStats` 等类型
+  - 新增 `getUsageSummary(ctx, request, options)` 与 `UsageSummaryRequest`、`UsageSummaryResponse`、`UsageSummary`、`UsageMetric`、`UsageTotal`、`UsageModelRow`、`UsageToolRow`、`UsageDimension`、`UsageGranularity`
+  - 请求变化：`scope{type,...}` → `dimension` 判别联合；毫秒 `time_range` → 带时区偏移的 RFC 3339 字符串；分页与 `model_name`/`source`/`tool_name` 服务端筛选移除（明细随汇总一次返回）
+  - 响应变化：指标统一为 `{ value, unit }`，未知指标 `value: null`、已知零值 `0`；无统计记录时 `data_updated_at: null`
+
+- 4e0ae74: 用量查询补齐百炼官方 Usage API 的 trend 端点，并收紧 summary 契约：
+
+  - 新增 `getUsageTrend(ctx, request, options)`（`POST /api/v1/agentstudio/usage/trend`）与 `UsageTrendRequest`、`UsageTrend`、`UsageTrendPoint`、`UsageTrendResponse`、`UsageTrendDimension`；支持 workspace/agent 维度、`hour/day/month` 分桶、`page_size`（1..100）与 `page_token` 游标分页，`has_more` / `next_page_token` 原样透传，缺数据的桶不补零
+  - 抽出 `UsageBreakdown`（`total/models/tools`），summary 与 trend 共用
+  - `UsageSummary.query_range` 改为可选：`session` 维度复用会话自身窗口，响应可能没有该字段
+  - 请求校验对齐文档：`time_range` 只接受秒级、带偏移的 RFC 3339（拒绝小数秒与无偏移时间）；`agent_id` / `session_id` / `agent_version` 不接受空白串；`granularity` 显式传 `null` 被拒绝；trend 的 `page_size` / `page_token` 非法值在发请求前拒绝
+
 ## 0.10.0
 
 ### Minor Changes
